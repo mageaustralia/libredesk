@@ -22,7 +22,7 @@
         <Skeleton class="w-24 h-4" />
       </span>
       <span v-else>
-        {{ conversation?.contact?.first_name + ' ' + conversation?.contact?.last_name }}
+        {{ conversation?.contact?.first_name + ' ' + conversation?.contact?.last_name + (conversation?.reference_number ? ' #' + conversation.reference_number : '') + (conversation?.subject ? ' - ' + conversation.subject : '') }}
       </span>
       <ExternalLink
         v-if="!conversationStore.conversation.loading && userStore.can('contacts:read')"

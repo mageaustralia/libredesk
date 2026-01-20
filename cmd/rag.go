@@ -183,6 +183,18 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Customer message is required", nil, envelope.InputError)
 	}
 
+	// Get contact info from conversation
+	var firstName, lastName string
+	if req.ConversationID > 0 {
+		conv, err := app.conversation.GetConversation(req.ConversationID, "")
+		if err == nil {
+			firstName = conv.Contact.FirstName
+			lastName = conv.Contact.LastName
+		} else {
+			app.lo.Warn("Could not get conversation for contact info", "conversation_id", req.ConversationID, "error", err)
+		}
+	}
+
 	// Get AI settings
 	aiSettings, err := app.setting.GetAISettings()
 	if err != nil {
@@ -206,7 +218,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		results = []models.SearchResult{}
 	}
 
-	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold)
+	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold, "contact_first_name", firstName, "contact_last_name", lastName)
+
+	// Debug: log raw system prompt from settings
+	app.lo.Debug("RAG system prompt from settings", "raw_prompt_length", len(aiSettings.SystemPrompt), "raw_prompt_preview", aiSettings.SystemPrompt[:min(200, len(aiSettings.SystemPrompt))])
 
 	// Build context from results
 	var contextParts, macroParts []string
@@ -237,6 +252,17 @@ Provide a helpful, accurate response based on the context above. If the context 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{context}}", contextStr)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{macros}}", macrosStr)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{enquiry}}", req.CustomerMessage)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{firstname}}", firstName)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{first_name}}", firstName)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{lastname}}", lastName)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{last_name}}", lastName)
+
+	// Debug: log replaced prompt - first 500 chars to verify replacement worked
+	previewLen := 500
+	if len(systemPrompt) < previewLen {
+		previewLen = len(systemPrompt)
+	}
+	app.lo.Info("RAG final system prompt", "prompt_length", len(systemPrompt), "contains_hi_john", strings.Contains(systemPrompt, "Hi John"), "first_500_chars", systemPrompt[:previewLen])
 
 	// Generate response using the system prompt with RAG context
 	response, err := app.ai.CompletionWithSystemPrompt(systemPrompt, req.CustomerMessage)

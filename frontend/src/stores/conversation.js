@@ -218,7 +218,7 @@ export const useConversationStore = defineStore('conversation', () => {
 
   const currentContactName = computed(() => {
     if (!conversation.data?.contact) return ''
-    return conversation.data?.contact.first_name + ' ' + conversation.data?.contact.last_name
+    return conversation.data?.contact.first_name + ' ' + conversation.data?.contact.last_name + (conversation.data?.reference_number ? ' #' + conversation.data.reference_number : '') + (conversation.data?.subject ? ' - ' + conversation.data.subject : '')
   })
 
   function getContactFullName (uuid) {

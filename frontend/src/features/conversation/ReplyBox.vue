@@ -260,7 +260,7 @@ const handleGenerateResponse = async () => {
     // Call the RAG generate endpoint with full conversation
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
-      customer_message: conversationText
+      customer_message: (conversationStore.current?.subject ? "Subject: " + conversationStore.current.subject + "\n\n" : "") + conversationText
     })
 
     // Set the generated response in the editor
