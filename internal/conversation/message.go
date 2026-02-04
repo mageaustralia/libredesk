@@ -156,8 +156,22 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		return
 	}
 
-	// Set from address of the inbox
-	message.From = inbox.FromAddress()
+	// Set from address with agent name + inbox email
+	sender, err := m.userStore.GetAgent(message.SenderID, "")
+	if err == nil && sender.FirstName != "" {
+		// Extract just the email from inbox's From address
+		inboxEmail, extractErr := stringutil.ExtractEmail(inbox.FromAddress())
+		if extractErr == nil {
+			// Build "FirstName LastName <email>" format
+			agentName := strings.TrimSpace(sender.FirstName + " " + sender.LastName)
+			message.From = fmt.Sprintf("%s <%s>", agentName, inboxEmail)
+		} else {
+			message.From = inbox.FromAddress()
+		}
+	} else {
+		// Fallback to inbox's configured From
+		message.From = inbox.FromAddress()
+	}
 
 	// Set "In-Reply-To" and "References" headers, logging any errors but continuing to send the message.
 	// Include only the last 20 messages as references to avoid exceeding header size limits.
