@@ -25,6 +25,7 @@ import (
 	wmodels "github.com/abhinavxd/libredesk/internal/webhook/models"
 	"github.com/lib/pq"
 	"github.com/volatiletech/null/v9"
+	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 )
 
 const (
@@ -456,6 +457,13 @@ func (m *Manager) QueueReply(media []mmodels.Media, inboxID, senderID int, conve
 	if err != nil {
 		return message, err
 	}
+
+	// Parse inbox config for auto-assign setting
+	var inboxConfig imodels.Config
+	if err := json.Unmarshal(inbox.Config, &inboxConfig); err != nil {
+		m.lo.Error("error parsing inbox config", "error", err)
+		// Continue without auto-assign on parse error
+	}
 	sourceID, err := stringutil.GenerateEmailMessageID(conversationUUID, inbox.From)
 	if err != nil {
 		m.lo.Error("error generating source message id", "error", err)
@@ -479,6 +487,23 @@ func (m *Manager) QueueReply(media []mmodels.Media, inboxID, senderID int, conve
 	if err := m.InsertMessage(&message); err != nil {
 		return models.Message{}, err
 	}
+
+	// Auto-assign conversation to replying agent if:
+	// 1. Auto-assign on reply is enabled for this inbox
+	// 2. Conversation is not currently assigned to any user
+	if inboxConfig.AutoAssignOnReply {
+		conversation, err := m.GetConversation(0, conversationUUID, "")
+		if err == nil && conversation.AssignedUserID.Int == 0 {
+			// Assign to the agent who just replied
+			if assignErr := m.UpdateAssignee(conversationUUID, senderID, models.AssigneeTypeUser); assignErr != nil {
+				m.lo.Error("error auto-assigning conversation on reply", "conversation_uuid", conversationUUID, "sender_id", senderID, "error", assignErr)
+				// Don't fail the message send if assignment fails
+			} else {
+				m.lo.Debug("auto-assigned conversation to replying agent", "conversation_uuid", conversationUUID, "agent_id", senderID)
+			}
+		}
+	}
+
 	return message, nil
 }
 
