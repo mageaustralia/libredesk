@@ -36,13 +36,18 @@ type Settings struct {
 
 // AISettings holds AI/RAG configuration.
 type AISettings struct {
-	Enabled             bool    `json:"ai.enabled" db:"ai.enabled"`
-	Provider            string  `json:"ai.provider" db:"ai.provider"`
-	OpenAIAPIKey        string  `json:"ai.openai_api_key" db:"ai.openai_api_key"`
-	OpenRouterAPIKey    string  `json:"ai.openrouter_api_key" db:"ai.openrouter_api_key"`
-	OpenRouterModel     string  `json:"ai.openrouter_model" db:"ai.openrouter_model"`
-	EmbeddingModel      string  `json:"ai.embedding_model" db:"ai.embedding_model"`
-	SystemPrompt        string  `json:"ai.system_prompt" db:"ai.system_prompt"`
-	MaxContextChunks    int     `json:"ai.max_context_chunks" db:"ai.max_context_chunks"`
-	SimilarityThreshold float64 `json:"ai.similarity_threshold" db:"ai.similarity_threshold"`
+	Enabled                 bool    `json:"ai.enabled" db:"ai.enabled"`
+	Provider                string  `json:"ai.provider" db:"ai.provider"`
+	OpenAIAPIKey            string  `json:"ai.openai_api_key" db:"ai.openai_api_key"`
+	OpenRouterAPIKey        string  `json:"ai.openrouter_api_key" db:"ai.openrouter_api_key"`
+	OpenRouterModel         string  `json:"ai.openrouter_model" db:"ai.openrouter_model"`
+	EmbeddingModel          string  `json:"ai.embedding_model" db:"ai.embedding_model"`
+	SystemPrompt            string  `json:"ai.system_prompt" db:"ai.system_prompt"`
+	MaxContextChunks        int     `json:"ai.max_context_chunks" db:"ai.max_context_chunks"`
+	SimilarityThreshold     float64 `json:"ai.similarity_threshold" db:"ai.similarity_threshold"`
+	ExternalSearchEnabled   bool    `json:"ai.external_search_enabled" db:"ai.external_search_enabled"`
+	ExternalSearchURL       string  `json:"ai.external_search_url" db:"ai.external_search_url"`
+	ExternalSearchMaxResults int    `json:"ai.external_search_max_results" db:"ai.external_search_max_results"`
+	ExternalSearchEndpoints string  `json:"ai.external_search_endpoints" db:"ai.external_search_endpoints"`
+	ExternalSearchHeaders   string  `json:"ai.external_search_headers" db:"ai.external_search_headers"`
 }

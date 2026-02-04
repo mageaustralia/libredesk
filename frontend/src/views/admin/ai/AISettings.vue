@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import Spinner from '@/components/ui/spinner/Spinner.vue'
 import { Bot, CheckCircle, AlertCircle, RefreshCw } from 'lucide-vue-next'
 
@@ -30,6 +31,13 @@ const systemPrompt = ref('')
 const maxContextChunks = ref(5)
 const similarityThreshold = ref(0.7)
 const savingRAG = ref(false)
+
+// External Search settings
+const externalSearchEnabled = ref(false)
+const externalSearchURL = ref('')
+const externalSearchMaxResults = ref(3)
+const externalSearchEndpoints = ref('')
+const externalSearchHeaders = ref('')
 
 const hasOpenAIKey = computed(() => {
   const p = providers.value.find(p => p.provider === 'openai')
@@ -158,6 +166,11 @@ async function fetchAISettings() {
     systemPrompt.value = data['ai.system_prompt'] || ''
     maxContextChunks.value = data['ai.max_context_chunks'] || 5
     similarityThreshold.value = data['ai.similarity_threshold'] || 0.7
+    externalSearchEnabled.value = data['ai.external_search_enabled'] || false
+    externalSearchURL.value = data['ai.external_search_url'] || ''
+    externalSearchMaxResults.value = data['ai.external_search_max_results'] || 3
+    externalSearchEndpoints.value = data['ai.external_search_endpoints'] || ''
+    externalSearchHeaders.value = data['ai.external_search_headers'] || ''
   } catch (err) {
     console.error('Error fetching AI settings:', err)
   }
@@ -169,7 +182,12 @@ async function saveAISettings() {
     await api.updateAISettings({
       'ai.system_prompt': systemPrompt.value,
       'ai.max_context_chunks': parseInt(maxContextChunks.value) || 5,
-      'ai.similarity_threshold': parseFloat(similarityThreshold.value) || 0.7
+      'ai.similarity_threshold': parseFloat(similarityThreshold.value) || 0.7,
+      'ai.external_search_enabled': externalSearchEnabled.value,
+      'ai.external_search_url': externalSearchURL.value,
+      'ai.external_search_max_results': parseInt(externalSearchMaxResults.value) || 3,
+      'ai.external_search_endpoints': externalSearchEndpoints.value,
+      'ai.external_search_headers': externalSearchHeaders.value
     })
     toast.success('AI settings saved')
   } catch (err) {
@@ -354,7 +372,7 @@ onMounted(async () => {
                 class="font-mono text-sm"
               />
               <p class="text-xs text-muted-foreground">
-                The system prompt sent to the AI when generating responses. Use <code>{{site_name}}</code>, <code>{{context}}</code>, <code>{{macros}}</code>, and <code>{{enquiry}}</code> as placeholders.
+                The system prompt sent to the AI when generating responses. Use <code>{{site_name}}</code>, <code>{{context}}</code>, <code>{{macros}}</code>, <code>{{enquiry}}</code>, and <code>{{external_search_results}}</code> as placeholders.
               </p>
             </div>
 
@@ -386,6 +404,77 @@ onMounted(async () => {
                 <p class="text-xs text-muted-foreground">
                   Minimum similarity score for knowledge base matches (0-1, default: 0.7).
                 </p>
+              </div>
+            </div>
+
+            <!-- External Search Integration -->
+            <div class="border-t pt-4 mt-4 space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <Label>External Search Integration</Label>
+                  <p class="text-xs text-muted-foreground">
+                    Enable live search from an external API (e.g. Meilisearch) when generating AI responses. The AI will classify the customer query and search relevant endpoints.
+                  </p>
+                </div>
+                <Switch v-model:checked="externalSearchEnabled" />
+              </div>
+
+              <div v-if="externalSearchEnabled" class="space-y-4">
+                <div class="space-y-2">
+                  <Label for="search-url">Search Base URL</Label>
+                  <Input
+                    id="search-url"
+                    v-model="externalSearchURL"
+                    type="text"
+                    placeholder="https://example.com/search-api"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    Base URL for the search API. Endpoint paths below are appended to this.
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="search-endpoints">Search Endpoints (JSON)</Label>
+                  <Textarea
+                    id="search-endpoints"
+                    v-model="externalSearchEndpoints"
+                    rows="4"
+                    placeholder='{"product": "/indexes/products/search", "category": "/indexes/categories/search", "faq": "/indexes/faqs/search"}'
+                    class="font-mono text-sm"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    JSON object mapping intent types to URL path suffixes. Supported types: <code>product</code>, <code>category</code>, <code>faq</code>.
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="search-headers">Custom HTTP Headers (JSON)</Label>
+                  <Textarea
+                    id="search-headers"
+                    v-model="externalSearchHeaders"
+                    rows="3"
+                    placeholder='{"User-Agent": "Mozilla/5.0...", "Referer": "https://example.com/"}'
+                    class="font-mono text-sm"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    Optional JSON object of custom HTTP headers to send with search requests.
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="search-max">Max Results Per Endpoint</Label>
+                  <Input
+                    id="search-max"
+                    v-model="externalSearchMaxResults"
+                    type="number"
+                    min="1"
+                    max="10"
+                    class="max-w-[200px]"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    Maximum number of results to fetch from each search endpoint (default: 3).
+                  </p>
+                </div>
               </div>
             </div>
 

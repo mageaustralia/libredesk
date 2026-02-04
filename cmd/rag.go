@@ -1,15 +1,53 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
+
+// SearchIntent represents a classified search intent from the AI.
+type SearchIntent struct {
+	Type  string `json:"type"`
+	Query string `json:"query"`
+}
+
+// SearchClassification is the AI's classification response.
+type SearchClassification struct {
+	Intents []SearchIntent `json:"intents"`
+}
+
+// ExternalSearchHit represents a generic search result from an external search API.
+type ExternalSearchHit struct {
+	Name            string                 `json:"name"`
+	Question        string                 `json:"question"`
+	Answer          string                 `json:"answer"`
+	URL             string                 `json:"url"`
+	Description     string                 `json:"description"`
+	MetaDescription string                 `json:"meta_description"`
+	BrandID         string                 `json:"brand_id"`
+	InStock         int                    `json:"in_stock"`
+	ProductCount    int                    `json:"product_count"`
+	Price           map[string]interface{} `json:"price"`
+	Categories      map[string]interface{} `json:"categories"`
+}
+
+// ExternalSearchResponse is the response from an external search API.
+type ExternalSearchResponse struct {
+	Hits               []ExternalSearchHit `json:"hits"`
+	Query              string              `json:"query"`
+	EstimatedTotalHits int                 `json:"estimatedTotalHits"`
+}
 
 // handleGetRAGSources returns all RAG knowledge sources.
 func handleGetRAGSources(r *fastglue.Request) error {
@@ -208,6 +246,26 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 
 	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold)
 
+	// Search external search API if enabled.
+	var externalSearchContext string
+	if aiSettings.ExternalSearchEnabled && aiSettings.ExternalSearchURL != "" {
+		maxSearchResults := aiSettings.ExternalSearchMaxResults
+		if maxSearchResults <= 0 {
+			maxSearchResults = 3
+		}
+
+		intents, err := app.classifySearchIntent(req.CustomerMessage)
+		if err != nil {
+			app.lo.Warn("External search classification failed, continuing without", "error", err)
+		} else {
+			app.lo.Info("External search classification", "intents", intents)
+			externalSearchContext = app.performExternalSearch(intents, maxSearchResults)
+			if externalSearchContext != "" {
+				app.lo.Info("External search results added to context", "length", len(externalSearchContext))
+			}
+		}
+	}
+
 	// Build context from results
 	var contextParts, macroParts []string
 	for _, res := range results {
@@ -237,6 +295,7 @@ Provide a helpful, accurate response based on the context above. If the context 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{context}}", contextStr)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{macros}}", macrosStr)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{enquiry}}", req.CustomerMessage)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{external_search_results}}", externalSearchContext)
 
 	// Generate response using the system prompt with RAG context
 	response, err := app.ai.CompletionWithSystemPrompt(systemPrompt, req.CustomerMessage)
@@ -248,6 +307,232 @@ Provide a helpful, accurate response based on the context above. If the context 
 		"response": response,
 		"sources":  results,
 	})
+}
+
+// classifySearchIntent uses the AI to classify a customer message into search intents.
+func (app *App) classifySearchIntent(message string) ([]SearchIntent, error) {
+	classifyPrompt := `Analyze this customer support message and extract search intents.
+Return JSON only, no other text.
+
+Message: "` + message + `"
+
+Response format:
+{"intents": [{"type": "product", "query": "concise search terms"}, {"type": "category", "query": "concise terms"}, {"type": "faq", "query": "concise terms"}]}
+
+Rules:
+- Only include intent types that are relevant to the message
+- Keep queries to 2-5 words, suitable for search
+- "product" = looking for a specific product, brand, or item
+- "category" = browsing a type/category of items
+- "faq" = asking about policies, shipping, returns, orders, delivery, etc.
+- A message can have multiple intents
+- If the message is purely conversational (greetings, thanks) or not related to products/policies, return empty intents: {"intents": []}
+- Do NOT wrap in markdown code blocks`
+
+	response, err := app.ai.CompletionWithSystemPrompt("You are a JSON-only classifier. Output valid JSON only, no markdown, no explanation.", classifyPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("classification failed: %w", err)
+	}
+
+	// Clean up response - remove markdown code blocks if present.
+	response = strings.TrimSpace(response)
+	response = strings.TrimPrefix(response, "```json")
+	response = strings.TrimPrefix(response, "```")
+	response = strings.TrimSuffix(response, "```")
+	response = strings.TrimSpace(response)
+
+	var classification SearchClassification
+	if err := json.Unmarshal([]byte(response), &classification); err != nil {
+		return nil, fmt.Errorf("failed to parse classification: %w (response: %s)", err, response)
+	}
+
+	return classification.Intents, nil
+}
+
+// queryExternalSearch queries an external search API endpoint via HTTP POST.
+func queryExternalSearch(searchURL, query string, limit int, headers map[string]string) (*ExternalSearchResponse, error) {
+	payload := fmt.Sprintf(`{"q":%q,"limit":%d}`, query, limit)
+	req, err := http.NewRequest("POST", searchURL, bytes.NewBufferString(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Apply custom headers.
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	// Default User-Agent if not set.
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "LibreDesk/1.0")
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("external search returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result ExternalSearchResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// performExternalSearch searches configured external endpoints based on classified intents.
+func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) string {
+	var sections []string
+
+	aiSettings, err := app.setting.GetAISettings()
+	if err != nil {
+		app.lo.Warn("Failed to get AI settings for external search", "error", err)
+		return ""
+	}
+
+	// Parse configured endpoints from settings.
+	// Format: JSON object mapping intent type to URL path suffix.
+	// e.g. {"product": "/indexes/my_products/search", "category": "/indexes/my_categories/search", "faq": "/indexes/my_faqs/search"}
+	endpoints := make(map[string]string)
+	if aiSettings.ExternalSearchEndpoints != "" {
+		if err := json.Unmarshal([]byte(aiSettings.ExternalSearchEndpoints), &endpoints); err != nil {
+			app.lo.Warn("Failed to parse external search endpoints config", "error", err)
+			return ""
+		}
+	}
+
+	if len(endpoints) == 0 {
+		app.lo.Warn("No external search endpoints configured")
+		return ""
+	}
+
+	// Parse custom headers.
+	// Format: JSON object of header key-value pairs.
+	// e.g. {"User-Agent": "Mozilla/5.0...", "Referer": "https://example.com/"}
+	headers := make(map[string]string)
+	if aiSettings.ExternalSearchHeaders != "" {
+		if err := json.Unmarshal([]byte(aiSettings.ExternalSearchHeaders), &headers); err != nil {
+			app.lo.Warn("Failed to parse external search headers config", "error", err)
+		}
+	}
+
+	baseURL := strings.TrimRight(aiSettings.ExternalSearchURL, "/")
+
+	for _, intent := range intents {
+		endpointPath, ok := endpoints[intent.Type]
+		if !ok {
+			continue
+		}
+
+		searchURL := baseURL + endpointPath
+		results, err := queryExternalSearch(searchURL, intent.Query, maxResults, headers)
+		if err != nil {
+			app.lo.Warn("External search query failed", "type", intent.Type, "query", intent.Query, "error", err)
+			continue
+		}
+
+		if len(results.Hits) == 0 {
+			continue
+		}
+
+		switch intent.Type {
+		case "product":
+			var lines []string
+			for i, hit := range results.Hits {
+				price := ""
+				if aud, ok := hit.Price["AUD"]; ok {
+					if audMap, ok := aud.(map[string]interface{}); ok {
+						if formatted, ok := audMap["default_formated"].(string); ok {
+							price = formatted
+						}
+						if origFormatted, ok := audMap["default_original_formated"].(string); ok {
+							price += " (was " + origFormatted + ")"
+						}
+					}
+				}
+				stock := "In Stock"
+				if hit.InStock == 0 {
+					stock = "Out of Stock"
+				}
+				line := fmt.Sprintf("%d. %s", i+1, hit.Name)
+				if hit.BrandID != "" {
+					line += " by " + hit.BrandID
+				}
+				if price != "" {
+					line += " - " + price
+				}
+				line += " - " + stock
+				line += "\n   URL: " + hit.URL
+				desc := stripHTML(hit.Description)
+				if len(desc) > 200 {
+					desc = desc[:200] + "..."
+				}
+				if desc != "" {
+					line += "\n   " + strings.TrimSpace(desc)
+				}
+				lines = append(lines, line)
+			}
+			sections = append(sections, "=== Product Results (from website) ===\n"+strings.Join(lines, "\n\n"))
+
+		case "category":
+			var lines []string
+			for i, hit := range results.Hits {
+				line := fmt.Sprintf("%d. %s (%d products)", i+1, hit.Name, hit.ProductCount)
+				line += "\n   URL: " + hit.URL
+				if hit.MetaDescription != "" {
+					desc := hit.MetaDescription
+					if len(desc) > 200 {
+						desc = desc[:200] + "..."
+					}
+					line += "\n   " + desc
+				}
+				lines = append(lines, line)
+			}
+			sections = append(sections, "=== Category Results (from website) ===\n"+strings.Join(lines, "\n\n"))
+
+		case "faq":
+			var lines []string
+			for i, hit := range results.Hits {
+				line := fmt.Sprintf("%d. Q: %s\n   A: %s", i+1, hit.Question, hit.Answer)
+				line += "\n   URL: " + hit.URL
+				lines = append(lines, line)
+			}
+			sections = append(sections, "=== FAQ Results (from website) ===\n"+strings.Join(lines, "\n\n"))
+		}
+	}
+
+	if len(sections) == 0 {
+		return ""
+	}
+
+	return strings.Join(sections, "\n\n")
+}
+
+// stripHTML removes HTML tags from a string.
+func stripHTML(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	for strings.Contains(s, "<") {
+		start := strings.Index(s, "<")
+		end := strings.Index(s[start:], ">")
+		if end == -1 {
+			break
+		}
+		s = s[:start] + s[start+end+1:]
+	}
+	return strings.TrimSpace(s)
 }
 
 // handleRAGFileUpload handles file uploads for RAG knowledge sources.
