@@ -513,6 +513,8 @@
   "admin.inbox.skipTLSVerification.description": "Skip hostname check on the TLS certificate.",
   "admin.inbox.enablePlusAddressing": "Enable plus addressing",
   "admin.inbox.enablePlusAddressing.description": "Improves conversation threading but requires provider support (e.g., Gmail, Microsoft 365).",
+  "admin.inbox.autoAssignOnReply": "Auto-assign on reply",
+  "admin.inbox.autoAssignOnReply.description": "Automatically assign unassigned conversations to the agent who sends the first reply.",
   "admin.inbox.chooseChannel": "Choose a channel",
   "admin.inbox.configureChannel": "Configure channel",
   "admin.inbox.createEmailInbox": "Create Email Inbox",
