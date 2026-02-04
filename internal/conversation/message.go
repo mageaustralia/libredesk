@@ -768,6 +768,9 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 		return fmt.Errorf("error uploading message attachments: %w", upErr)
 	}
 
+	// Sanitize HTML content from email clients (remove excessive whitespace, empty divs, multiple <br> tags).
+	in.Message.Content = stringutil.SanitizeEmailHTML(in.Message.Content)
+
 	// Insert message.
 	if err = m.InsertMessage(&in.Message); err != nil {
 		return err
