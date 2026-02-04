@@ -6,6 +6,7 @@ import AdminPageWithHelp from '@/layouts/admin/AdminPageWithHelp.vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,12 @@ const openaiApiKey = ref('')
 const openrouterApiKey = ref('')
 const openrouterModel = ref('anthropic/claude-3-haiku')
 const defaultProvider = ref('openai')
+
+// RAG AI Settings
+const systemPrompt = ref('')
+const maxContextChunks = ref(5)
+const similarityThreshold = ref(0.7)
+const savingRAG = ref(false)
 
 const hasOpenAIKey = computed(() => {
   const p = providers.value.find(p => p.provider === 'openai')
@@ -144,9 +151,37 @@ async function testProvider(provider) {
   }
 }
 
+async function fetchAISettings() {
+  try {
+    const res = await api.getAISettings()
+    const data = res.data.data || {}
+    systemPrompt.value = data['ai.system_prompt'] || ''
+    maxContextChunks.value = data['ai.max_context_chunks'] || 5
+    similarityThreshold.value = data['ai.similarity_threshold'] || 0.7
+  } catch (err) {
+    console.error('Error fetching AI settings:', err)
+  }
+}
+
+async function saveAISettings() {
+  savingRAG.value = true
+  try {
+    await api.updateAISettings({
+      'ai.system_prompt': systemPrompt.value,
+      'ai.max_context_chunks': parseInt(maxContextChunks.value) || 5,
+      'ai.similarity_threshold': parseFloat(similarityThreshold.value) || 0.7
+    })
+    toast.success('AI settings saved')
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Failed to save AI settings')
+  } finally {
+    savingRAG.value = false
+  }
+}
+
 onMounted(async () => {
   loading.value = true
-  await Promise.all([fetchProviders(), fetchModels()])
+  await Promise.all([fetchProviders(), fetchModels(), fetchAISettings()])
   loading.value = false
 })
 </script>
@@ -294,6 +329,69 @@ onMounted(async () => {
                 Set as Default
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <!-- RAG AI Assistant Settings -->
+        <Card>
+          <CardHeader>
+            <div class="flex items-center gap-2">
+              <Bot class="h-5 w-5" />
+              <CardTitle>AI Assistant Settings</CardTitle>
+            </div>
+            <CardDescription>
+              Configure the system prompt and RAG settings for the AI response generator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="space-y-2">
+              <Label for="system-prompt">System Prompt</Label>
+              <Textarea
+                id="system-prompt"
+                v-model="systemPrompt"
+                rows="8"
+                placeholder="You are a helpful customer support assistant for {{site_name}}..."
+                class="font-mono text-sm"
+              />
+              <p class="text-xs text-muted-foreground">
+                The system prompt sent to the AI when generating responses. Use <code>{{site_name}}</code>, <code>{{context}}</code>, <code>{{macros}}</code>, and <code>{{enquiry}}</code> as placeholders.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <Label for="max-chunks">Max Context Chunks</Label>
+                <Input
+                  id="max-chunks"
+                  v-model="maxContextChunks"
+                  type="number"
+                  min="1"
+                  max="20"
+                />
+                <p class="text-xs text-muted-foreground">
+                  Maximum number of knowledge base chunks to include as context (default: 5).
+                </p>
+              </div>
+
+              <div class="space-y-2">
+                <Label for="similarity">Similarity Threshold</Label>
+                <Input
+                  id="similarity"
+                  v-model="similarityThreshold"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                />
+                <p class="text-xs text-muted-foreground">
+                  Minimum similarity score for knowledge base matches (0-1, default: 0.7).
+                </p>
+              </div>
+            </div>
+
+            <Button @click="saveAISettings" :disabled="savingRAG">
+              {{ savingRAG ? 'Saving...' : 'Save AI Settings' }}
+            </Button>
           </CardContent>
         </Card>
       </div>
