@@ -73,6 +73,20 @@
       </FormItem>
     </FormField>
 
+    <FormField v-if="showFormFields" v-slot="{ componentField, handleChange }" name="auto_assign_on_reply">
+      <FormItem class="flex flex-row items-center justify-between box p-4">
+        <div class="space-y-0.5">
+          <FormLabel class="text-base">{{ $t('admin.inbox.autoAssignOnReply') }}</FormLabel>
+          <FormDescription>
+            {{ $t('admin.inbox.autoAssignOnReply.description') }}
+          </FormDescription>
+        </div>
+        <FormControl>
+          <Switch :checked="componentField.modelValue" @update:checked="handleChange" />
+        </FormControl>
+      </FormItem>
+    </FormField>
+
     <FormField v-if="setupMethod" v-slot="{ componentField }" name="auth_type">
       <FormItem>
         <FormControl>
@@ -818,6 +832,7 @@ const form = useForm({
     enabled: true,
     csat_enabled: false,
     enable_plus_addressing: true,
+    auto_assign_on_reply: false,
     auth_type: AUTH_TYPE_PASSWORD,
     imap: {
       host: 'imap.gmail.com',
