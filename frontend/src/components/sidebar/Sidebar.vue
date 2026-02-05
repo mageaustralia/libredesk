@@ -55,6 +55,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useConversationStore } from '@/stores/conversation'
+import { useTheme } from '@/composables/useTheme'
 
 defineProps({
   userTeams: { type: Array, default: () => [] },
@@ -63,6 +64,7 @@ defineProps({
 })
 const userStore = useUserStore()
 const conversationStore = useConversationStore()
+const { collapseSidebarByDefault } = useTheme()
 const settingsStore = useAppSettingsStore()
 const route = useRoute()
 const router = useRouter()
@@ -175,7 +177,7 @@ watch(
 )
 
 // Sidebar open state in local storage
-const sidebarOpen = useStorage('mainSidebarOpen', true)
+const sidebarOpen = useStorage('mainSidebarOpen', !collapseSidebarByDefault.value)
 const teamInboxOpen = useStorage('teamInboxOpen', true)
 const viewInboxOpen = useStorage('viewInboxOpen', true)
 const sharedViewInboxOpen = useStorage('sharedViewInboxOpen', true)
