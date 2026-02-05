@@ -26,6 +26,14 @@ const clientSecret = ref('')
 const hasConfig = ref(false)
 const testStatus = ref(null) // 'success', 'error', or null
 
+// Test lookup state
+const testEmail = ref('')
+const testOrderNumber = ref('')
+const testingCustomer = ref(false)
+const testingOrder = ref(false)
+const customerResult = ref(null)
+const orderResult = ref(null)
+
 const providerName = computed(() => {
   switch (providerType.value) {
     case 'magento1': return 'Maho Commerce'
@@ -43,10 +51,10 @@ async function fetchSettings() {
   loading.value = true
   try {
     const res = await api.getEcommerceSettings()
-    if (res.data?.type) {
-      providerType.value = res.data.type
-      baseURL.value = res.data.base_url || ''
-      clientID.value = res.data.client_id || ''
+    if (res.data.data?.type) {
+      providerType.value = res.data.data.type
+      baseURL.value = res.data.data.base_url || ''
+      clientID.value = res.data.data.client_id || ''
       hasConfig.value = true
     }
   } catch (err) {
@@ -109,6 +117,34 @@ function clearSettings() {
   clientSecret.value = ''
   testStatus.value = null
 }
+
+async function testCustomerLookup() {
+  if (!testEmail.value) return
+  testingCustomer.value = true
+  customerResult.value = null
+  try {
+    const resp = await api.testEcommerceCustomer(testEmail.value)
+    customerResult.value = resp.data?.data || {}
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Lookup failed')
+  } finally {
+    testingCustomer.value = false
+  }
+}
+
+async function testOrderLookup() {
+  if (!testOrderNumber.value) return
+  testingOrder.value = true
+  orderResult.value = null
+  try {
+    const resp = await api.testEcommerceOrder(testOrderNumber.value)
+    orderResult.value = resp.data?.data || {}
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Order not found')
+  } finally {
+    testingOrder.value = false
+  }
+}
 </script>
 
 <template>
@@ -169,7 +205,7 @@ function clearSettings() {
                     Your Shopify store URL (e.g., https://your-store.myshopify.com)
                   </template>
                   <template v-else-if="providerType === 'magento1'">
-                    Your store's base URL without /api (e.g., https://dev.tenniswarehouse.com.au)
+                    Your store's base URL without /api (e.g., https://your-store.com)
                   </template>
                   <template v-else>
                     Your Magento 2 store URL (e.g., https://store.com)
@@ -252,6 +288,70 @@ function clearSettings() {
             </div>
           </CardContent>
         </Card>
+        <!-- Test Lookup Section -->
+        <Card v-if="hasConfig && providerType">
+          <CardHeader>
+            <CardTitle>Test Integration</CardTitle>
+            <CardDescription>
+              Test customer and order lookups to verify your integration is working.
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-6">
+            <!-- Customer Lookup -->
+            <div class="space-y-2">
+              <Label>Lookup Customer by Email</Label>
+              <div class="flex gap-2">
+                <Input v-model="testEmail" placeholder="customer@example.com" class="flex-1" />
+                <Button @click="testCustomerLookup" :disabled="testingCustomer || !testEmail" variant="outline">
+                  {{ testingCustomer ? 'Looking up...' : 'Lookup' }}
+                </Button>
+              </div>
+              <div v-if="customerResult" class="mt-2 p-3 bg-muted rounded-md text-sm">
+                <div v-if="customerResult.customer">
+                  <strong>Customer:</strong> {{ customerResult.customer.first_name }} {{ customerResult.customer.last_name }}
+                  ({{ customerResult.customer.email }})
+                </div>
+                <div v-if="customerResult.recent_orders && customerResult.recent_orders.length">
+                  <strong>Recent Orders:</strong>
+                  <ul class="list-disc list-inside ml-2">
+                    <li v-for="order in customerResult.recent_orders" :key="order.id">
+                      #{{ order.increment_id }} - {{ order.status }} - ${{ order.grand_total?.toFixed(2) }}
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="!customerResult.customer && (!customerResult.recent_orders || !customerResult.recent_orders.length)">
+                  No customer or orders found for this email.
+                </div>
+              </div>
+            </div>
+
+            <!-- Order Lookup -->
+            <div class="space-y-2">
+              <Label>Lookup Order by Number</Label>
+              <div class="flex gap-2">
+                <Input v-model="testOrderNumber" placeholder="100123456" class="flex-1" />
+                <Button @click="testOrderLookup" :disabled="testingOrder || !testOrderNumber" variant="outline">
+                  {{ testingOrder ? 'Looking up...' : 'Lookup' }}
+                </Button>
+              </div>
+              <div v-if="orderResult" class="mt-2 p-3 bg-muted rounded-md text-sm">
+                <div><strong>Order #{{ orderResult.increment_id }}</strong></div>
+                <div>Status: {{ orderResult.status }}</div>
+                <div>Customer: {{ orderResult.customer_name }} ({{ orderResult.customer_email }})</div>
+                <div>Total: ${{ orderResult.grand_total?.toFixed(2) }}</div>
+                <div v-if="orderResult.items && orderResult.items.length">
+                  <strong>Items:</strong>
+                  <ul class="list-disc list-inside ml-2">
+                    <li v-for="item in orderResult.items" :key="item.sku">
+                      {{ item.name }} ({{ item.sku }}) x{{ item.qty }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
       </div>
     </template>
     <template #help>
