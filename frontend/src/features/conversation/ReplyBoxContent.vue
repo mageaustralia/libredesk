@@ -36,34 +36,21 @@
     >
       <div class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">TO:</label>
-        <Input
-          type="text"
-          :placeholder="t('replyBox.emailAddresess')"
+        <EmailTagInput
           v-model="to"
-          class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+          :placeholder="t('replyBox.emailAddresess')"
+          class="flex-grow"
           @blur="validateEmails"
         />
       </div>
       <div class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">CC:</label>
-        <div class="flex-grow relative">
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
-            v-model="cc"
-            class="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring pr-8"
-            @blur="validateEmails"
-          />
-          <button
-            v-if="cc"
-            type="button"
-            @click="cc = '';"
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            title="Clear CC"
-          >
-            <X class="h-4 w-4" />
-          </button>
-        </div>
+        <EmailTagInput
+          v-model="cc"
+          :placeholder="t('replyBox.emailAddresess')"
+          class="flex-grow"
+          @blur="validateEmails"
+        />
         <Button
           size="sm"
           @click="toggleBcc"
@@ -74,24 +61,12 @@
       </div>
       <div v-if="showBcc" class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">BCC:</label>
-        <div class="flex-grow relative">
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
-            v-model="bcc"
-            class="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring pr-8"
-            @blur="validateEmails"
-          />
-          <button
-            v-if="bcc"
-            type="button"
-            @click="bcc = '';"
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            title="Clear BCC"
-          >
-            <X class="h-4 w-4" />
-          </button>
-        </div>
+        <EmailTagInput
+          v-model="bcc"
+          :placeholder="t('replyBox.emailAddresess')"
+          class="flex-grow"
+          @blur="validateEmails"
+        />
       </div>
     </div>
 
@@ -176,6 +151,7 @@ import { validateEmail } from '@/utils/strings'
 import { useMacroStore } from '@/stores/macro'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
+import EmailTagInput from '@/components/EmailTagInput.vue'
 
 const messageType = defineModel('messageType', { default: 'reply' })
 const to = defineModel('to', { default: '' })
