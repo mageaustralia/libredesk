@@ -1,5 +1,5 @@
 <template>
-  <div class="flex w-full h-screen text-foreground bg-canvas p-1.5">
+  <div :class="['flex w-full h-screen text-foreground bg-canvas p-1.5', themeClass]">
     <!-- Icon sidebar always visible -->
     <SidebarProvider style="--sidebar-width: 3rem" class="w-auto z-50">
       <ShadcnSidebar collapsible="none" class="border rounded-lg overflow-hidden">
@@ -166,9 +166,11 @@ import {
 } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import SidebarNavUser from '@/components/sidebar/SidebarNavUser.vue'
+import { useTheme } from '@/composables/useTheme'
 import NotificationBell from '@/components/sidebar/NotificationBell.vue'
 
 const route = useRoute()
+const { themeClass } = useTheme()
 const emitter = useEmitter()
 const userStore = useUserStore()
 const conversationStore = useConversationStore()
