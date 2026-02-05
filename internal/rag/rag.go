@@ -2,15 +2,18 @@
 package rag
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/abhinavxd/libredesk/internal/dbutil"
 	"github.com/abhinavxd/libredesk/internal/envelope"
+	"github.com/abhinavxd/libredesk/internal/image"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/go-i18n"
@@ -25,6 +28,16 @@ var (
 // EmbeddingFunc generates embeddings for text.
 type EmbeddingFunc func(text string) ([]float32, error)
 
+// MediaBlobFunc retrieves raw binary content of a media file by UUID.
+type MediaBlobFunc func(uuid string) ([]byte, error)
+
+// ConversationImage represents an image attachment from a conversation.
+type ConversationImage struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"` // base64 data URL for AI consumption
+}
+
 // Manager handles RAG operations.
 type Manager struct {
 	q             queries
@@ -32,19 +45,20 @@ type Manager struct {
 	lo            *logf.Logger
 	i18n          *i18n.I18n
 	embeddingFunc EmbeddingFunc
+	mediaBlobFunc MediaBlobFunc
 }
 
 type queries struct {
-	GetSources             *sqlx.Stmt `query:"get-sources"`
-	GetSource              *sqlx.Stmt `query:"get-source"`
-	GetEnabledSources      *sqlx.Stmt `query:"get-enabled-sources"`
-	CreateSource           *sqlx.Stmt `query:"create-source"`
-	UpdateSource           *sqlx.Stmt `query:"update-source"`
-	DeleteSource           *sqlx.Stmt `query:"delete-source"`
-	UpdateSourceSynced     *sqlx.Stmt `query:"update-source-synced"`
-	GetDocumentsBySource   *sqlx.Stmt `query:"get-documents-by-source"`
-	GetDocumentBySourceRef *sqlx.Stmt `query:"get-document-by-source-ref"`
-	DeleteDocument         *sqlx.Stmt `query:"delete-document"`
+	GetSources              *sqlx.Stmt `query:"get-sources"`
+	GetSource               *sqlx.Stmt `query:"get-source"`
+	GetEnabledSources       *sqlx.Stmt `query:"get-enabled-sources"`
+	CreateSource            *sqlx.Stmt `query:"create-source"`
+	UpdateSource            *sqlx.Stmt `query:"update-source"`
+	DeleteSource            *sqlx.Stmt `query:"delete-source"`
+	UpdateSourceSynced      *sqlx.Stmt `query:"update-source-synced"`
+	GetDocumentsBySource    *sqlx.Stmt `query:"get-documents-by-source"`
+	GetDocumentBySourceRef  *sqlx.Stmt `query:"get-document-by-source-ref"`
+	DeleteDocument          *sqlx.Stmt `query:"delete-document"`
 	DeleteDocumentsBySource *sqlx.Stmt `query:"delete-documents-by-source"`
 }
 
@@ -54,6 +68,7 @@ type Opts struct {
 	Lo            *logf.Logger
 	I18n          *i18n.I18n
 	EmbeddingFunc EmbeddingFunc
+	MediaBlobFunc MediaBlobFunc
 }
 
 // New creates a new RAG manager.
@@ -68,12 +83,18 @@ func New(opts Opts) (*Manager, error) {
 		lo:            opts.Lo,
 		i18n:          opts.I18n,
 		embeddingFunc: opts.EmbeddingFunc,
+		mediaBlobFunc: opts.MediaBlobFunc,
 	}, nil
 }
 
 // SetEmbeddingFunc sets the embedding function.
 func (m *Manager) SetEmbeddingFunc(fn EmbeddingFunc) {
 	m.embeddingFunc = fn
+}
+
+// SetMediaBlobFunc sets the media blob retrieval function.
+func (m *Manager) SetMediaBlobFunc(fn MediaBlobFunc) {
+	m.mediaBlobFunc = fn
 }
 
 // GetDB returns the database connection for raw queries.
@@ -259,4 +280,81 @@ func Float32SliceToVector(v []float32) string {
 	}
 	result += "]"
 	return result
+}
+
+// mediaAttachment represents a media record for image extraction.
+type mediaAttachment struct {
+	UUID        string `db:"uuid"`
+	Filename    string `db:"filename"`
+	ContentType string `db:"content_type"`
+}
+
+// GetConversationImages extracts and resizes image attachments from conversation messages.
+// Limits to maxImages to control token usage. Returns newest images first.
+func (m *Manager) GetConversationImages(conversationID int, maxImages int) ([]ConversationImage, error) {
+	if m.mediaBlobFunc == nil {
+		m.lo.Warn("media blob function not configured, skipping image extraction")
+		return nil, nil
+	}
+
+	if maxImages <= 0 {
+		maxImages = 3 // Default limit
+	}
+
+	// Query image attachments from messages in this conversation
+	// Join: media -> conversation_messages -> conversations
+	// Filter for image/* content types, order by newest first
+	query := `
+		SELECT m.uuid, m.filename, m.content_type
+		FROM media m
+		INNER JOIN conversation_messages cm ON m.model_type = 'messages' AND m.model_id = cm.id
+		WHERE cm.conversation_id = $1
+			AND m.content_type LIKE 'image/%'
+		ORDER BY cm.created_at DESC, m.created_at DESC
+		LIMIT $2
+	`
+
+	var attachments []mediaAttachment
+	if err := m.db.Select(&attachments, query, conversationID, maxImages); err != nil {
+		m.lo.Error("error fetching conversation images", "conversation_id", conversationID, "error", err)
+		return nil, fmt.Errorf("fetching conversation images: %w", err)
+	}
+
+	if len(attachments) == 0 {
+		return nil, nil
+	}
+
+	m.lo.Info("found conversation images", "conversation_id", conversationID, "count", len(attachments))
+
+	var images []ConversationImage
+	for _, att := range attachments {
+		// Skip non-standard image types that may not be processable
+		if !strings.HasPrefix(att.ContentType, "image/") {
+			continue
+		}
+
+		// Get the raw image bytes
+		blob, err := m.mediaBlobFunc(att.UUID)
+		if err != nil {
+			m.lo.Warn("failed to get image blob, skipping", "uuid", att.UUID, "filename", att.Filename, "error", err)
+			continue
+		}
+
+		// Resize and encode for AI
+		dataURL, err := image.ResizeAndEncodeForAI(bytes.NewReader(blob), att.ContentType)
+		if err != nil {
+			m.lo.Warn("failed to resize image, skipping", "uuid", att.UUID, "filename", att.Filename, "error", err)
+			continue
+		}
+
+		images = append(images, ConversationImage{
+			Filename:    att.Filename,
+			ContentType: att.ContentType,
+			DataURL:     dataURL,
+		})
+	}
+
+	m.lo.Info("processed conversation images", "conversation_id", conversationID, "processed", len(images))
+
+	return images, nil
 }
