@@ -225,7 +225,7 @@ func main() {
 		autoassigner                = initAutoAssigner(team, user, conversation)
 		macroMgr                    = initMacro(db, i18n)
 		aiMgr                       = initAI(db, i18n)
-		ragMgr                      = initRAG(db, i18n, aiMgr)
+		ragMgr                      = initRAG(db, i18n, aiMgr, media)
 		ragSyncMgr                  = initRAGSync(ragMgr, macroMgr)
 	)
 	automation.SetConversationStore(conversation)

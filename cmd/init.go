@@ -1014,20 +1014,20 @@ func getLogLevel(lvl string) logf.Level {
 }
 
 // initRAG inits RAG manager.
-func initRAG(db *sqlx.DB, i18n *i18n.I18n, aiMgr *ai.Manager) *rag.Manager {
+func initRAG(db *sqlx.DB, i18n *i18n.I18n, aiMgr *ai.Manager, mediaMgr *media.Manager) *rag.Manager {
 	lo := initLogger("rag")
 	m, err := rag.New(rag.Opts{
-		DB:   db,
-		Lo:   lo,
-		I18n: i18n,
+		DB:            db,
+		Lo:            lo,
+		I18n:          i18n,
 		EmbeddingFunc: aiMgr.GenerateEmbedding,
+		MediaBlobFunc: mediaMgr.GetBlob,
 	})
 	if err != nil {
 		log.Fatalf("error initializing RAG manager: %v", err)
 	}
 	return m
 }
-
 // initRAGSync inits RAG sync coordinator.
 func initRAGSync(ragMgr *rag.Manager, macroMgr *macro.Manager) *ragsync.Coordinator {
 	lo := initLogger("rag-sync")
