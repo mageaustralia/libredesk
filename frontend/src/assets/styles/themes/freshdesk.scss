@@ -126,3 +126,10 @@
   max-height: none !important;
   overflow: visible !important;
 }
+
+// ─── Messages: full width instead of 80% ────────────────
+// Default theme constrains messages to w-4/5 (80%). In Freshdesk
+// theme let them use the full available width.
+.theme-freshdesk .w-4\/5 {
+  width: 100% !important;
+}
