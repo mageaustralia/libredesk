@@ -73,6 +73,7 @@ type ConversationListItem struct {
 	LastReplyAt           null.Time               `db:"last_reply_at" json:"last_reply_at"`
 	ResolvedAt            null.Time               `db:"resolved_at" json:"resolved_at"`
 	Subject               null.String             `db:"subject" json:"subject"`
+	ReferenceNumber       string                  `db:"reference_number" json:"reference_number"`
 	LastMessage           null.String             `db:"last_message" json:"last_message"`
 	LastMessageAt         null.Time               `db:"last_message_at" json:"last_message_at"`
 	LastMessageSender     null.String             `db:"last_message_sender" json:"last_message_sender"`

@@ -22,17 +22,40 @@
           </Avatar>
 
           <!-- Content container -->
-          <div class="flex-1 min-w-0 space-y-2">
+          <div class="flex-1 min-w-0 space-y-1.5">
+            <!-- Subject + Reference Number row -->
+            <div class="flex items-center gap-1.5 min-w-0" v-if="conversation.subject || conversation.reference_number">
+              <span
+                v-if="conversation.reference_number"
+                class="text-xs font-medium text-muted-foreground whitespace-nowrap"
+              >#{{ conversation.reference_number }}</span>
+              <h3 class="text-sm font-semibold truncate conversation-subject">
+                {{ conversation.subject || 'No subject' }}
+              </h3>
+            </div>
+
             <!-- Contact name and last message time -->
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5 min-w-0">
-                <h3 class="text-sm font-semibold truncate">
+                <span class="text-xs text-muted-foreground truncate">
                   {{ contactFullName }}
-                </h3>
+                </span>
                 <Pencil
                   v-if="hasDraftForConversation"
                   class="w-3 h-3 text-muted-foreground flex-shrink-0"
                 />
+                <!-- Status badge -->
+                <span
+                  v-if="conversation.status"
+                  class="conversation-status-badge text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                  :class="statusClass"
+                >{{ conversation.status }}</span>
+                <!-- Priority badge -->
+                <span
+                  v-if="conversation.priority && conversation.priority !== 'None'"
+                  class="text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                  :class="priorityClass"
+                >{{ conversation.priority }}</span>
               </div>
               <span
                 class="text-xs text-gray-400 whitespace-nowrap"
@@ -146,6 +169,40 @@ const props = defineProps({
 const handleMarkAsUnread = () => {
   conversationStore.markAsUnread(props.conversation.uuid)
 }
+
+const statusClass = computed(() => {
+  const s = (props.conversation.status || '').toLowerCase()
+  switch (s) {
+    case 'open':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'replied':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    case 'resolved':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    case 'closed':
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+    case 'snoozed':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+})
+
+const priorityClass = computed(() => {
+  const p = (props.conversation.priority || '').toLowerCase()
+  switch (p) {
+    case 'urgent':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    case 'high':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'medium':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+    case 'low':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+})
 
 const conversationRoute = computed(() => {
   const baseRoute = route.name.includes('team')
