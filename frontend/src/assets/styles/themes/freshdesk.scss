@@ -1,0 +1,119 @@
+// Freshdesk-inspired theme for Libredesk
+// Activated by .theme-freshdesk class on root element
+
+.theme-freshdesk {
+  // ─── Core palette ───────────────────────────────────────
+  --background: 0 0% 100%;
+  --foreground: 220 14% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 14% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 14% 10%;
+
+  // Teal primary
+  --primary: 174 62% 33%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;
+  --secondary-foreground: 220 14% 10%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 220 9% 40%;
+  --accent: 174 40% 95%;
+  --accent-foreground: 174 62% 25%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+
+  // Borders — slightly cooler and more visible
+  --border: 220 13% 89%;
+  --input: 220 13% 89%;
+  --ring: 174 62% 33%;
+  --radius: 0.5rem;
+
+  // Canvas and special
+  --canvas: 210 20% 96%;
+  --private: 35 90% 94%;
+
+  // ─── Dark sidebar (icon rail) ───────────────────────────
+  --sidebar-background: 220 15% 16%;
+  --sidebar-foreground: 210 10% 85%;
+  --sidebar-primary: 174 62% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 15% 22%;
+  --sidebar-accent-foreground: 210 10% 92%;
+  --sidebar-border: 220 15% 20%;
+  --sidebar-ring: 174 62% 50%;
+}
+
+// ─── Typography & density ───────────────────────────────
+.theme-freshdesk {
+
+  // Conversation list: bolder names, tighter layout
+  // Targets ConversationListItem.vue router-link
+  .divide-y > a {
+    padding: 0.75rem 1rem;
+
+    // Contact name — make it stand out
+    h3 {
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    // Time stamp
+    .text-xs.text-gray-400 {
+      font-size: 0.6875rem;
+    }
+
+    // Message preview — slightly smaller
+    .text-sm.text-gray-600 {
+      font-size: 0.8125rem;
+      color: hsl(220 9% 46%);
+    }
+
+    // Selected conversation — teal tint instead of gray
+    &.bg-accent\/60 {
+      background-color: hsl(174 40% 95%);
+      border-left: 3px solid hsl(174 62% 33%);
+    }
+  }
+
+  // Conversation list header bar
+  .h-12.border-b {
+    background-color: hsl(0 0% 100%);
+  }
+
+  // Unread badge — use teal instead of green
+  .bg-green-600.text-white.rounded-full {
+    background-color: hsl(174 62% 33%);
+  }
+
+  // Reply indicator — teal instead of green
+  .text-green-600 {
+    color: hsl(174 62% 40%);
+  }
+
+  // ─── Buttons ──────────────────────────────────────────
+  // Primary buttons get teal
+  .bg-primary {
+    background-color: hsl(174 62% 33%);
+    &:hover {
+      background-color: hsl(174 62% 28%);
+    }
+  }
+
+  // ─── Message area improvements ────────────────────────
+  .message-bubble {
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  // ─── SLA badges — more subtle ─────────────────────────
+  // Make SLA badges less visually noisy when not critical
+
+  // ─── Scrollbar — teal tint ────────────────────────────
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(220 13% 82%);
+    &:hover {
+      background-color: hsl(220 13% 72%);
+    }
+  }
+}
