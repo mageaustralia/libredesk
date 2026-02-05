@@ -557,9 +557,11 @@ func (c *Manager) UpdateConversationUserAssignee(uuid string, assigneeID int, ac
 	// Evaluate automation rules.
 	c.automation.EvaluateConversationUpdateRules(conversation, amodels.EventConversationUserAssigned)
 
-	// Send notifications to assignee.
-	if err := c.NotifyAssignment([]int{assigneeID}, conversation); err != nil {
-		c.lo.Error("error sending assignment notification", "error", err)
+	// Send notifications to assignee (skip if self-assigning).
+	if actor.ID != assigneeID && assigneeID > 0 {
+		if err := c.NotifyAssignment([]int{assigneeID}, conversation); err != nil {
+			c.lo.Error("error sending assignment notification", "error", err)
+		}
 	}
 
 	if err := c.RecordAssigneeUserChange(uuid, assigneeID, actor); err != nil {
