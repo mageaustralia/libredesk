@@ -55,6 +55,7 @@
           :isGenerating="isGenerating"
           :uploadingFiles="uploadingFiles"
           :uploadedFiles="mediaFiles"
+          :ecommerceConfigured="ecommerceConfigured"
           v-model:htmlContent="htmlContent"
           v-model:textContent="textContent"
           v-model:to="to"
@@ -70,6 +71,7 @@
           @fileDelete="handleFileDelete"
           @aiPromptSelected="handleAiPromptSelected"
           @generateResponse="handleGenerateResponse"
+          @generateWithOrders="handleGenerateWithOrders"
           class="h-full flex-grow"
         />
       </DialogContent>
@@ -90,6 +92,7 @@
         :isGenerating="isGenerating"
         :uploadingFiles="uploadingFiles"
         :uploadedFiles="mediaFiles"
+        :ecommerceConfigured="ecommerceConfigured"
         v-model:htmlContent="htmlContent"
         v-model:textContent="textContent"
         v-model:to="to"
@@ -105,13 +108,14 @@
         @fileDelete="handleFileDelete"
         @aiPromptSelected="handleAiPromptSelected"
         @generateResponse="handleGenerateResponse"
+        @generateWithOrders="handleGenerateWithOrders"
       />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed, toRaw } from 'vue'
+import { ref, watch, computed, toRaw, onMounted } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { handleHTTPError } from '@/utils/http'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
@@ -195,6 +199,7 @@ const emailErrors = ref([])
 const aiPrompts = ref([])
 const replyBoxContentRef = ref(null)
 const mentions = ref([])
+const ecommerceConfigured = ref(false)
 
 /**
  * Fetches AI prompts from the server.
@@ -211,7 +216,24 @@ const fetchAiPrompts = async () => {
   }
 }
 
-fetchAiPrompts()
+/**
+ * Fetches ecommerce configuration status.
+ */
+const fetchEcommerceStatus = async () => {
+  try {
+    const resp = await api.getEcommerceStatus()
+    ecommerceConfigured.value = resp.data?.data?.configured || false
+  } catch (error) {
+    // Silently fail - ecommerce is optional
+    ecommerceConfigured.value = false
+  }
+}
+
+// Fetch data on mount
+onMounted(() => {
+  fetchAiPrompts()
+  fetchEcommerceStatus()
+})
 
 /**
  * Handles the AI prompt selection event.
@@ -246,8 +268,9 @@ const handleAiPromptSelected = async (key) => {
 /**
  * Handles generating a response using RAG.
  * Gets the last message from the conversation and generates an AI response.
+ * @param {Boolean} includeEcommerce - Whether to include ecommerce data in the context
  */
-const handleGenerateResponse = async () => {
+const handleGenerateResponse = async (includeEcommerce = false) => {
   isGenerating.value = true
   try {
     // Get all messages from the conversation
@@ -283,7 +306,8 @@ const handleGenerateResponse = async () => {
     // Call the RAG generate endpoint with full conversation
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
-      customer_message: conversationText
+      customer_message: conversationText,
+      include_ecommerce: includeEcommerce
     })
 
     // Set the generated response in the editor
@@ -296,8 +320,11 @@ const handleGenerateResponse = async () => {
       } else {
         htmlContent.value = response.replace(/\n/g, '<br>')
       }
+      const successMsg = includeEcommerce
+        ? "Response generated with order data"
+        : "Response generated from knowledge base"
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        description: "Response generated from knowledge base"
+        description: successMsg
       })
     }
   } catch (error) {
@@ -315,6 +342,13 @@ const handleGenerateResponse = async () => {
   } finally {
     isGenerating.value = false
   }
+}
+
+/**
+ * Handles generating a response with ecommerce data included.
+ */
+const handleGenerateWithOrders = () => {
+  handleGenerateResponse(true)
 }
 
 /**

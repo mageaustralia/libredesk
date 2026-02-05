@@ -42,6 +42,18 @@
         <Sparkles class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': isGenerating }" />
         {{ isGenerating ? 'Generating...' : 'Generate Response' }}
       </Button>
+      <!-- Generate with Orders Button (only shows when ecommerce is configured) -->
+      <Button
+        v-if="showGenerateButton && showOrdersButton"
+        variant="outline"
+        size="sm"
+        class="h-8 px-3 text-xs"
+        @click="handleGenerateWithOrders"
+        :disabled="isGenerating"
+      >
+        <ShoppingCart class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': isGenerating }" />
+        {{ isGenerating ? 'Generating...' : '+ Orders' }}
+      </Button>
     </div>
     <Button class="h-8 w-6 px-8" @click="handleSend" :disabled="!enableSend" :isLoading="isSending" v-if="showSendButton">
       {{ $t('globals.messages.send') }}
@@ -54,14 +66,14 @@ import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
-import { Paperclip, Smile, Sparkles } from 'lucide-vue-next'
+import { Paperclip, Smile, Sparkles, ShoppingCart } from 'lucide-vue-next'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 
 const attachmentInput = ref(null)
 const isEmojiPickerVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'generateResponse'])
+const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders'])
 
 // Using defineProps for props that don't need two-way binding
 defineProps({
@@ -80,6 +92,10 @@ defineProps({
   showGenerateButton: {
     type: Boolean,
     default: true
+  },
+  showOrdersButton: {
+    type: Boolean,
+    default: false
   },
   handleFileUpload: Function,
   handleInlineImageUpload: Function
@@ -107,5 +123,9 @@ function onSelectEmoji(emoji) {
 
 function handleGenerate() {
   emit('generateResponse')
+}
+
+function handleGenerateWithOrders() {
+  emit('generateWithOrders')
 }
 </script>
