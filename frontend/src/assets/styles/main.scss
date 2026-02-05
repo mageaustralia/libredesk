@@ -173,7 +173,21 @@
   overflow-wrap: break-all;
 
   * {
-    max-width: 100%;
+    width: 100%;
+  }
+
+  // Force normal whitespace handling for HTML email content
+  .native-html {
+    white-space: normal !important;
+  }
+
+  // Tighten block-element margins to prevent big gaps in emails
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0.25em 0;
+  }
+
+  p {
+    margin: 0.15em 0;
   }
 
   // Force pre blocks to wrap
