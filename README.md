@@ -43,6 +43,63 @@ Visit [libredesk.io](https://libredesk.io) for more info. Check out the [**Live 
 
 And more checkout - [libredesk.io](https://libredesk.io)
 
+---
+
+## Fork Enhancements
+
+This fork ([Trabulium/libredesk](https://github.com/Trabulium/libredesk)) extends upstream Libredesk with the following additions:
+
+### OpenRouter AI Provider
+
+Support for [OpenRouter](https://openrouter.ai/) as an AI provider, giving access to 100+ models (GPT-4o, Claude, Llama, Mistral, etc.) through a single API key.
+
+- **Settings**: Admin → AI Settings → Add OpenRouter provider
+- **Files**: `internal/ai/openrouter.go`, `internal/ai/provider.go`, `internal/ai/ai.go`, `frontend/src/views/admin/ai/AISettings.vue`
+
+### Ecommerce Integration (Maho Commerce)
+
+Pull customer and order data from a Maho Commerce (Magento-compatible) store into AI-generated responses. When an agent clicks "Generate Response", the system automatically:
+
+- Looks up the customer by email address
+- Fetches their recent orders with item details, prices, and quantities
+- Scans conversation messages for order numbers and fetches those specifically
+- Includes order status history and shipment tracking with carrier-specific tracking URLs
+- Supported carriers: Australia Post, Couriers Please, Team Global Express
+
+**Settings**: Admin → Ecommerce Settings (store URL, OAuth2 credentials)
+
+**Files**:
+- `internal/ecommerce/` — Manager, models, and provider interface
+- `internal/ecommerce/magento1/` — Maho Commerce API client (OAuth2, Hydra/JSON-LD collections)
+- `cmd/ecommerce.go` — API handlers
+- `frontend/src/views/admin/ecommerce/EcommerceSettings.vue` — Settings UI
+
+### RAG AI Assistant Enhancements
+
+Improvements to the built-in RAG AI assistant:
+
+- **Knowledge Sources UI**: Admin page to manage knowledge sources (webpages, macros) at Admin → Knowledge Sources
+- **Context limiting**: Conversations are trimmed to the last 10 messages (frontend) and 6000 characters (backend) to prevent timeouts on long email threads
+- **Ecommerce context injection**: Order and customer data from the ecommerce integration is included in the AI prompt alongside knowledge base results
+- **Extended timeouts**: AI provider HTTP timeouts increased to 60 seconds to handle large prompts; frontend request timeout set to 60 seconds
+
+**Files**: `cmd/rag.go`, `internal/rag/`, `frontend/src/features/conversation/ReplyBox.vue`
+
+### UI Customisations
+
+- **Ticket ID in header**: Conversation header shows contact name, ticket reference number, and subject (e.g., "Matthew Campbell #105 - Order enquiry")
+- **Simplified sidebar name**: Sidebar shows only the contact name without ticket details to avoid text overflow
+- **Self-assign notification suppression**: Assigning a conversation to yourself no longer triggers a notification
+
+**Files**: `frontend/src/stores/conversation.js`, `frontend/src/features/conversation/sidebar/ConversationSideBarContact.vue`, `internal/conversation/conversation.go`
+
+### Per-Inbox Signatures
+
+Each inbox can have its own email signature configured in the inbox settings, appended to outgoing emails.
+
+**Files**: `frontend/src/views/admin/inbox/EditInbox.vue`
+
+---
 
 ## Installation
 
@@ -101,4 +158,4 @@ If you are interested in contributing, refer to the [developer setup](https://do
 
 
 ## Translators
-You can help translate Libredesk into your language on [Crowdin](https://crowdin.com/project/libredesk).  
+You can help translate Libredesk into your language on [Crowdin](https://crowdin.com/project/libredesk).
