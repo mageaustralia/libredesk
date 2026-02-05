@@ -46,13 +46,24 @@
       </div>
       <div class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">CC:</label>
-        <Input
-          type="text"
-          :placeholder="t('replyBox.emailAddresess')"
-          v-model="cc"
-          class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
-          @blur="validateEmails"
-        />
+        <div class="flex-grow relative">
+          <Input
+            type="text"
+            :placeholder="t('replyBox.emailAddresess')"
+            v-model="cc"
+            class="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring pr-8"
+            @blur="validateEmails"
+          />
+          <button
+            v-if="cc"
+            type="button"
+            @click="cc = '';"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            title="Clear CC"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
         <Button
           size="sm"
           @click="toggleBcc"
@@ -63,13 +74,24 @@
       </div>
       <div v-if="showBcc" class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">BCC:</label>
-        <Input
-          type="text"
-          :placeholder="t('replyBox.emailAddresess')"
-          v-model="bcc"
-          class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
-          @blur="validateEmails"
-        />
+        <div class="flex-grow relative">
+          <Input
+            type="text"
+            :placeholder="t('replyBox.emailAddresess')"
+            v-model="bcc"
+            class="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring pr-8"
+            @blur="validateEmails"
+          />
+          <button
+            v-if="bcc"
+            type="button"
+            @click="bcc = '';"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            title="Clear BCC"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -137,7 +159,7 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@/constants/conversation'
-import { Maximize2, Minimize2 } from 'lucide-vue-next'
+import { Maximize2, Minimize2, X } from 'lucide-vue-next'
 import Editor from '@/components/editor/TextEditor.vue'
 import { useConversationStore } from '@/stores/conversation'
 import { Input } from '@/components/ui/input'
