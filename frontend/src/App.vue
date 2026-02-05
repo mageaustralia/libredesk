@@ -76,6 +76,16 @@
             <SidebarMenuItem>
               <Tooltip>
                 <TooltipTrigger as-child>
+                  <ThemeSwitcher />
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Theme</p>
+                </TooltipContent>
+              </Tooltip>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <Tooltip>
+                <TooltipTrigger as-child>
                   <NotificationBell />
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -168,6 +178,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import SidebarNavUser from '@/components/sidebar/SidebarNavUser.vue'
 import { useTheme } from '@/composables/useTheme'
 import NotificationBell from '@/components/sidebar/NotificationBell.vue'
+import ThemeSwitcher from '@/components/sidebar/ThemeSwitcher.vue'
 
 const route = useRoute()
 const { themeClass } = useTheme()
