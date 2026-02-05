@@ -57,7 +57,7 @@
             v-else
             :html="sanitizedContent"
             :allowedSchemas="['cid', 'https', 'http', 'mailto']"
-            class="mb-1 native-html whitespace-pre-wrap break-words"
+            class="mb-1 native-html break-words"
             :class="{ 'mb-3': message.attachments.length > 0 }"
           />
 
@@ -176,6 +176,8 @@ const sanitizedContent = computed(() => {
       content
     )
     content = content.replace(/src="\/uploads\//g, `src="${baseUrl}/uploads/`)
+    // Strip empty paragraphs containing only whitespace or non-breaking spaces
+    content = content.replace(/<p[^>]*>\s*(&nbsp;|\u00a0|\s|<br\s*\/?>)*\s*<\/p>/gi, "")
     return content
   }
 })
