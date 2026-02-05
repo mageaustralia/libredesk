@@ -50,6 +50,7 @@ SELECT
     conversations.last_reply_at,
     conversations.resolved_at,
     conversations.subject,
+    conversations.reference_number,
     conversations.last_message,
     conversations.last_message_at,
     conversations.last_message_sender,

@@ -118,10 +118,22 @@
   }
 }
 
-// ─── Reply box: remove nested scrollbar ─────────────────
-// In Freshdesk theme the reply flows inside the main scroll,
-// so the 600px max-height on ReplyBoxContent creates an ugly
-// double scrollbar. Remove it.
+// ─── Unified scroll: disable nested scrollbars ──────────
+// In Freshdesk theme everything scrolls in one container.
+// Disable MessageList's own scrollbar and ReplyBox's max-height.
+
+// MessageList root: don't constrain height, let it flow naturally
+.freshdesk-unified-scroll > div {
+  height: auto !important;
+}
+
+// MessageList inner threadEl: no separate scroll
+.freshdesk-unified-scroll > div > div.overflow-y-auto {
+  overflow: visible !important;
+  flex: none !important;
+}
+
+// ReplyBoxContent: no max-height constraint
 .theme-freshdesk .max-h-\[600px\] {
   max-height: none !important;
   overflow: visible !important;
@@ -132,4 +144,20 @@
 // theme let them use the full available width.
 .theme-freshdesk .w-4\/5 {
   width: 100% !important;
+}
+
+// ─── Conversation list: subject + ticket number ─────────
+.theme-freshdesk {
+  // Subject line styling - bold and prominent
+  .conversation-subject {
+    font-weight: 700;
+    font-size: 0.8125rem;
+    color: hsl(220 14% 10%);
+    line-height: 1.3;
+  }
+
+  // Status badges - Freshdesk uses colored pills
+  .conversation-status-badge {
+    letter-spacing: 0.02em;
+  }
 }
