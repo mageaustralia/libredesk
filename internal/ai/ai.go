@@ -401,3 +401,28 @@ func (m *Manager) CompletionWithSystemPrompt(systemPrompt, userPrompt string) (s
 
 	return response, nil
 }
+
+// CompletionWithPayload sends a PromptPayload (with optional images) to the default provider.
+func (m *Manager) CompletionWithPayload(payload PromptPayload) (string, error) {
+	client, err := m.getDefaultProviderClient()
+	if err != nil {
+		m.lo.Error("error getting provider client", "error", err)
+		return "", envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorFetching", "name", m.i18n.Ts("globals.terms.provider")), nil)
+	}
+
+	response, err := client.SendPrompt(payload)
+	if err != nil {
+		if errors.Is(err, ErrInvalidAPIKey) {
+			m.lo.Error("error invalid API key", "error", err)
+			return "", envelope.NewError(envelope.InputError, m.i18n.Ts("globals.messages.invalid", "name", "API Key"), nil)
+		}
+		if errors.Is(err, ErrApiKeyNotSet) {
+			m.lo.Error("error API key not set", "error", err)
+			return "", envelope.NewError(envelope.InputError, m.i18n.Ts("ai.apiKeyNotSet", "provider", "AI Provider"), nil)
+		}
+		m.lo.Error("error sending prompt to provider", "error", err)
+		return "", envelope.NewError(envelope.GeneralError, err.Error(), nil)
+	}
+
+	return response, nil
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhinavxd/libredesk/internal/ai"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
 	"github.com/valyala/fasthttp"
@@ -204,6 +205,9 @@ func handleRAGSearch(r *fastglue.Request) error {
 	return r.SendEnvelope(results)
 }
 
+// DefaultMaxRAGImages limits the number of images sent to multimodal AI.
+const DefaultMaxRAGImages = 3
+
 // handleRAGGenerateResponse generates a response using RAG.
 func handleRAGGenerateResponse(r *fastglue.Request) error {
 	app := r.Context.(*App)
@@ -245,6 +249,23 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	}
 
 	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold)
+
+	// Extract conversation images for multimodal AI
+	var aiImages []ai.ImageContent
+	if req.ConversationID > 0 {
+		images, err := app.rag.GetConversationImages(req.ConversationID, DefaultMaxRAGImages)
+		if err != nil {
+			app.lo.Warn("failed to get conversation images, continuing without", "conversation_id", req.ConversationID, "error", err)
+		} else if len(images) > 0 {
+			for _, img := range images {
+				aiImages = append(aiImages, ai.ImageContent{
+					URL:      img.DataURL,
+					Filename: img.Filename,
+				})
+			}
+			app.lo.Info("conversation images extracted for AI", "conversation_id", req.ConversationID, "count", len(aiImages))
+		}
+	}
 
 	// Search external search API if enabled.
 	var externalSearchContext string
@@ -289,7 +310,7 @@ Knowledge Base Context:
 
 Customer Question: {{enquiry}}
 
-Provide a helpful, accurate response based on the context above. If the context doesn't contain relevant information, let the customer know you'll need to check and get back to them.`
+Provide a helpful, accurate response based on the context above. If the context does not contain relevant information, let the customer know you will need to check and get back to them.`
 	}
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{site_name}}", ko.String("app.site_name"))
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{context}}", contextStr)
@@ -297,8 +318,20 @@ Provide a helpful, accurate response based on the context above. If the context 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{enquiry}}", req.CustomerMessage)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{external_search_results}}", externalSearchContext)
 
-	// Generate response using the system prompt with RAG context
-	response, err := app.ai.CompletionWithSystemPrompt(systemPrompt, req.CustomerMessage)
+	// Add note about images if present
+	if len(aiImages) > 0 {
+		systemPrompt += "\n\nNote: The customer has attached images to this conversation. Please examine them and reference relevant details in your response."
+	}
+
+	// Build prompt payload with optional images
+	payload := ai.PromptPayload{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   req.CustomerMessage,
+		Images:       aiImages,
+	}
+
+	// Generate response using the prompt payload with optional images
+	response, err := app.ai.CompletionWithPayload(payload)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
