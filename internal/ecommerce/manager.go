@@ -52,11 +52,16 @@ func (m *Manager) GatherFullContext(ctx context.Context, email string, messages 
 	}
 
 	// Stage 2: Scan ALL messages for order numbers
+	m.lo.Info("scanning messages for order numbers", "message_count", len(messages))
 	var foundOrderNumbers []string
 	for _, msg := range messages {
 		nums := extractAllOrderNumbers(msg)
+		if len(nums) > 0 {
+			m.lo.Info("found order numbers in message", "numbers", nums)
+		}
 		foundOrderNumbers = append(foundOrderNumbers, nums...)
 	}
+	m.lo.Info("order number scan complete", "found", foundOrderNumbers)
 
 	// Deduplicate
 	seen := make(map[string]bool)
@@ -68,10 +73,25 @@ func (m *Manager) GatherFullContext(ctx context.Context, email string, messages 
 		}
 	}
 
-	// Stage 3: Fetch full details for mentioned orders (limit to first 2)
+	// Stage 3: Fetch full details for mentioned orders (limit to first 3)
+	m.lo.Info("Stage 3: fetching mentioned orders", "unique_orders", uniqueOrders)
 	for i, orderNum := range uniqueOrders {
-		if i >= 2 {
+		if i >= 3 {
 			break
+		}
+		// Skip if already in recent orders
+		alreadyHave := false
+		for _, ro := range result.RecentOrders {
+			if ro.IncrementID == orderNum {
+				// Promote to matched order with full data
+				o := ro
+				result.MatchedOrders = append(result.MatchedOrders, &o)
+				alreadyHave = true
+				break
+			}
+		}
+		if alreadyHave {
+			continue
 		}
 		order, err := m.provider.GetOrderByNumber(ctx, orderNum)
 		if err == nil {
@@ -105,9 +125,9 @@ func (m *Manager) FormatContextForPrompt(eCtx *EcommerceContext) string {
 		}
 	}
 
-	// Show matched orders with FULL details
+	// Show matched orders (mentioned in conversation) with FULL details
 	if len(eCtx.MatchedOrders) > 0 {
-		sb.WriteString("\n**Orders Mentioned in Conversation:**\n")
+		sb.WriteString("\n### Orders Mentioned in Conversation\n")
 		for _, order := range eCtx.MatchedOrders {
 			sb.WriteString(formatOrderFull(order))
 			sb.WriteString("\n")
@@ -116,7 +136,7 @@ func (m *Manager) FormatContextForPrompt(eCtx *EcommerceContext) string {
 
 	// Show recent orders as summary only
 	if len(eCtx.RecentOrders) > 0 {
-		sb.WriteString("\n**Recent Orders (Summary):**\n")
+		sb.WriteString("\n### Recent Orders (Summary)\n")
 		for _, order := range eCtx.RecentOrders {
 			// Skip if already shown in matched orders
 			alreadyShown := false
@@ -137,41 +157,93 @@ func (m *Manager) FormatContextForPrompt(eCtx *EcommerceContext) string {
 
 func formatOrderFull(o *Order) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("### Order #%s\n", o.IncrementID))
-	sb.WriteString(fmt.Sprintf("- **Status:** %s\n", o.Status))
-	sb.WriteString(fmt.Sprintf("- **Date:** %s\n", o.CreatedAt.Format("2006-01-02")))
-	sb.WriteString(fmt.Sprintf("- **Total:** $%.2f\n", o.GrandTotal))
+	sb.WriteString(fmt.Sprintf("\n**Order #%s**\n", o.IncrementID))
+	sb.WriteString(fmt.Sprintf("- Status: %s\n", o.Status))
+	sb.WriteString(fmt.Sprintf("- Date: %s\n", o.CreatedAt.Format("2006-01-02")))
+	sb.WriteString(fmt.Sprintf("- Total: $%.2f %s\n", o.GrandTotal, o.Currency))
+
+	if o.TotalPaid > 0 {
+		sb.WriteString(fmt.Sprintf("- Paid: $%.2f\n", o.TotalPaid))
+	}
+	if o.TotalRefunded > 0 {
+		sb.WriteString(fmt.Sprintf("- Refunded: $%.2f\n", o.TotalRefunded))
+	}
+	if o.PaymentMethod != "" {
+		sb.WriteString(fmt.Sprintf("- Payment: %s\n", o.PaymentMethod))
+	}
+	if o.ShippingMethod != "" {
+		sb.WriteString(fmt.Sprintf("- Shipping: %s\n", o.ShippingMethod))
+	}
 
 	if len(o.Items) > 0 {
-		sb.WriteString("- **Items:**\n")
+		sb.WriteString("- Items:\n")
 		for _, item := range o.Items {
-			sb.WriteString(fmt.Sprintf("  - %s (SKU: %s) x%d @ $%.2f\n",
-				item.Name, item.SKU, item.Qty, item.Price))
+			line := fmt.Sprintf("  - %s (SKU: %s) x%d @ $%.2f = $%.2f",
+				item.Name, item.SKU, item.Qty, item.Price, item.RowTotal)
+			if item.QtyRefunded > 0 {
+				line += fmt.Sprintf(" [REFUNDED x%d]", item.QtyRefunded)
+			}
+			if item.QtyShipped > 0 {
+				line += fmt.Sprintf(" [SHIPPED x%d]", item.QtyShipped)
+			}
+			sb.WriteString(line + "\n")
 		}
 	}
 
 	if len(o.Shipments) > 0 {
-		sb.WriteString("- **Shipments:**\n")
+		sb.WriteString("- Shipments:\n")
 		for _, ship := range o.Shipments {
-			sb.WriteString(fmt.Sprintf("  - **%s** Tracking: %s\n", ship.Carrier, ship.TrackingNumber))
-			if ship.Status != "" {
-				sb.WriteString(fmt.Sprintf("    Status: %s\n", ship.Status))
+			trackURL := trackingURL(ship.Carrier, ship.TrackingNumber)
+			if trackURL != "" {
+				sb.WriteString(fmt.Sprintf("  - %s Tracking: %s ( %s )\n", ship.Carrier, ship.TrackingNumber, trackURL))
+			} else {
+				sb.WriteString(fmt.Sprintf("  - %s Tracking: %s\n", ship.Carrier, ship.TrackingNumber))
 			}
 		}
 	}
 
 	if o.ShippingAddress != nil {
-		sb.WriteString(fmt.Sprintf("- **Shipping to:** %s %s, %s, %s %s\n",
+		sb.WriteString(fmt.Sprintf("- Ship to: %s %s, %s, %s %s %s\n",
 			o.ShippingAddress.FirstName, o.ShippingAddress.LastName,
+			o.ShippingAddress.Street,
 			o.ShippingAddress.City, o.ShippingAddress.Region, o.ShippingAddress.PostCode))
+	}
+
+	// Status history - include all notes (most recent first for relevance)
+	if len(o.StatusHistory) > 0 {
+		sb.WriteString("- Order History:\n")
+		for _, entry := range o.StatusHistory {
+			if entry.Note != "" {
+				sb.WriteString(fmt.Sprintf("  - [%s] %s\n", entry.CreatedAt, entry.Note))
+			}
+		}
 	}
 
 	return sb.String()
 }
 
 func formatOrderSummary(o *Order) string {
-	return fmt.Sprintf("- #%s | %s | $%.2f | %s\n",
-		o.IncrementID, o.Status, o.GrandTotal, o.CreatedAt.Format("2006-01-02"))
+	summary := fmt.Sprintf("- #%s | %s | $%.2f %s | %s",
+		o.IncrementID, o.Status, o.GrandTotal, o.Currency, o.CreatedAt.Format("2006-01-02"))
+	if o.TotalRefunded > 0 {
+		summary += fmt.Sprintf(" | Refunded: $%.2f", o.TotalRefunded)
+	}
+	return summary + "\n"
+}
+
+// trackingURL returns the carrier tracking URL for a given tracking number.
+func trackingURL(carrier, trackingNumber string) string {
+	c := strings.ToLower(carrier)
+	switch {
+	case strings.Contains(c, "australia post") || strings.Contains(c, "auspost") || strings.Contains(c, "eparcel"):
+		return "https://auspost.com.au/mypost/track/details/" + trackingNumber
+	case strings.Contains(c, "couriers please") || strings.Contains(c, "couriersplease"):
+		return "https://www.couriersplease.com.au/tools-track/no/" + trackingNumber
+	case strings.Contains(c, "team global") || strings.Contains(c, "tge") || strings.Contains(c, "toll"):
+		return "https://www.myteamge.com/?externalSearchQuery=" + trackingNumber
+	default:
+		return ""
+	}
 }
 
 // Order number patterns for Magento-style IDs (100xxxxxx)
@@ -200,4 +272,12 @@ func extractAllOrderNumbers(text string) []string {
 	}
 
 	return results
+}
+
+// GetOrderByNumber looks up an order by its display number
+func (m *Manager) GetOrderByNumber(ctx context.Context, orderNumber string) (*Order, error) {
+	if m.provider == nil {
+		return nil, fmt.Errorf("no provider configured")
+	}
+	return m.provider.GetOrderByNumber(ctx, orderNumber)
 }

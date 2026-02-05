@@ -54,6 +54,8 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/settings/ecommerce", perm(handleUpdateEcommerceSettings, "general_settings:manage"))
 	g.POST("/api/v1/ecommerce/test", perm(handleTestEcommerceConnection, "general_settings:manage"))
 	g.GET("/api/v1/ecommerce/status", auth(handleGetEcommerceStatus))
+	g.GET("/api/v1/ecommerce/test/customer", perm(handleTestEcommerceCustomerLookup, "general_settings:manage"))
+	g.GET("/api/v1/ecommerce/test/order", perm(handleTestEcommerceOrderLookup, "general_settings:manage"))
 
 	// OpenID connect single sign-on.
 	g.GET("/api/v1/oidc", perm(handleGetAllOIDC, "oidc:manage"))

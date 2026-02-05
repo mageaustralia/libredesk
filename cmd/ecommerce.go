@@ -258,3 +258,45 @@ func getStringFromSettings(settings map[string]interface{}, key string) string {
 	}
 	return ""
 }
+
+// handleTestEcommerceCustomerLookup tests looking up a customer by email
+func handleTestEcommerceCustomerLookup(r *fastglue.Request) error {
+	app := r.Context.(*App)
+
+	email := string(r.RequestCtx.QueryArgs().Peek("email"))
+	if email == "" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Email is required", nil, envelope.InputError)
+	}
+
+	if app.ecommerce == nil || !app.ecommerce.IsConfigured() {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Ecommerce not configured", nil, envelope.InputError)
+	}
+
+	ctx, err := app.ecommerce.GatherFullContext(r.RequestCtx, email, nil, 10)
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, "Lookup failed: "+err.Error(), nil, envelope.GeneralError)
+	}
+
+	return r.SendEnvelope(ctx)
+}
+
+// handleTestEcommerceOrderLookup tests looking up an order by number
+func handleTestEcommerceOrderLookup(r *fastglue.Request) error {
+	app := r.Context.(*App)
+
+	orderNumber := string(r.RequestCtx.QueryArgs().Peek("order_number"))
+	if orderNumber == "" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Order number is required", nil, envelope.InputError)
+	}
+
+	if app.ecommerce == nil || !app.ecommerce.IsConfigured() {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Ecommerce not configured", nil, envelope.InputError)
+	}
+
+	order, err := app.ecommerce.GetOrderByNumber(r.RequestCtx, orderNumber)
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusNotFound, "Order not found: "+err.Error(), nil, envelope.NotFoundError)
+	}
+
+	return r.SendEnvelope(order)
+}
