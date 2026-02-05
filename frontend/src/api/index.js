@@ -478,6 +478,7 @@ const updateEcommerceSettings = (data) => http.put("/api/v1/settings/ecommerce",
     'Content-Type': 'application/json'
   }
 })
+const getEcommerceStatus = () => http.get("/api/v1/ecommerce/status")
 const testEcommerceConnection = (data) => http.post("/api/v1/ecommerce/test", data, {
   headers: {
     'Content-Type': 'application/json'
@@ -680,6 +681,7 @@ export default {
   updateAISettings,
   getEcommerceSettings,
   updateEcommerceSettings,
+  getEcommerceStatus,
   testEcommerceConnection,
   searchConversations,
   searchMessages,

@@ -149,8 +149,10 @@
       :enableSend="enableSend"
       :handleSend="handleSend"
       :showGenerateButton="messageType === 'reply'"
+      :showOrdersButton="ecommerceConfigured"
       @emojiSelect="handleEmojiSelect"
       @generateResponse="handleGenerateResponse"
+      @generateWithOrders="handleGenerateWithOrders"
     />
   </div>
 </template>
@@ -256,6 +258,10 @@ const props = defineProps({
     type: Boolean,
     required: false,
     default: false
+  },
+  ecommerceConfigured: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -266,7 +272,8 @@ const emit = defineEmits([
   'inlineImageUpload',
   'fileDelete',
   'aiPromptSelected',
-  'generateResponse'
+  'generateResponse',
+  'generateWithOrders'
 ])
 
 const conversationStore = useConversationStore()
@@ -357,6 +364,10 @@ const handleAiPromptSelected = (key) => {
 
 const handleGenerateResponse = () => {
   emit('generateResponse')
+}
+
+const handleGenerateWithOrders = () => {
+  emit('generateWithOrders')
 }
 
 // Watch and update macro view based on message type this filters our macros.

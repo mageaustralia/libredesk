@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -213,8 +214,9 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	app := r.Context.(*App)
 
 	var req struct {
-		ConversationID  int    `json:"conversation_id"`
-		CustomerMessage string `json:"customer_message"`
+		ConversationID   int    `json:"conversation_id"`
+		CustomerMessage  string `json:"customer_message"`
+		IncludeEcommerce bool   `json:"include_ecommerce"`
 	}
 
 	if err := r.Decode(&req, "json"); err != nil {
@@ -248,7 +250,7 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		results = []models.SearchResult{}
 	}
 
-	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold)
+	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold, "include_ecommerce", req.IncludeEcommerce)
 
 	// Extract conversation images for multimodal AI
 	var aiImages []ai.ImageContent
@@ -265,6 +267,12 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 			}
 			app.lo.Info("conversation images extracted for AI", "conversation_id", req.ConversationID, "count", len(aiImages))
 		}
+	}
+
+	// Gather ecommerce context if requested and configured
+	var ecommerceContext string
+	if req.IncludeEcommerce && req.ConversationID > 0 && app.ecommerce != nil && app.ecommerce.IsConfigured() {
+		ecommerceContext = app.gatherEcommerceContext(r.RequestCtx, req.ConversationID)
 	}
 
 	// Search external search API if enabled.
@@ -318,6 +326,11 @@ Provide a helpful, accurate response based on the context above. If the context 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{enquiry}}", req.CustomerMessage)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{external_search_results}}", externalSearchContext)
 
+	// Append ecommerce context if available
+	if ecommerceContext != "" {
+		systemPrompt += ecommerceContext
+	}
+
 	// Add note about images if present
 	if len(aiImages) > 0 {
 		systemPrompt += "\n\nNote: The customer has attached images to this conversation. Please examine them and reference relevant details in your response."
@@ -340,6 +353,67 @@ Provide a helpful, accurate response based on the context above. If the context 
 		"response": response,
 		"sources":  results,
 	})
+}
+
+// gatherEcommerceContext retrieves ecommerce data for the conversation's contact
+func (app *App) gatherEcommerceContext(ctx context.Context, conversationID int) string {
+	// Get conversation UUID from ID
+	uuid, err := app.conversation.GetConversationUUID(conversationID)
+	if err != nil {
+		app.lo.Warn("failed to get conversation UUID for ecommerce context", "conversation_id", conversationID, "error", err)
+		return ""
+	}
+
+	// Get conversation with contact info
+	conv, err := app.conversation.GetConversation(conversationID, uuid, "")
+	if err != nil {
+		app.lo.Warn("failed to get conversation for ecommerce context", "conversation_id", conversationID, "error", err)
+		return ""
+	}
+
+	// Get customer email from contact
+	customerEmail := ""
+	if conv.Contact.Email.Valid {
+		customerEmail = conv.Contact.Email.String
+	}
+	if customerEmail == "" {
+		app.lo.Debug("no email for ecommerce context", "conversation_id", conversationID)
+		return ""
+	}
+
+	// Get conversation messages for order number scanning
+	messages, _, err := app.conversation.GetConversationMessages(uuid, 1, 50, nil, nil)
+	if err != nil {
+		app.lo.Warn("failed to get messages for ecommerce context", "conversation_id", conversationID, "error", err)
+		// Continue without message scanning
+	}
+
+	// Extract text content from messages
+	var messageTexts []string
+	for _, msg := range messages {
+		if msg.Content != "" && msg.Content != "" {
+			// Strip HTML tags for order number scanning
+			text := stripHTML(msg.Content)
+			if text != "" {
+				messageTexts = append(messageTexts, text)
+			}
+		}
+	}
+
+	// Gather ecommerce context using the manager
+	eCtx, err := app.ecommerce.GatherFullContext(ctx, customerEmail, messageTexts, 5)
+	if err != nil {
+		app.lo.Warn("failed to gather ecommerce context", "email", customerEmail, "error", err)
+		return ""
+	}
+
+	// Format for AI prompt
+	formatted := app.ecommerce.FormatContextForPrompt(eCtx)
+	if formatted != "" {
+		app.lo.Info("ecommerce context added to prompt", "email", customerEmail, "length", len(formatted))
+	}
+
+	return formatted
 }
 
 // classifySearchIntent uses the AI to classify a customer message into search intents.
