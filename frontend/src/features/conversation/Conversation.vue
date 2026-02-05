@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-screen">
+  <div class="flex flex-col h-full">
     <!-- Header -->
     <div class="h-12 flex-shrink-0 px-2 border-b flex items-center justify-between">
       <div>
