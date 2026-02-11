@@ -29,11 +29,28 @@
       </Button>
     </div>
 
-    <!-- To, CC, and BCC fields -->
+    <!-- From, To, CC, and BCC fields -->
     <div
       :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
       v-if="messageType === 'reply'"
     >
+      <!-- From inbox selector -->
+      <div class="flex items-center space-x-2" v-if="inboxes.length > 1">
+        <label class="w-12 text-sm font-medium text-muted-foreground">FROM:</label>
+        <select
+          :value="String(selectedInboxId)"
+          @change="onInboxChange($event.target.value)"
+          class="flex-grow h-9 px-3 py-1 text-sm border rounded bg-background text-foreground focus:ring-2 focus:ring-ring outline-none"
+        >
+          <option
+            v-for="inbox in inboxes"
+            :key="inbox.id"
+            :value="String(inbox.id)"
+          >
+            {{ inbox.name }} ({{ inbox.from }})
+          </option>
+        </select>
+      </div>
       <div class="flex items-center space-x-2">
         <label class="w-12 text-sm font-medium text-muted-foreground">TO:</label>
         <EmailTagInput
@@ -168,7 +185,6 @@ const teamStore = useTeamStore()
 
 // Get suggestions for the mention dropdown
 const getSuggestions = async (query) => {
-  // Only show suggestions in private note mode
   if (messageType.value !== 'private_note') {
     return []
   }
@@ -199,7 +215,6 @@ const getSuggestions = async (query) => {
   return [...users, ...teams].slice(0, 25)
 }
 
-// Handle mentions changed from editor
 const handleMentionsChanged = (newMentions) => {
   mentions.value = newMentions
 }
@@ -238,6 +253,14 @@ const props = defineProps({
   ecommerceConfigured: {
     type: Boolean,
     default: false
+  },
+  inboxes: {
+    type: Array,
+    default: () => []
+  },
+  selectedInboxId: {
+    type: [Number, null],
+    default: null
   }
 })
 
@@ -249,7 +272,8 @@ const emit = defineEmits([
   'fileDelete',
   'aiPromptSelected',
   'generateResponse',
-  'generateWithOrders'
+  'generateWithOrders',
+  'inboxChange'
 ])
 
 const conversationStore = useConversationStore()
@@ -258,10 +282,13 @@ const { t } = useI18n()
 const insertContent = ref(null)
 const editorRef = ref(null)
 
+const onInboxChange = (newId) => {
+  emit('inboxChange', Number(newId))
+}
+
 const toggleBcc = async () => {
   showBcc.value = !showBcc.value
   await nextTick()
-  // If hiding BCC field, clear the content and validate email bcc so it doesn't show errors.
   if (!showBcc.value) {
     bcc.value = ''
     await nextTick()
@@ -283,10 +310,6 @@ const enableSend = computed(() => {
   )
 })
 
-/**
- * Validates email addresses in To, CC, and BCC fields.
- * Populates `emailErrors` with invalid emails grouped by field.
- */
 const validateEmails = async () => {
   emailErrors.value = []
   await nextTick()
@@ -305,9 +328,6 @@ const validateEmails = async () => {
   })
 }
 
-/**
- * Send the reply or private note
- */
 const handleSend = async () => {
   await validateEmails()
   if (emailErrors.value.length > 0) {
@@ -330,7 +350,6 @@ const handleOnFileDelete = (uuid) => {
 
 const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
-  // Force reactivity so the user can select the same emoji multiple times
   nextTick(() => (insertContent.value = emoji))
 }
 
@@ -346,7 +365,6 @@ const handleGenerateWithOrders = () => {
   emit('generateWithOrders')
 }
 
-// Watch and update macro view based on message type this filters our macros.
 watch(
   messageType,
   (newType, oldType) => {
@@ -355,7 +373,6 @@ watch(
     } else if (newType === 'private_note') {
       macroStore.setCurrentView('adding_private_note')
     }
-    // Focus editor on tab change
     setTimeout(() => {
       editorRef.value?.focus()
     }, 50)
@@ -363,7 +380,6 @@ watch(
   { immediate: true }
 )
 
-// Expose focus method for parent components
 const focus = () => {
   editorRef.value?.focus()
 }

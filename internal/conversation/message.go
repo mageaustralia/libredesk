@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -189,6 +190,12 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 
 	if len(message.References) > 0 {
 		message.InReplyTo = message.References[len(message.References)-1]
+	}
+
+	// Convert relative image URLs to absolute URLs for email delivery.
+	if rootURL, err := m.settingsStore.GetAppRootURL(); err == nil && rootURL != "" {
+		re := regexp.MustCompile(`src="(/uploads/[^"]+)"`)
+		message.Content = re.ReplaceAllString(message.Content, `src="`+strings.TrimRight(rootURL, "/")+`$1"`)
 	}
 
 	// Send message

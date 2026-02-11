@@ -284,6 +284,7 @@ const conversationStore = useConversationStore()
 const macroStore = useMacroStore()
 let timeoutId = null
 const insertContent = ref('')
+const currentSignature = ref('')
 
 const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
@@ -361,6 +362,78 @@ const form = useForm({
 watch(emailQuery, (newVal) => {
   form.setFieldValue('contact_email', newVal)
 })
+
+/**
+ * Fetch and insert signature when inbox changes.
+ */
+const fetchAndInsertSignature = async (inboxId) => {
+  if (!inboxId) return
+  try {
+    const resp = await api.getInboxSignature(inboxId, '')
+    const signature = resp.data?.data?.signature || ''
+    currentSignature.value = signature
+
+    const currentContent = form.values.content || ''
+    const sigBlock = signature
+      ? '<div class="email-signature">' + signature + '</div>'
+      : ''
+
+    // Replace existing signature or set as initial content
+    if (currentContent.includes('class="email-signature"')) {
+      const newContent = sigBlock
+        ? currentContent.replace(/<div class="email-signature">[\s\S]*?<\/div>/, sigBlock)
+        : currentContent.replace(/<p><br><\/p><div class="email-signature">[\s\S]*?<\/div>/, '')
+      form.setFieldValue('content', newContent)
+    } else if (signature) {
+      // If content is empty or just whitespace, set signature as content
+      const stripped = currentContent.replace(/<[^>]*>/g, '').trim()
+      if (!stripped) {
+        form.setFieldValue('content', '<p><br></p>' + sigBlock)
+      } else {
+        form.setFieldValue('content', currentContent + '<p><br></p>' + sigBlock)
+      }
+    }
+  } catch (err) {
+    currentSignature.value = ''
+  }
+}
+
+// Watch inbox_id changes to fetch signature
+watch(
+  () => form.values.inbox_id,
+  (newInboxId) => {
+    if (newInboxId) {
+      fetchAndInsertSignature(Number(newInboxId))
+    }
+  }
+)
+
+// Auto-select first inbox when options become available
+watch(
+  () => inboxStore.options,
+  (options) => {
+    if (options.length > 0 && !form.values.inbox_id) {
+      const firstValue = options[0].value
+      form.setFieldValue("inbox_id", firstValue)
+      // Directly fetch signature since the inbox_id watcher may not have fired yet
+      fetchAndInsertSignature(Number(firstValue))
+    }
+  },
+  { immediate: true }
+)
+
+// When team is selected, auto-set the inbox to team's default
+watch(
+  () => form.values.team_id,
+  async (newTeamId) => {
+    if (!newTeamId || newTeamId === 'none') return
+    await teamStore.fetchTeams()
+    const team = teamStore.teams.find(t => t.id === Number(newTeamId))
+    if (team?.default_inbox_id) {
+      form.setFieldValue('inbox_id', String(team.default_inbox_id))
+    }
+  }
+)
 
 const handleSearchContacts = async () => {
   clearTimeout(timeoutId)

@@ -56,6 +56,8 @@
           :uploadingFiles="uploadingFiles"
           :uploadedFiles="mediaFiles"
           :ecommerceConfigured="ecommerceConfigured"
+          :inboxes="inboxes"
+          :selectedInboxId="selectedInboxId"
           v-model:htmlContent="htmlContent"
           v-model:textContent="textContent"
           v-model:to="to"
@@ -72,6 +74,7 @@
           @aiPromptSelected="handleAiPromptSelected"
           @generateResponse="handleGenerateResponse"
           @generateWithOrders="handleGenerateWithOrders"
+          @inboxChange="handleInboxChange"
           class="h-full flex-grow"
         />
       </DialogContent>
@@ -93,6 +96,8 @@
         :uploadingFiles="uploadingFiles"
         :uploadedFiles="mediaFiles"
         :ecommerceConfigured="ecommerceConfigured"
+        :inboxes="inboxes"
+        :selectedInboxId="selectedInboxId"
         v-model:htmlContent="htmlContent"
         v-model:textContent="textContent"
         v-model:to="to"
@@ -109,6 +114,7 @@
         @aiPromptSelected="handleAiPromptSelected"
         @generateResponse="handleGenerateResponse"
         @generateWithOrders="handleGenerateWithOrders"
+        @inboxChange="handleInboxChange"
       />
     </div>
   </div>
@@ -125,6 +131,7 @@ import { useDraftManager } from '@/composables/useDraftManager'
 import api from '@/api'
 import { useI18n } from 'vue-i18n'
 import { useConversationStore } from '@/stores/conversation'
+import { useTeamStore } from '@/stores/team'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -158,6 +165,7 @@ const formSchema = toTypedSchema(
 
 const { t } = useI18n()
 const conversationStore = useConversationStore()
+const teamStore = useTeamStore()
 const emitter = useEmitter()
 const userStore = useUserStore()
 
@@ -201,6 +209,10 @@ const replyBoxContentRef = ref(null)
 const mentions = ref([])
 const ecommerceConfigured = ref(false)
 
+// Inbox switcher state
+const inboxes = ref([])
+const selectedInboxId = ref(null)
+
 /**
  * Fetches AI prompts from the server.
  */
@@ -224,53 +236,148 @@ const fetchEcommerceStatus = async () => {
     const resp = await api.getEcommerceStatus()
     ecommerceConfigured.value = resp.data?.data?.configured || false
   } catch (error) {
-    // Silently fail - ecommerce is optional
     ecommerceConfigured.value = false
   }
 }
 
-// Fetch data on mount
+/**
+ * Fetches available inboxes for the From switcher.
+ */
+const fetchInboxes = async () => {
+  try {
+    const resp = await api.getInboxes()
+    inboxes.value = (resp.data?.data || []).filter(i => i.enabled)
+  } catch (error) {
+    inboxes.value = []
+  }
+}
+
 // Signature for current inbox
 const inboxSignature = ref('')
 
-// Fetch signature when conversation changes
-const fetchInboxSignature = async () => {
+// Fetch signature for a given inbox
+const fetchInboxSignature = async (inboxId) => {
+  if (!inboxId) return
   const conv = conversationStore.current
-  if (!conv?.inbox_id) return
-  
   try {
-    const resp = await api.getInboxSignature(conv.inbox_id, conv.uuid)
+    const resp = await api.getInboxSignature(inboxId, conv?.uuid || '')
     inboxSignature.value = resp.data?.data?.signature || ''
   } catch (err) {
     inboxSignature.value = ''
   }
 }
 
-// Insert signature if editor is empty when starting a new reply
-const insertSignatureIfEmpty = () => {
-  if (!htmlContent.value && inboxSignature.value) {
-    htmlContent.value = '<p><br></p><p><br></p>' + inboxSignature.value
+/**
+ * Insert signature into editor content.
+ * Replaces existing signature div if present, otherwise appends.
+ */
+const insertSignature = () => {
+  if (!inboxSignature.value) return
+
+  const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
+  const newContent = '<p><br></p>' + sigBlock
+
+  // If editor has existing signature, replace it
+  if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
+    htmlContent.value = htmlContent.value.replace(
+      /<div class="email-signature">[\s\S]*?<\/div>/,
+      sigBlock
+    )
+    return
+  }
+
+  // If editor is empty or only whitespace/br tags, set signature as content
+  const strippedContent = htmlContent.value
+    ? htmlContent.value.replace(/<[^>]*>/g, '').trim()
+    : ''
+
+  if (!strippedContent) {
+    htmlContent.value = newContent
+  } else {
+    // Append signature to existing content
+    htmlContent.value = htmlContent.value + '<p><br></p>' + sigBlock
   }
 }
 
+/**
+ * Handle inbox change from the From switcher.
+ */
+const handleInboxChange = async (newInboxId) => {
+  selectedInboxId.value = newInboxId
+  await fetchInboxSignature(newInboxId)
+  // Replace signature in editor
+  if (inboxSignature.value) {
+    const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
+    if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
+      htmlContent.value = htmlContent.value.replace(
+        /<div class="email-signature">[\s\S]*?<\/div>/,
+        sigBlock
+      )
+    } else {
+      htmlContent.value = (htmlContent.value || '') + '<p><br></p>' + sigBlock
+    }
+  } else {
+    // Remove existing signature if new inbox has none
+    if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
+      htmlContent.value = htmlContent.value.replace(
+        /<p><br><\/p><div class="email-signature">[\s\S]*?<\/div>/,
+        ''
+      )
+    }
+  }
+}
+
+// Fetch data on mount
 onMounted(() => {
   fetchAiPrompts()
   fetchEcommerceStatus()
-  fetchInboxSignature()
+  fetchInboxes()
 })
 
-// Re-fetch signature when conversation changes
-watch(() => conversationStore.current?.uuid, () => {
-  fetchInboxSignature()
-  // Insert signature for new replies (when editor is empty)
-  setTimeout(insertSignatureIfEmpty, 100)
+// When conversation changes, set selected inbox and fetch signature
+watch(() => conversationStore.current?.uuid, async (newUuid) => {
+  if (!newUuid) return
+
+  // Ensure inboxes are loaded
+  if (!inboxes.value.length) {
+    await fetchInboxes()
+  }
+
+  const conv = conversationStore.current
+
+  // Immediately set to conversation inbox (never leave as null)
+  selectedInboxId.value = conv?.inbox_id || (inboxes.value.length ? inboxes.value[0].id : null)
+
+  // Then try to resolve team default inbox override
+  const teamId = conv?.assigned_team_id
+  if (teamId) {
+    try {
+      const resp = await api.getTeamsCompact()
+      const teams = resp.data?.data || []
+      const team = teams.find(t => t.id === teamId)
+      if (team?.default_inbox_id) {
+        selectedInboxId.value = team.default_inbox_id
+      }
+    } catch (e) {
+      // Keep conversation inbox as fallback
+    }
+  }
+
+  await fetchInboxSignature(selectedInboxId.value)
+
+  // Wait for draft to load, then insert signature if editor is empty
+  setTimeout(() => {
+    const strippedContent = htmlContent.value
+      ? htmlContent.value.replace(/<[^>]*>/g, '').trim()
+      : ''
+    if (!strippedContent && inboxSignature.value) {
+      insertSignature()
+    }
+  }, 200)
 })
 
 /**
  * Handles the AI prompt selection event.
- * Sends the selected prompt key and the current text content to the server for completion.
- * Sets the response as the new content in the editor.
- * @param {String} key - The key of the selected AI prompt
  */
 const handleAiPromptSelected = async (key) => {
   try {
@@ -280,9 +387,7 @@ const handleAiPromptSelected = async (key) => {
     })
     htmlContent.value = resp.data.data.replace(/\n/g, '<br>')
   } catch (error) {
-    // Check if user needs to enter OpenAI API key and has permission to do so.
     if (error.response?.status === 400 && userStore.can('ai:manage')) {
-      // Direct user to AI Settings page
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
         variant: 'default',
         description: 'Please configure an AI provider in Settings > AI Settings'
@@ -298,17 +403,14 @@ const handleAiPromptSelected = async (key) => {
 
 /**
  * Handles generating a response using RAG.
- * Gets the last message from the conversation and generates an AI response.
- * @param {Boolean} includeEcommerce - Whether to include ecommerce data in the context
  */
 const handleGenerateResponse = async (includeEcommerce = false) => {
   isGenerating.value = true
   try {
-    // Get all messages from the conversation
     const messages = conversationStore.conversationMessages
       .filter(m => !m.private && m.content)
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) // oldest first
-      .slice(-10) // limit to last 10 messages to avoid huge prompts
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      .slice(-10)
 
     if (!messages.length) {
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
@@ -318,7 +420,6 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       return
     }
 
-    // Format conversation as a chain
     const conversationText = messages.map(m => {
       const tempDiv = document.createElement("div")
       tempDiv.innerHTML = m.content || ""
@@ -335,23 +436,37 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       return
     }
 
-    // Call the RAG generate endpoint with full conversation
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
       customer_message: conversationText,
       include_ecommerce: includeEcommerce
     })
 
-    // Set the generated response in the editor
     if (resp.data?.data?.response) {
-      // If response contains HTML tags, strip newlines (HTML provides structure)
-      // Otherwise convert newlines to <br> for plain text
       const response = resp.data.data.response
+      let generatedHtml
       if (/<[a-z][\s\S]*>/i.test(response)) {
-        htmlContent.value = response.replace(/\n+/g, '')
+        generatedHtml = response.replace(/\n+/g, '')
       } else {
-        htmlContent.value = response.replace(/\n/g, '<br>')
+        generatedHtml = response.replace(/\n/g, '<br>')
       }
+
+      // Preserve signature if present
+      if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
+        const sigMatch = htmlContent.value.match(/<div class="email-signature">[\s\S]*?<\/div>/)
+        if (sigMatch) {
+          htmlContent.value = generatedHtml + '<p><br></p>' + sigMatch[0]
+        } else {
+          htmlContent.value = generatedHtml
+        }
+      } else if (inboxSignature.value) {
+        // Add signature after generated content
+        const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
+        htmlContent.value = generatedHtml + '<p><br></p>' + sigBlock
+      } else {
+        htmlContent.value = generatedHtml
+      }
+
       const successMsg = includeEcommerce
         ? "Response generated with order data"
         : "Response generated from knowledge base"
@@ -376,17 +491,10 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
   }
 }
 
-/**
- * Handles generating a response with ecommerce data included.
- */
 const handleGenerateWithOrders = () => {
   handleGenerateResponse(true)
 }
 
-/**
- * updateProvider updates the OpenAI API key.
- * @param {Object} values - The form values containing the API key
- */
 const updateProvider = async (values) => {
   try {
     isOpenAIKeyUpdating.value = true
@@ -407,9 +515,6 @@ const updateProvider = async (values) => {
   }
 }
 
-/**
- * Returns true if the editor has text content.
- */
 const hasTextContent = computed(() => {
   return textContent.value.trim().length > 0
 })
@@ -422,17 +527,14 @@ const processSend = async () => {
   isEditorFullscreen.value = false
   try {
     isSending.value = true
-    // Send message if there is text content in the editor or media files are attached.
     if (hasTextContent.value > 0 || mediaFiles.value.length > 0) {
       const message = htmlContent.value
-      await api.sendMessage(conversationStore.current.uuid, {
+      const payload = {
         sender_type: UserTypeAgent,
         private: messageType.value === 'private_note',
         message: message,
         attachments: mediaFiles.value.map((file) => file.id),
-        // Include mentions only for private notes
         mentions: messageType.value === 'private_note' ? mentions.value : [],
-        // Convert email addresses to array and remove empty strings.
         cc: cc.value
           .split(',')
           .map((email) => email.trim())
@@ -449,10 +551,17 @@ const processSend = async () => {
               .map((email) => email.trim())
               .filter((email) => email)
           : []
-      })
+      }
+
+      // Include inbox_id if agent selected a different inbox
+      if (selectedInboxId.value && selectedInboxId.value !== conversationStore.current?.inbox_id) {
+        payload.inbox_id = selectedInboxId.value
+      }
+
+      await api.sendMessage(conversationStore.current.uuid, payload)
     }
 
-    // Apply macro actions if any, for macro errors just show toast and clear the editor.
+    // Apply macro actions if any
     const macroID = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.id
     const macroActions = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.actions || []
     if (macroID > 0 && macroActions.length > 0) {
@@ -472,47 +581,29 @@ const processSend = async () => {
       description: handleHTTPError(error).message
     })
   } finally {
-    // If API has NOT errored clear state.
     if (hasMessageSendingErrored === false) {
-      // Clear draft from backend.
       clearDraft(currentDraftKey.value)
-
-      // Clear macro for this conversation reply.
       conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
-
-      // Clear media files.
       clearMediaFiles()
-
-      // Clear any email errors.
       emailErrors.value = []
-
-      // Clear mentions.
       mentions.value = []
     }
     isSending.value = false
   }
 }
 
-/**
- * Watches for changes in the conversation's macro id and update message content.
- */
 watch(
   () => conversationStore.getMacro('reply').id,
   (newId) => {
-    // No macro set.
     if (!newId) return
-
-    // If macro has message content, set it in the editor.
     if (conversationStore.getMacro('reply').message_content) {
-      htmlContent.value = conversationStore.getMacro('reply').message_content
+      const macroContent = conversationStore.getMacro('reply').message_content
+      htmlContent.value = htmlContent.value ? htmlContent.value + macroContent : macroContent
     }
   },
   { deep: true }
 )
 
-/**
- * Watch loaded macro actions from draft and update conversation store.
- */
 watch(
   loadedMacroActions,
   (actions) => {
@@ -523,9 +614,6 @@ watch(
   { deep: true }
 )
 
-/**
- * Watch for loaded attachments from draft and restore them to mediaFiles.
- */
 watch(
   loadedAttachments,
   (attachments) => {
@@ -536,7 +624,6 @@ watch(
   { deep: true }
 )
 
-// Initialize to, cc, and bcc fields with the current conversation's values.
 watch(
   () => conversationStore.currentCC,
   (newVal) => {
@@ -558,7 +645,6 @@ watch(
   (newVal) => {
     const newBcc = newVal?.join(', ') || ''
     bcc.value = newBcc
-    // Only show BCC field if it has content
     if (newBcc.length > 0) {
       showBcc.value = true
     }
@@ -566,13 +652,11 @@ watch(
   { deep: true, immediate: true }
 )
 
-// Clear media files and reset macro when conversation changes.
 watch(
   () => conversationStore.current?.uuid,
   () => {
     clearMediaFiles()
     conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
-    // Focus editor on conversation change
     setTimeout(() => {
       replyBoxContentRef.value?.focus()
     }, 100)
