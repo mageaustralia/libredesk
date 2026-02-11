@@ -612,5 +612,15 @@ defineExpose({ focus, extractMentions })
   .ProseMirror-selectednode .inline-image {
     outline: 2px solid #0066cc;
   }
+
+  // Email signature styling
+  .email-signature {
+    border-top: 1px solid #e5e7eb;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
 }
 </style>
+

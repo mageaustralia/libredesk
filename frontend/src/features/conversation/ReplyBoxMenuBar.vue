@@ -30,6 +30,14 @@
       >
         <Smile class="h-4 w-4" />
       </Toggle>
+      <Toggle
+        class="px-2 py-2 border-0"
+        variant="outline"
+        @click="openMacroPicker"
+        :pressed="false"
+      >
+        <Zap class="h-4 w-4" />
+      </Toggle>
       <!-- Generate Response Button -->
       <Button
         v-if="showGenerateButton"
@@ -66,10 +74,13 @@ import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
-import { Paperclip, Smile, Sparkles, ShoppingCart } from 'lucide-vue-next'
+import { Paperclip, Smile, Sparkles, ShoppingCart, Zap } from 'lucide-vue-next'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
+import { useEmitter } from '@/composables/useEmitter'
+import { EMITTER_EVENTS } from '@/constants/emitterEvents'
 
+const emitter = useEmitter()
 const attachmentInput = ref(null)
 const isEmojiPickerVisible = ref(false)
 const emojiPickerRef = ref(null)
@@ -127,5 +138,12 @@ function handleGenerate() {
 
 function handleGenerateWithOrders() {
   emit('generateWithOrders')
+}
+
+function openMacroPicker() {
+  emitter.emit(EMITTER_EVENTS.SET_NESTED_COMMAND, {
+    command: 'apply-macro-to-existing-conversation',
+    open: true
+  })
 }
 </script>

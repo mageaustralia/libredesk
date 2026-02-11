@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
-	"github.com/abhinavxd/libredesk/internal/user/models"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
@@ -46,11 +46,12 @@ func handleGetInboxSignature(r *fastglue.Request) error {
 	signature = strings.ReplaceAll(signature, "{{inbox.name}}", inbox.Name)
 
 	// Replace agent placeholders from auth context
-	if user, ok := r.RequestCtx.UserValue("user").(*models.User); ok && user != nil {
-		signature = strings.ReplaceAll(signature, "{{agent.first_name}}", user.FirstName)
-		signature = strings.ReplaceAll(signature, "{{agent.last_name}}", user.LastName)
-		signature = strings.ReplaceAll(signature, "{{agent.full_name}}", user.FirstName+" "+user.LastName)
-		signature = strings.ReplaceAll(signature, "{{agent.email}}", user.Email.String)
+	auser, ok := r.RequestCtx.UserValue("user").(amodels.User)
+	if ok {
+		signature = strings.ReplaceAll(signature, "{{agent.first_name}}", auser.FirstName)
+		signature = strings.ReplaceAll(signature, "{{agent.last_name}}", auser.LastName)
+		signature = strings.ReplaceAll(signature, "{{agent.full_name}}", auser.FirstName+" "+auser.LastName)
+		signature = strings.ReplaceAll(signature, "{{agent.email}}", auser.Email)
 	}
 
 	// Replace customer placeholders if conversation UUID provided

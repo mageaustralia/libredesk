@@ -20,12 +20,14 @@ type Team struct {
 	BusinessHoursID              null.Int    `db:"business_hours_id" json:"business_hours_id"`
 	SLAPolicyID                  null.Int    `db:"sla_policy_id" json:"sla_policy_id"`
 	MaxAutoAssignedConversations int         `db:"max_auto_assigned_conversations" json:"max_auto_assigned_conversations"`
+	DefaultInboxID               null.Int    `db:"default_inbox_id" json:"default_inbox_id"`
 }
 
 type TeamCompact struct {
 	ID    int         `db:"id" json:"id"`
 	Name  string      `db:"name" json:"name"`
-	Emoji null.String `db:"emoji" json:"emoji"`
+	Emoji          null.String `db:"emoji" json:"emoji"`
+	DefaultInboxID null.Int    `db:"default_inbox_id" json:"default_inbox_id"`
 }
 
 type TeamMember struct {
