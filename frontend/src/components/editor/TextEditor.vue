@@ -504,11 +504,12 @@ const ResizableImage = Image.extend({
         wrapper.classList.add('selected')
       })
 
-      document.addEventListener('click', (e) => {
+      const onDocClick = (e) => {
         if (!wrapper.contains(e.target)) {
           wrapper.classList.remove('selected')
         }
-      })
+      }
+      document.addEventListener('click', onDocClick)
 
       // Drag to resize
       let startX = 0
@@ -563,6 +564,7 @@ const ResizableImage = Image.extend({
         },
         destroy: () => {
           handle.removeEventListener('mousedown', onMouseDown)
+          document.removeEventListener('click', onDocClick)
         }
       }
     }
