@@ -421,9 +421,8 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
     }
 
     const conversationText = messages.map(m => {
-      const tempDiv = document.createElement("div")
-      tempDiv.innerHTML = m.content || ""
-      const text = tempDiv.textContent || tempDiv.innerText || ""
+      const doc = new DOMParser().parseFromString(m.content || "", "text/html")
+      const text = doc.body.textContent || ""
       const role = m.type === "incoming" ? "Customer" : "Agent"
       return role + ": " + text.trim()
     }).join("\n\n")
@@ -450,6 +449,9 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       } else {
         generatedHtml = response.replace(/\n/g, '<br>')
       }
+      // Sanitize AI response: strip script tags and event handlers
+      generatedHtml = generatedHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
+      generatedHtml = generatedHtml.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
 
       // Preserve signature if present
       if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
