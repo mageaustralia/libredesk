@@ -78,7 +78,7 @@ func (a *authClient) refreshToken() (string, error) {
 		if len(bodyStr) > 200 {
 			bodyStr = bodyStr[:200] + "..."
 		}
-		log.Printf("[ecommerce] Token request failed: status=%d body=%s", resp.StatusCode, bodyStr)
+		log.Printf("[ecommerce] Token request failed: status=%d", resp.StatusCode)
 		return "", fmt.Errorf("POST %s returned %d: %s", tokenURL, resp.StatusCode, bodyStr)
 	}
 
