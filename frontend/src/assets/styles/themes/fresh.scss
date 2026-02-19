@@ -161,3 +161,43 @@
     letter-spacing: 0.02em;
   }
 }
+
+// ─── Table view styles ──────────────────────────────────
+.theme-fresh {
+  .conversation-table {
+    thead {
+      background-color: hsl(210 20% 97%);
+
+      th {
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.6875rem;
+        color: hsl(220 9% 46%);
+        border-bottom: 2px solid hsl(220 13% 89%);
+      }
+    }
+
+    .conversation-table-row {
+      &:hover {
+        background-color: hsl(174 40% 97%);
+      }
+
+      &.bg-accent\/60 {
+        background-color: hsl(174 40% 95%);
+        border-left: 3px solid hsl(174 62% 33%);
+      }
+    }
+
+    // Tighter row density
+    td {
+      padding-top: 0.375rem;
+      padding-bottom: 0.375rem;
+    }
+  }
+
+  // Unread badge in table — teal
+  .conversation-table .bg-green-600 {
+    background-color: hsl(174 62% 33%);
+  }
+}

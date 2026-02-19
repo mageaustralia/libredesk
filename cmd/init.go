@@ -608,7 +608,27 @@ func initEmailInbox(inboxRecord imodels.Inbox, msgStore inbox.MessageStore, usrS
 	}
 
 	// Callback to persist refreshed tokens in DB.
+	// Re-reads current config from DB to avoid overwriting fields (e.g. signatures)
+	// that may have been changed since the inbox was loaded into memory.
 	tokenRefreshCallback := func(inboxID int, updatedConfig imodels.Config) error {
+		// Re-read current config from DB to get latest values
+		currentInbox, err := mgr.GetDBRecord(inboxID)
+		if err != nil {
+			log.Printf("ERROR: Failed to read current inbox config for token refresh for inbox %d: %v, falling back to in-memory config", inboxID, err)
+			// Fall back to in-memory config
+		} else {
+			// Unmarshal current DB config
+			var dbConfig imodels.Config
+			if err := json.Unmarshal(currentInbox.Config, &dbConfig); err != nil {
+				log.Printf("ERROR: Failed to unmarshal DB config for inbox %d: %v, falling back to in-memory config", inboxID, err)
+			} else {
+				// Merge: use DB config as base, overlay only the refreshed OAuth tokens
+				dbConfig.OAuth = updatedConfig.OAuth
+				dbConfig.AuthType = updatedConfig.AuthType
+				updatedConfig = dbConfig
+			}
+		}
+
 		// Marshal updated config to JSON
 		updatedConfigJSON, err := json.Marshal(updatedConfig)
 		if err != nil {

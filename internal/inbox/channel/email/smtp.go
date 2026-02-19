@@ -230,12 +230,72 @@ func (e *Email) Send(m models.Message) error {
 	case "plain":
 		email.Text = []byte(m.Content)
 	default:
-		email.HTML = []byte(m.Content)
+		// Process HTML for email clients.
+		// TipTap wraps each line in <p> tags. In email clients, <p> tags have default
+		// margins (~1em) which makes single-Enter look double-spaced.
+		// Strategy:
+		// - Body text: flatten <p> to <br> so single-Enter = next line,
+		//   empty <p> (double-Enter) = blank line (paragraph gap).
+		// - Signature: leave <p> tags untouched so they keep default email
+		//   client margins (proper paragraph spacing between name, company, etc.)
+		htmlContent := m.Content
+		htmlContent = processEmailHTML(htmlContent)
+		email.HTML = []byte(htmlContent)
 		if len(m.AltContent) > 0 {
 			email.Text = []byte(m.AltContent)
 		}
 	}
 	return server.Send(email)
+}
+
+
+// processEmailHTML converts TipTap paragraph HTML to email-friendly HTML.
+// Body <p> tags are flattened to <br> (single-Enter = next line).
+// Empty <p> tags (double-Enter) become a blank line gap.
+// Signature <p> tags are left intact so email clients render paragraph spacing.
+func processEmailHTML(html string) string {
+	const sigMarker = `<div class="email-signature"`
+
+	// Split body from signature
+	sigIdx := strings.Index(html, sigMarker)
+	var body, signature string
+	if sigIdx >= 0 {
+		body = html[:sigIdx]
+		signature = html[sigIdx:]
+	} else {
+		body = html
+		signature = ""
+	}
+
+	// Process body: flatten <p> tags into <br> line breaks.
+	// 1. Mark empty paragraphs (double-Enter) - these become blank line gaps
+	body = strings.ReplaceAll(body, "<p></p>", "<!--BLANK-->")
+	body = strings.ReplaceAll(body, "<p><br></p>", "<!--BLANK-->")
+	body = strings.ReplaceAll(body, "<p><br/></p>", "<!--BLANK-->")
+
+	// 2. Remove opening <p> and convert closing </p> to <br>
+	//    This turns <p>line1</p><p>line2</p> into line1<br>line2<br>
+	body = strings.ReplaceAll(body, "</p><p>", "<br>")
+	body = strings.ReplaceAll(body, "<p>", "")
+	body = strings.ReplaceAll(body, "</p>", "")
+
+	// 3. Restore blank line markers as <br><br> (visible gap)
+	body = strings.ReplaceAll(body, "<!--BLANK-->", "<br><br>")
+
+	// 4. Clean up trailing whitespace
+	body = strings.TrimRight(body, " \n\t")
+
+	// 5. If there's a signature, add inline styles for email clients
+	//    (CSS classes don't work in email - must use inline styles)
+	if signature != "" {
+		// Add margin-top to signature div for visual separation from body
+		signature = strings.Replace(signature,
+			`<div class="email-signature"`,
+			`<div class="email-signature" style="margin-top:1em;padding-top:0.75em;border-top:1px solid #e5e7eb"`,
+			1)
+	}
+
+	return body + signature
 }
 
 // buildPlusAddress creates a plus-addressed email for conversation matching.
