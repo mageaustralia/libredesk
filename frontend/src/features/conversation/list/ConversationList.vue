@@ -128,38 +128,62 @@
         </Button>
       </div>
 
-      <!-- Sort dropdown-menu -->
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" class="w-30">
-            {{ conversationStore.getListSortField }}
-            <ChevronDown class="w-4 h-4 ml-2 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem @click="handleSortChange('oldest')">
-            {{ $t('conversation.sort.oldestActivity') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('newest')">
-            {{ $t('conversation.sort.newestActivity') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('started_first')">
-            {{ $t('conversation.sort.startedFirst') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('started_last')">
-            {{ $t('conversation.sort.startedLast') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('waiting_longest')">
-            {{ $t('conversation.sort.waitingLongest') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('next_sla_target')">
-            {{ $t('conversation.sort.nextSLATarget') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="handleSortChange('priority_first')">
-            {{ $t('conversation.sort.priorityFirst') }}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div class="flex items-center gap-1">
+        <!-- Layout switcher -->
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" class="h-8 px-2">
+              <LayoutGrid v-if="viewMode === 'card'" class="w-4 h-4" />
+              <LayoutList v-else class="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem @click="setViewMode('card')">
+              <LayoutGrid class="w-4 h-4 mr-2" />
+              Card
+              <Check v-if="viewMode === 'card'" class="w-3 h-3 ml-auto" />
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="setViewMode('table')">
+              <LayoutList class="w-4 h-4 mr-2" />
+              Table
+              <Check v-if="viewMode === 'table'" class="w-3 h-3 ml-auto" />
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <!-- Sort dropdown-menu -->
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" class="w-30">
+              {{ conversationStore.getListSortField }}
+              <ChevronDown class="w-4 h-4 ml-2 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem @click="handleSortChange('oldest')">
+              {{ $t('conversation.sort.oldestActivity') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('newest')">
+              {{ $t('conversation.sort.newestActivity') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('started_first')">
+              {{ $t('conversation.sort.startedFirst') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('started_last')">
+              {{ $t('conversation.sort.startedLast') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('waiting_longest')">
+              {{ $t('conversation.sort.waitingLongest') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('next_sla_target')">
+              {{ $t('conversation.sort.nextSLATarget') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="handleSortChange('priority_first')">
+              {{ $t('conversation.sort.priorityFirst') }}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
 
     <!-- Content -->
@@ -183,8 +207,15 @@
         :icon="MessageCircleWarning"
       />
 
-      <!-- Empty State -->
+      <!-- Table View -->
+      <ConversationTableView
+        v-if="viewMode === 'table' && !conversationStore.conversations.errorMessage && hasConversations"
+        :conversations="conversationStore.conversationsList"
+      />
+
+      <!-- Card View -->
       <TransitionGroup
+        v-else-if="viewMode === 'card'"
         enter-active-class="transition-all duration-300 ease-in-out"
         enter-from-class="opacity-0 transform translate-y-4"
         enter-to-class="opacity-100 transform translate-y-0"
@@ -214,6 +245,11 @@
           <ConversationListItemSkeleton v-for="index in 5" :key="index" />
         </div>
       </TransitionGroup>
+
+      <!-- Loading Skeleton (table mode) -->
+      <div v-if="isLoading && viewMode === 'table'" key="loading-table" class="space-y-4">
+        <ConversationListItemSkeleton v-for="index in 5" :key="index" />
+      </div>
 
       <!-- Load More -->
       <div
@@ -246,7 +282,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -260,9 +296,11 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import EmptyList from '@/features/conversation/list/ConversationEmptyList.vue'
 import ConversationListItem from '@/features/conversation/list/ConversationListItem.vue'
+import ConversationTableView from '@/features/conversation/list/ConversationTableView.vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useEmitter } from '@/composables/useEmitter'
+import { useTheme } from '@/composables/useTheme'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents'
 import { handleHTTPError } from '@/utils/http'
 import api from '@/api'
@@ -274,6 +312,7 @@ const teamsStore = useTeamStore()
 const route = useRoute()
 const { t } = useI18n()
 const emitter = useEmitter()
+const { viewMode, setViewMode } = useTheme()
 const bulkLoading = ref(false)
 
 onMounted(() => {

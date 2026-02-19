@@ -773,7 +773,7 @@ func handleCreateConversation(r *fastglue.Request) error {
 		"",         /** last_message **/
 		time.Now(), /** last_message_at **/
 		req.Subject,
-		true, /** append reference number to subject? **/
+		false, /** append reference number to subject? **/
 	)
 	if err != nil {
 		app.lo.Error("error creating conversation", "error", err)
