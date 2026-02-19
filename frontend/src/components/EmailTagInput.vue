@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import api from '@/api'
 
@@ -77,6 +77,10 @@ const suggestions = ref([])
 const showSuggestions = ref(false)
 const highlightedIndex = ref(-1)
 let searchTimeout = null
+
+onUnmounted(() => {
+  if (searchTimeout) clearTimeout(searchTimeout)
+})
 
 // Parse comma-separated string into array of trimmed emails
 const emails = computed(() => {
