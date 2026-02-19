@@ -259,6 +259,16 @@ func (m *Manager) setOpenRouterConfig(apiKey, model string) error {
 		model = "anthropic/claude-3-haiku"
 	}
 
+	// Encrypt API key before storing.
+	if apiKey != "" {
+		encryptedKey, err := crypto.Encrypt(apiKey, m.encryptionKey)
+		if err != nil {
+			m.lo.Error("error encrypting OpenRouter API key", "error", err)
+			return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", "OpenRouter API Key"), nil)
+		}
+		apiKey = encryptedKey
+	}
+
 	// First, ensure OpenRouter provider exists
 	if _, err := m.q.UpsertOpenRouter.Exec(); err != nil {
 		m.lo.Error("error upserting OpenRouter provider", "error", err)
