@@ -68,11 +68,7 @@ func (c *Client) doRequest(ctx context.Context, endpoint string, params url.Valu
 		return nil, resp.StatusCode, err
 	}
 
-	preview := string(body)
-	if len(preview) > 2000 {
-		preview = preview[:2000] + "..."
-	}
-	log.Printf("[ecommerce] Response %d: %s", resp.StatusCode, preview)
+	log.Printf("[ecommerce] Response %d (%d bytes)", resp.StatusCode, len(body))
 
 	return body, resp.StatusCode, nil
 }
