@@ -230,7 +230,15 @@ func handleSendMessage(r *fastglue.Request) error {
 
 	// Use the requested inbox ID if provided, otherwise default to conversation's inbox.
 	inboxID := conv.InboxID
-	if req.InboxID > 0 {
+	if req.InboxID > 0 && req.InboxID != conv.InboxID {
+		// Validate the requested inbox exists and is enabled.
+		inboxRecord, err := app.inbox.GetDBRecord(req.InboxID)
+		if err != nil {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid inbox", nil, envelope.InputError)
+		}
+		if !inboxRecord.Enabled {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Inbox is disabled", nil, envelope.InputError)
+		}
 		inboxID = req.InboxID
 	}
 
