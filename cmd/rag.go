@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -332,7 +333,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 Knowledge Base Context:
 {{context}}
 
-Customer Question: {{enquiry}}
+Customer Question:
+<customer_message>
+{{enquiry}}
+</customer_message>
 
 Provide a helpful, accurate response based on the context above. If the context does not contain relevant information, let the customer know you will need to check and get back to them.`
 	}
@@ -444,7 +448,7 @@ func (app *App) classifySearchIntent(message string) ([]SearchIntent, error) {
 	classifyPrompt := `Analyze this customer support message and extract search intents.
 Return JSON only, no other text.
 
-Message: "` + message + `"
+<customer_message>` + message + `</customer_message>
 
 Response format:
 {"intents": [{"type": "product", "query": "concise search terms"}, {"type": "category", "query": "concise terms"}, {"type": "faq", "query": "concise terms"}]}
@@ -656,21 +660,20 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 }
 
 // stripHTML removes HTML tags from a string.
+// htmlTagRe matches HTML tags for stripping.
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+
+// multiSpaceRe matches two or more consecutive spaces.
+var multiSpaceRe = regexp.MustCompile(`\s{2,}`)
+
 func stripHTML(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	for strings.Contains(s, "<") {
-		start := strings.Index(s, "<")
-		end := strings.Index(s[start:], ">")
-		if end == -1 {
-			break
-		}
-		s = s[:start] + " " + s[start+end+1:]
+	// Cap input length to prevent excessive processing.
+	const maxLen = 100000
+	if len(s) > maxLen {
+		s = s[:maxLen]
 	}
-	// Collapse multiple spaces
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
-	}
+	s = htmlTagRe.ReplaceAllString(s, " ")
+	s = multiSpaceRe.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
 }
 
