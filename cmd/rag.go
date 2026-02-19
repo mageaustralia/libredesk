@@ -14,6 +14,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/ai"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
+	"github.com/abhinavxd/libredesk/internal/urlutil"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
@@ -480,6 +481,11 @@ Rules:
 
 // queryExternalSearch queries an external search API endpoint via HTTP POST.
 func queryExternalSearch(searchURL, query string, limit int, headers map[string]string) (*ExternalSearchResponse, error) {
+	// SSRF protection: block internal/private network URLs.
+	if err := urlutil.ValidateExternalURL(searchURL); err != nil {
+		return nil, fmt.Errorf("search URL blocked: %w", err)
+	}
+
 	payload := fmt.Sprintf(`{"q":%q,"limit":%d}`, query, limit)
 	req, err := http.NewRequest("POST", searchURL, bytes.NewBufferString(payload))
 	if err != nil {

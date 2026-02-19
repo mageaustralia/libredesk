@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/rag"
+	"github.com/abhinavxd/libredesk/internal/urlutil"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
 	"github.com/zerodha/logf"
 )
@@ -93,6 +94,11 @@ func (s *WebpageSyncer) Sync(sourceID int, config models.WebpageConfig) error {
 
 // fetchWebpage fetches a URL and extracts title and text content.
 func (s *WebpageSyncer) fetchWebpage(url string) (string, string, error) {
+	// SSRF protection: block internal/private network URLs.
+	if err := urlutil.ValidateExternalURL(url); err != nil {
+		return "", "", fmt.Errorf("URL blocked: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
