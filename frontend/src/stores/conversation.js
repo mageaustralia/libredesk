@@ -83,6 +83,13 @@ export const useConversationStore = defineStore('conversation', () => {
     return selectedUUIDs.value.has(uuid)
   }
 
+  function updateConversationField (uuid, field, value) {
+    const conv = conversations.data.find(c => c.uuid === uuid)
+    if (conv) {
+      conv[field] = value
+    }
+  }
+
   // TODO: Move to constants.
   const sortFieldMap = {
     oldest: {

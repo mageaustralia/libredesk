@@ -284,42 +284,42 @@ function getPriorityDotClass(conversation) {
 async function assignAgent(conversation, agent) {
   try {
     await api.updateAssignee(conversation.uuid, 'user', { assignee_id: parseInt(agent.value) })
-    conversation.assigned_user_name = agent.label
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_user_name', agent.label)
   } catch (error) { handleHTTPError(error) }
 }
 
 async function unassignAgent(conversation) {
   try {
     await api.removeAssignee(conversation.uuid, 'user')
-    conversation.assigned_user_name = null
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_user_name', null)
   } catch (error) { handleHTTPError(error) }
 }
 
 async function assignTeam(conversation, team) {
   try {
     await api.updateAssignee(conversation.uuid, 'team', { assignee_id: parseInt(team.value) })
-    conversation.assigned_team_name = team.label
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_team_name', team.label)
   } catch (error) { handleHTTPError(error) }
 }
 
 async function unassignTeam(conversation) {
   try {
     await api.removeAssignee(conversation.uuid, 'team')
-    conversation.assigned_team_name = null
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_team_name', null)
   } catch (error) { handleHTTPError(error) }
 }
 
 async function updatePriority(conversation, priority) {
   try {
     await api.updateConversationPriority(conversation.uuid, { priority })
-    conversation.priority = priority
+    conversationStore.updateConversationField(conversation.uuid, 'priority', priority)
   } catch (error) { handleHTTPError(error) }
 }
 
 async function updateStatus(conversation, status) {
   try {
     await api.updateConversationStatus(conversation.uuid, { status })
-    conversation.status = status
+    conversationStore.updateConversationField(conversation.uuid, 'status', status)
   } catch (error) { handleHTTPError(error) }
 }
 </script>
