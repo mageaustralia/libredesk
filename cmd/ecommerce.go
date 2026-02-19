@@ -165,7 +165,8 @@ func handleTestEcommerceConnection(r *fastglue.Request) error {
 
 	// Test the connection
 	if err := provider.TestConnection(r.RequestCtx); err != nil {
-		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Connection failed: "+err.Error(), nil, envelope.InputError)
+		app.lo.Error("ecommerce connection test failed", "error", err)
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Connection failed. Check your settings and try again.", nil, envelope.InputError)
 	}
 
 	return r.SendEnvelope(map[string]string{"status": "ok", "message": "Connection successful"})
