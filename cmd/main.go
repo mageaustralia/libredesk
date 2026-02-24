@@ -244,6 +244,7 @@ func main() {
 	go media.DeleteUnlinkedMedia(ctx)
 	go user.MonitorAgentAvailability(ctx)
 	go conversation.RunDraftCleaner(ctx, draftRetentionDuration)
+	go conversation.RunTrashManager(ctx, 90, 30, 30) // auto-trash resolved after 90d, spam after 30d, purge trash after 30d
 	go userNotification.RunNotificationCleaner(ctx)
 
 	// Start RAG sync coordinator
