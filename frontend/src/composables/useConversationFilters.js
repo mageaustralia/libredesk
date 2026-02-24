@@ -55,7 +55,7 @@ export function useConversationFilters () {
                 name: t('globals.terms.team').toLowerCase()
             }),
             type: FIELD_TYPE.SELECT,
-            operators: FIELD_OPERATORS.SELECT,
+            operators: FIELD_OPERATORS.SELECT_ASSIGNEE,
             options: tStore.options
         },
         assigned_user_id: {
@@ -63,7 +63,7 @@ export function useConversationFilters () {
                 name: t('globals.terms.agent').toLowerCase()
             }),
             type: FIELD_TYPE.SELECT,
-            operators: FIELD_OPERATORS.SELECT,
+            operators: FIELD_OPERATORS.SELECT_ASSIGNEE,
             options: uStore.options
         },
         inbox_id: {
