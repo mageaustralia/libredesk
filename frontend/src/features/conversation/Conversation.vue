@@ -31,6 +31,46 @@
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <!-- More Actions Dropdown -->
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" class="h-7 w-7">
+              <MoreHorizontal class="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              v-if="conversationStore.conversation.data?.status !== 'Trashed'" 
+              @click="handleMoveToTrash"
+            >
+              <Trash2 class="w-4 h-4 mr-2" />
+              Move to Trash
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              v-if="conversationStore.conversation.data?.status === 'Trashed'" 
+              @click="handleRestore"
+            >
+              <RotateCcw class="w-4 h-4 mr-2" />
+              Restore
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              v-if="conversationStore.conversation.data?.status !== 'Spam'" 
+              @click="handleMarkAsSpam"
+            >
+              <ShieldAlert class="w-4 h-4 mr-2" />
+              Mark as Spam
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              v-if="conversationStore.conversation.data?.status === 'Spam'" 
+              @click="handleMarkAsNotSpam"
+            >
+              <ShieldCheck class="w-4 h-4 mr-2" />
+              Not Spam
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
 
@@ -81,19 +121,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
-import { Reply, StickyNote } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-vue-next'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useRouter } from 'vue-router'
+import api from '@/api'
+import { handleHTTPError } from '@/utils/http'
 
 const conversationStore = useConversationStore()
 const emitter = useEmitter()
+const router = useRouter()
 const { currentTheme } = useTheme()
 
 const isFresh = computed(() => currentTheme.value === 'fresh')
@@ -109,6 +154,47 @@ const expandReply = async () => {
     setTimeout(() => {
       scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight
     }, 100)
+  }
+}
+
+
+const handleMoveToTrash = async () => {
+  try {
+    await api.moveToTrash(conversationStore.conversation.data.uuid)
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Moved to trash' })
+    router.push({ name: 'inbox', params: { type: 'assigned' } })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
+  }
+}
+
+const handleRestore = async () => {
+  try {
+    await api.restoreFromTrash(conversationStore.conversation.data.uuid)
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Conversation restored' })
+    router.push({ name: 'inbox', params: { type: 'assigned' } })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
+  }
+}
+
+const handleMarkAsSpam = async () => {
+  try {
+    await api.markAsSpam(conversationStore.conversation.data.uuid)
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Marked as spam' })
+    router.push({ name: 'inbox', params: { type: 'assigned' } })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
+  }
+}
+
+const handleMarkAsNotSpam = async () => {
+  try {
+    await api.markAsNotSpam(conversationStore.conversation.data.uuid)
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Moved to inbox' })
+    router.push({ name: 'inbox', params: { type: 'assigned' } })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
   }
 }
 
