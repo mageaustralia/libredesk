@@ -30,7 +30,9 @@ import {
   Plus,
   CircleDashed,
   List,
-  AtSign
+  AtSign,
+  ShieldAlert,
+  Trash2
 } from 'lucide-vue-next'
 import {
   DropdownMenu,
@@ -440,6 +442,26 @@ const viewToDelete = ref(null)
                     <span>
                       {{ t('globals.messages.all') }}
                     </span>
+                  </router-link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <!-- Spam -->
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild :isActive="isActiveParent('/inboxes/spam')">
+                  <router-link :to="{ name: 'inbox', params: { type: 'spam' } }">
+                    <ShieldAlert class="w-4 h-4" />
+                    <span>Spam</span>
+                  </router-link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <!-- Trash -->
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild :isActive="isActiveParent('/inboxes/trash')">
+                  <router-link :to="{ name: 'inbox', params: { type: 'trash' } }">
+                    <Trash2 class="w-4 h-4" />
+                    <span>Trash</span>
                   </router-link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

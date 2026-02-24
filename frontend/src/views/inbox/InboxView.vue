@@ -21,8 +21,10 @@ const conversationStore = useConversationStore()
 onMounted(() => {
   // Fetch list based on type
   if (type.value) {
-    // Set list status if not already set
-    if (!conversationStore.getListStatus) {
+    // Spam and trash views don't use status filtering
+    if (type.value === 'spam' || type.value === 'trash') {
+      conversationStore.setListStatus('', false)
+    } else if (!conversationStore.getListStatus) {
       conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
     }
     conversationStore.fetchConversationsList(true, type.value)
@@ -52,8 +54,10 @@ watch(
   [type, teamID, viewID],
   ([newType, newTeamID, newViewID], [oldType, oldTeamID, oldViewID]) => {
     if (newType !== oldType && newType) {
-      // Set list status if not already set
-      if (!conversationStore.getListStatus) {
+      // Spam and trash views don't use status filtering
+      if (newType === 'spam' || newType === 'trash') {
+        conversationStore.setListStatus('', false)
+      } else if (!conversationStore.getListStatus) {
         conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
       }
       conversationStore.fetchConversationsList(true, newType)
