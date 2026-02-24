@@ -234,6 +234,7 @@ CREATE TABLE conversations (
     first_reply_at TIMESTAMPTZ NULL,
     last_reply_at TIMESTAMPTZ NULL,
     closed_at TIMESTAMPTZ NULL,
+    trashed_at TIMESTAMPTZ NULL,
     resolved_at TIMESTAMPTZ NULL,
 
 	"subject" TEXT NULL,
@@ -726,7 +727,9 @@ INSERT INTO conversation_statuses (name) VALUES
 ('Open'),
 ('Snoozed'),
 ('Resolved'),
-('Closed');
+('Closed'),
+('Spam'),
+('Trashed');
 
 -- Default roles
 INSERT INTO

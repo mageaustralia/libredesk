@@ -18,6 +18,8 @@ var (
 	StatusResolved = "Resolved"
 	StatusClosed   = "Closed"
 	StatusSnoozed  = "Snoozed"
+	StatusSpam     = "Spam"
+	StatusTrashed  = "Trashed"
 
 	AssigneeTypeTeam = "team"
 	AssigneeTypeUser = "user"
@@ -112,6 +114,7 @@ type Conversation struct {
 	ContactID             int                    `db:"contact_id" json:"contact_id"`
 	InboxID               int                    `db:"inbox_id" json:"inbox_id"`
 	ClosedAt              null.Time              `db:"closed_at" json:"closed_at"`
+	TrashedAt             null.Time              `db:"trashed_at" json:"trashed_at"`
 	ResolvedAt            null.Time              `db:"resolved_at" json:"resolved_at"`
 	ReferenceNumber       string                 `db:"reference_number" json:"reference_number"`
 	Priority              null.String            `db:"priority" json:"priority"`
