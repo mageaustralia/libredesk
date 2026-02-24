@@ -120,9 +120,15 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 		case "not set":
 			conditions = append(conditions, field+" IS NULL")
 		case "in":
-			var arr []string
-			if err := json.Unmarshal([]byte(f.Value), &arr); err != nil {
+			var raw []json.RawMessage
+			if err := json.Unmarshal([]byte(f.Value), &raw); err != nil {
 				return "", nil, fmt.Errorf("invalid array format for 'in' operator: %v", err)
+			}
+			arr := make([]string, len(raw))
+			for i, r := range raw {
+				// Strip quotes from strings, keep numbers as-is
+				s := strings.Trim(string(r), "\"")
+				arr[i] = s
 			}
 			if len(arr) == 0 {
 				continue
@@ -135,9 +141,15 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 			}
 			conditions = append(conditions, field+" IN ("+strings.Join(placeholders, ",")+")")
 		case "not_in":
-			var arr []string
-			if err := json.Unmarshal([]byte(f.Value), &arr); err != nil {
+			var raw []json.RawMessage
+			if err := json.Unmarshal([]byte(f.Value), &raw); err != nil {
 				return "", nil, fmt.Errorf("invalid array format for 'not_in' operator: %v", err)
+			}
+			arr := make([]string, len(raw))
+			for i, r := range raw {
+				// Strip quotes from strings, keep numbers as-is
+				s := strings.Trim(string(r), "\"")
+				arr[i] = s
 			}
 			if len(arr) == 0 {
 				continue
@@ -149,6 +161,29 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 				paramCount++
 			}
 			conditions = append(conditions, field+" NOT IN ("+strings.Join(placeholders, ",")+")")
+		case "in_or_null":
+			var raw []json.RawMessage
+			if err := json.Unmarshal([]byte(f.Value), &raw); err != nil {
+				return "", nil, fmt.Errorf("invalid array format for 'in_or_null' operator: %v", err)
+			}
+			arr := make([]string, len(raw))
+			for i, r := range raw {
+				// Strip quotes from strings, keep numbers as-is
+				s := strings.Trim(string(r), "\"")
+				arr[i] = s
+			}
+			if len(arr) == 0 {
+				// No specific values, just match NULL
+				conditions = append(conditions, field+" IS NULL")
+			} else {
+				placeholders := make([]string, len(arr))
+				for i, v := range arr {
+					placeholders[i] = fmt.Sprintf("$%d", paramCount)
+					args = append(args, v)
+					paramCount++
+				}
+				conditions = append(conditions, "("+field+" IN ("+strings.Join(placeholders, ",")+") OR "+field+" IS NULL)")
+			}
 		case "relative_date":
 			now := time.Now()
 			var start, end time.Time

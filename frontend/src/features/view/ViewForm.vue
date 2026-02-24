@@ -80,7 +80,7 @@ import { toTypedSchema } from '@vee-validate/zod'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { useEmitter } from '@/composables/useEmitter'
 import { handleHTTPError } from '@/utils/http'
-import { OPERATOR } from '@/constants/filterConfig.js'
+import { OPERATOR, FIELD_OPERATORS } from '@/constants/filterConfig.js'
 import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
 import { FIELD_TYPE } from '@/constants/filterConfig'
@@ -212,12 +212,14 @@ watch(
       // Deserialize multi-select filter values from JSON strings to arrays
       const processedVal = { ...newVal }
       if (processedVal.filters) {
+        const MULTI_VALUE_OPS = [OPERATOR.IN, OPERATOR.NOT_IN, OPERATOR.IN_OR_NULL]
         processedVal.filters = processedVal.filters.map((filter) => {
-          // Multi-select fields need to be deserialized from JSON strings
+          // Multi-select fields or multi-value operators need to be deserialized from JSON strings
           const field = filterFields.value.find((f) => f.field === filter.field)
           const isMultiSelectField = field?.type === FIELD_TYPE.MULTI_SELECT
+          const isMultiValueOp = MULTI_VALUE_OPS.includes(filter.operator)
 
-          if (isMultiSelectField && typeof filter.value === 'string') {
+          if ((isMultiSelectField || isMultiValueOp) && typeof filter.value === 'string') {
             try {
               const parsed = JSON.parse(filter.value)
               // Convert numbers back to strings (frontend uses string IDs)

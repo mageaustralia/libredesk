@@ -246,8 +246,9 @@ watch(
       processedVal.filters = processedVal.filters.map((filter) => {
         const field = filterFields.value.find((f) => f.field === filter.field)
         const isMultiSelectField = field?.type === FIELD_TYPE.MULTI_SELECT
+        const isMultiValueOp = [OPERATOR.IN, OPERATOR.NOT_IN, OPERATOR.IN_OR_NULL].includes(filter.operator)
 
-        if (isMultiSelectField && typeof filter.value === 'string') {
+        if ((isMultiSelectField || isMultiValueOp) && typeof filter.value === 'string') {
           try {
             const parsed = JSON.parse(filter.value)
             const stringValues = Array.isArray(parsed) ? parsed.map((v) => String(v)) : parsed

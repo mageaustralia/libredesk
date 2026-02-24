@@ -41,7 +41,7 @@
             <SelectContent>
               <SelectGroup>
                 <SelectItem v-for="op in getFieldOperators(modelFilter)" :key="op" :value="op">
-                  {{ op }}
+                  {{ getOperatorLabel(op) }}
                 </SelectItem>
               </SelectGroup>
             </SelectContent>
@@ -52,6 +52,7 @@
         <div class="flex-1">
           <div v-if="modelFilter.field && modelFilter.operator">
             <template v-if="modelFilter.operator !== 'set' && modelFilter.operator !== 'not set'">
+              <!-- Multi-select for native multi-select fields (tags) -->
               <SelectTag
                 v-if="getFieldType(modelFilter) === FIELD_TYPE.MULTI_SELECT"
                 v-model="modelFilter.value"
@@ -59,6 +60,15 @@
                 :placeholder="t('globals.messages.select', { name: t('globals.terms.tag', 2) })"
               />
 
+              <!-- Multi-select for in/not_in/in_or_null operators on select fields -->
+              <SelectTag
+                v-else-if="isMultiValueOperator(modelFilter.operator) && getFieldOptions(modelFilter).length > 0"
+                v-model="modelFilter.value"
+                :items="getFieldOptions(modelFilter)"
+                :placeholder="t('globals.messages.select', { name: '' })"
+              />
+
+              <!-- Single-select combobox for agent -->
               <SelectComboBox
                 v-else-if="
                   getFieldOptions(modelFilter).length > 0 &&
@@ -70,6 +80,7 @@
                 type="user"
               />
 
+              <!-- Single-select combobox for team -->
               <SelectComboBox
                 v-else-if="
                   getFieldOptions(modelFilter).length > 0 &&
@@ -135,7 +146,7 @@ import { Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useI18n } from 'vue-i18n'
-import { FIELD_TYPE } from '@/constants/filterConfig'
+import { FIELD_TYPE, OPERATOR } from '@/constants/filterConfig'
 import CloseButton from '@/components/button/CloseButton.vue'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import SelectTag from '@/components/ui/select/SelectTag.vue'
@@ -181,12 +192,9 @@ watch(
         filter.model = getModel(filter.field)
       }
 
-      // Multi select need arrays as their default value
-      if (
-        filter.field &&
-        getFieldType(filter) === FIELD_TYPE.MULTI_SELECT &&
-        !Array.isArray(filter.value)
-      ) {
+      // Multi select fields and multi-value operators need arrays as their default value
+      const needsArray = getFieldType(filter) === FIELD_TYPE.MULTI_SELECT || isMultiValueOperator(filter.operator)
+      if (filter.field && needsArray && !Array.isArray(filter.value)) {
         filter.value = []
       }
     })
@@ -194,7 +202,7 @@ watch(
   { deep: true }
 )
 
-// Reset operator and value when field changes for a filter at a given index
+// Reset operator and value when field changes, and reset value when switching between single/multi operators
 watch(
   modelValue,
   (newFilters, oldFilters) => {
@@ -203,9 +211,18 @@ watch(
 
     newFilters.forEach((filter, index) => {
       const oldFilter = oldFilters[index]
-      if (oldFilter && filter.field !== oldFilter.field) {
+      if (!oldFilter) return
+
+      if (filter.field !== oldFilter.field) {
         filter.operator = ''
         filter.value = ''
+      } else if (filter.operator !== oldFilter.operator) {
+        // Reset value when switching between single-value and multi-value operators
+        const wasMulti = isMultiValueOperator(oldFilter.operator)
+        const isMulti = isMultiValueOperator(filter.operator)
+        if (wasMulti !== isMulti) {
+          filter.value = isMulti ? [] : ''
+        }
       }
     })
   },
@@ -229,17 +246,30 @@ const clearFilters = () => {
 
 const validFilters = computed(() => {
   return modelValue.value.filter((filter) => {
-    // For multi-select field type, allow empty array as a valid value
+    // For multi-select field type or multi-value operators, allow empty array as valid
     const field = props.fields.find((f) => f.field === filter.field)
     const isMultiSelectField = field?.type === FIELD_TYPE.MULTI_SELECT
+    const isMultiOp = isMultiValueOperator(filter.operator)
 
-    if (isMultiSelectField) {
+    if (isMultiSelectField || isMultiOp) {
       return filter.field && filter.operator && filter.value !== undefined && filter.value !== null
     }
 
     return filter.field && filter.operator && filter.value
   })
 })
+
+const MULTI_VALUE_OPERATORS = [OPERATOR.IN, OPERATOR.NOT_IN, OPERATOR.IN_OR_NULL]
+
+const isMultiValueOperator = (op) => MULTI_VALUE_OPERATORS.includes(op)
+
+const operatorDisplayNames = {
+  [OPERATOR.IN]: 'is any of',
+  [OPERATOR.NOT_IN]: 'is none of',
+  [OPERATOR.IN_OR_NULL]: 'is any of (or unassigned)',
+}
+
+const getOperatorLabel = (op) => operatorDisplayNames[op] || op
 
 const getFieldOptions = (fieldValue) => {
   const field = props.fields.find((f) => f.field === fieldValue.field)
