@@ -783,6 +783,13 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 		return err
 	}
 
+	// Check if message came from a spam/junk IMAP folder and mark conversation accordingly.
+	if isSpamMailbox(in.MailboxName) {
+		if err := m.MarkAsSpam(in.Message.ConversationUUID); err != nil {
+			m.lo.Error("error marking conversation as spam", "error", err, "uuid", in.Message.ConversationUUID)
+		}
+	}
+
 	// Evaluate automation rules & send webhook events.
 	if isNewConversation {
 		conversation, err := m.GetConversation(in.Message.ConversationID, "", "")
@@ -1099,4 +1106,10 @@ func (m *Manager) getLatestMessage(conversationID int, typ []string, status []st
 		return message, fmt.Errorf("fetching latest message: %w", err)
 	}
 	return message, nil
+}
+
+// isSpamMailbox checks if the IMAP mailbox name indicates a spam/junk folder.
+func isSpamMailbox(mailbox string) bool {
+	lower := strings.ToLower(mailbox)
+	return strings.Contains(lower, "spam") || strings.Contains(lower, "junk")
 }

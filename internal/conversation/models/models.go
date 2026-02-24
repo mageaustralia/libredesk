@@ -284,6 +284,7 @@ type IncomingMessage struct {
 	Message                     Message
 	Contact                     umodels.User
 	InboxID                     int
+	MailboxName                 string // IMAP mailbox folder name (e.g., "INBOX", "[Gmail]/Spam")
 }
 
 type Status struct {
