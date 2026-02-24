@@ -865,3 +865,138 @@ func validateCreateConversationRequest(req createConversationRequest, app *App) 
 
 	return nil
 }
+
+
+// handleMoveToTrash moves a conversation to trash.
+func handleMoveToTrash(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if err := app.conversation.MoveToTrash(uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleRestoreFromTrash restores a conversation from trash.
+func handleRestoreFromTrash(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if err := app.conversation.RestoreFromTrash(uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleMarkAsSpam marks a conversation as spam.
+func handleMarkAsSpam(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if err := app.conversation.MarkAsSpam(uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleMarkAsNotSpam moves a spam conversation back to open.
+func handleMarkAsNotSpam(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if err := app.conversation.MarkAsNotSpam(uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleGetSpamConversations retrieves spam conversations.
+func handleGetSpamConversations(r *fastglue.Request) error {
+	var (
+		app     = r.Context.(*App)
+		user    = r.RequestCtx.UserValue("user").(amodels.User)
+		order   = string(r.RequestCtx.QueryArgs().Peek("order"))
+		orderBy = string(r.RequestCtx.QueryArgs().Peek("order_by"))
+		filters = string(r.RequestCtx.QueryArgs().Peek("filters"))
+		total   = 0
+	)
+	page, pageSize := getPagination(r)
+	conversations, err := app.conversation.GetSpamConversationsList(user.ID, order, orderBy, filters, page, pageSize)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if len(conversations) > 0 {
+		total = conversations[0].Total
+	}
+	return r.SendEnvelope(envelope.PageResults{
+		Results:    conversations,
+		Total:      total,
+		PerPage:    pageSize,
+		TotalPages: (total + pageSize - 1) / pageSize,
+		Page:       page,
+	})
+}
+
+// handleGetTrashedConversations retrieves trashed conversations.
+func handleGetTrashedConversations(r *fastglue.Request) error {
+	var (
+		app     = r.Context.(*App)
+		user    = r.RequestCtx.UserValue("user").(amodels.User)
+		order   = string(r.RequestCtx.QueryArgs().Peek("order"))
+		orderBy = string(r.RequestCtx.QueryArgs().Peek("order_by"))
+		filters = string(r.RequestCtx.QueryArgs().Peek("filters"))
+		total   = 0
+	)
+	page, pageSize := getPagination(r)
+	conversations, err := app.conversation.GetTrashedConversationsList(user.ID, order, orderBy, filters, page, pageSize)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if len(conversations) > 0 {
+		total = conversations[0].Total
+	}
+	return r.SendEnvelope(envelope.PageResults{
+		Results:    conversations,
+		Total:      total,
+		PerPage:    pageSize,
+		TotalPages: (total + pageSize - 1) / pageSize,
+		Page:       page,
+	})
+}

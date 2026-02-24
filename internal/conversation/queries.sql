@@ -652,3 +652,50 @@ DO UPDATE SET
                     WHERE conversation_id = (SELECT id FROM conversations WHERE uuid = $2)
                     ORDER BY created_at DESC LIMIT 1),
     updated_at = NOW();
+-- name: move-to-trash
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed'),
+    trashed_at = NOW(),
+    updated_at = NOW()
+WHERE uuid = $1;
+
+-- name: restore-from-trash
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Open'),
+    trashed_at = NULL,
+    updated_at = NOW()
+WHERE uuid = $1;
+
+-- name: mark-as-spam
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam'),
+    updated_at = NOW()
+WHERE uuid = $1;
+
+-- name: mark-as-not-spam
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Open'),
+    updated_at = NOW()
+WHERE uuid = $1;
+
+-- name: auto-trash-old-resolved
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed'),
+    trashed_at = NOW(),
+    updated_at = NOW()
+WHERE status_id IN (SELECT id FROM conversation_statuses WHERE name IN ('Resolved', 'Closed'))
+AND updated_at < NOW() - INTERVAL '1 day' * $1
+AND trashed_at IS NULL;
+
+-- name: auto-trash-old-spam
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed'),
+    trashed_at = NOW(),
+    updated_at = NOW()
+WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam')
+AND created_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: purge-old-trash
+DELETE FROM conversations
+WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
+AND trashed_at < NOW() - INTERVAL '1 day' * $1;
