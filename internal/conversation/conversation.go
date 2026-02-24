@@ -249,6 +249,14 @@ type queries struct {
 
 	// Mention queries.
 	InsertMention *sqlx.Stmt `query:"insert-mention"`
+	// Spam and trash queries.
+	MoveToTrash        *sqlx.Stmt `query:"move-to-trash"`
+	RestoreFromTrash   *sqlx.Stmt `query:"restore-from-trash"`
+	MarkAsSpam         *sqlx.Stmt `query:"mark-as-spam"`
+	MarkAsNotSpam      *sqlx.Stmt `query:"mark-as-not-spam"`
+	AutoTrashResolved  *sqlx.Stmt `query:"auto-trash-old-resolved"`
+	AutoTrashSpam      *sqlx.Stmt `query:"auto-trash-old-spam"`
+	PurgeOldTrash      *sqlx.Stmt `query:"purge-old-trash"`
 }
 
 // CreateConversation creates a new conversation and returns its ID and UUID.
@@ -1443,4 +1451,36 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 		"conversation_statuses": conversationStatusAllowedFields,
 		"users":                 usersAllowedFields,
 	})
+}
+
+// MoveToTrash moves a conversation to trash.
+func (m *Manager) MoveToTrash(uuid string) error {
+	if _, err := m.q.MoveToTrash.Exec(uuid); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RestoreFromTrash restores a conversation from trash to open.
+func (m *Manager) RestoreFromTrash(uuid string) error {
+	if _, err := m.q.RestoreFromTrash.Exec(uuid); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarkAsSpam marks a conversation as spam.
+func (m *Manager) MarkAsSpam(uuid string) error {
+	if _, err := m.q.MarkAsSpam.Exec(uuid); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarkAsNotSpam marks a spam conversation as open.
+func (m *Manager) MarkAsNotSpam(uuid string) error {
+	if _, err := m.q.MarkAsNotSpam.Exec(uuid); err != nil {
+		return err
+	}
+	return nil
 }
