@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // PaginationOptions represents the options for paginating a query.
@@ -123,6 +124,9 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 			if err := json.Unmarshal([]byte(f.Value), &arr); err != nil {
 				return "", nil, fmt.Errorf("invalid array format for 'in' operator: %v", err)
 			}
+			if len(arr) == 0 {
+				continue
+			}
 			placeholders := make([]string, len(arr))
 			for i, v := range arr {
 				placeholders[i] = fmt.Sprintf("$%d", paramCount)
@@ -130,6 +134,46 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 				paramCount++
 			}
 			conditions = append(conditions, field+" IN ("+strings.Join(placeholders, ",")+")")
+		case "not_in":
+			var arr []string
+			if err := json.Unmarshal([]byte(f.Value), &arr); err != nil {
+				return "", nil, fmt.Errorf("invalid array format for 'not_in' operator: %v", err)
+			}
+			if len(arr) == 0 {
+				continue
+			}
+			placeholders := make([]string, len(arr))
+			for i, v := range arr {
+				placeholders[i] = fmt.Sprintf("$%d", paramCount)
+				args = append(args, v)
+				paramCount++
+			}
+			conditions = append(conditions, field+" NOT IN ("+strings.Join(placeholders, ",")+")")
+		case "relative_date":
+			now := time.Now()
+			var start, end time.Time
+			switch f.Value {
+			case "today":
+				start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				end = start.Add(24 * time.Hour)
+			case "yesterday":
+				end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				start = end.Add(-24 * time.Hour)
+			case "last_7_days":
+				end = now
+				start = now.AddDate(0, 0, -7)
+			case "last_30_days":
+				end = now
+				start = now.AddDate(0, 0, -30)
+			case "this_month":
+				start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+				end = start.AddDate(0, 1, 0)
+			default:
+				return "", nil, fmt.Errorf("unknown relative_date preset: %s", f.Value)
+			}
+			conditions = append(conditions, fmt.Sprintf("%s >= $%d AND %s < $%d", field, paramCount, field, paramCount+1))
+			args = append(args, start, end)
+			paramCount += 2
 		case "between":
 			values := strings.Split(f.Value, ",")
 			if len(values) != 2 {
