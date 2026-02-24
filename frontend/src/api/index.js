@@ -354,14 +354,13 @@ const getAssignedConversations = (params) => http.get('/api/v1/conversations/ass
 const getUnassignedConversations = (params) =>
   http.get('/api/v1/conversations/unassigned', { params })
 const getAllConversations = (params) => http.get('/api/v1/conversations/all', { params })
-const getMentionedConversations = (params) =>
+const getMentionedConversations = (params) => http.get("/api/v1/conversations/mentioned", { params })
 const getSpamConversations = (params) => http.get("/api/v1/conversations/spam", { params })
 const getTrashConversations = (params) => http.get("/api/v1/conversations/trash", { params })
 const moveToTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/trash`)
 const restoreFromTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/restore`)
 const markAsSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/spam`)
 const markAsNotSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/not-spam`)
-  http.get('/api/v1/conversations/mentioned', { params })
 const getViewConversations = (id, params) =>
   http.get(`/api/v1/views/${id}/conversations`, { params })
 const uploadMedia = (data) =>
