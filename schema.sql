@@ -714,7 +714,10 @@ VALUES
 	('notification.email.hello_hostname', '""'::jsonb),
     ('notification.email.email_address', '"admin@yourcompany.com"'::jsonb),
     ('notification.email.max_msg_retries', '3'::jsonb),
-    ('notification.email.enabled', 'false'::jsonb);
+    ('notification.email.enabled', 'false'::jsonb),
+    ('trash.auto_trash_resolved_days', '90'::jsonb),
+    ('trash.auto_trash_spam_days', '30'::jsonb),
+    ('trash.auto_delete_days', '30'::jsonb);
 
 -- Default conversation priorities
 INSERT INTO conversation_priorities (name) VALUES

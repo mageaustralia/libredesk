@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
 	"context"
 	"fmt"
 	"log"
@@ -244,7 +245,7 @@ func main() {
 	go media.DeleteUnlinkedMedia(ctx)
 	go user.MonitorAgentAvailability(ctx)
 	go conversation.RunDraftCleaner(ctx, draftRetentionDuration)
-	go conversation.RunTrashManager(ctx, 90, 30, 30) // auto-trash resolved after 90d, spam after 30d, purge trash after 30d
+	go conversation.RunTrashManager(ctx, makeTrashSettingsFunc(settings))
 	go userNotification.RunNotificationCleaner(ctx)
 
 	// Start RAG sync coordinator
@@ -349,4 +350,34 @@ func main() {
 	colorlog.Red("Shutting down redis...")
 	rdb.Close()
 	colorlog.Green("Shutdown complete.")
+}
+
+// makeTrashSettingsFunc returns a function that reads trash settings from the DB.
+// Falls back to sensible defaults if settings are missing or unreadable.
+func makeTrashSettingsFunc(s *setting.Manager) conversation.TrashSettingsFunc {
+	return func() (int, int, int) {
+		var (
+			autoTrashResolvedDays = 90
+			autoTrashSpamDays     = 30
+			autoDeleteDays        = 30
+		)
+		out, err := s.GetByPrefix("trash.")
+		if err != nil {
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+		}
+		var vals map[string]int
+		if err := json.Unmarshal(out, &vals); err != nil {
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+		}
+		if v, ok := vals["trash.auto_trash_resolved_days"]; ok {
+			autoTrashResolvedDays = v
+		}
+		if v, ok := vals["trash.auto_trash_spam_days"]; ok {
+			autoTrashSpamDays = v
+		}
+		if v, ok := vals["trash.auto_delete_days"]; ok {
+			autoDeleteDays = v
+		}
+		return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+	}
 }
