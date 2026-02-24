@@ -30,6 +30,8 @@ var (
 	TeamUnassignedConversations = "team_unassigned"
 	TeamAllConversations        = "team_all"
 	MentionedConversations      = "mentioned"
+	SpamConversations           = "spam"
+	TrashedConversations        = "trash"
 
 	MessageIncoming = "incoming"
 	MessageOutgoing = "outgoing"
