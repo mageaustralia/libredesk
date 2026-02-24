@@ -257,6 +257,7 @@ type queries struct {
 	AutoTrashResolved  *sqlx.Stmt `query:"auto-trash-old-resolved"`
 	AutoTrashSpam      *sqlx.Stmt `query:"auto-trash-old-spam"`
 	PurgeOldTrash      *sqlx.Stmt `query:"purge-old-trash"`
+	PurgeOldTrashMedia *sqlx.Stmt `query:"purge-old-trash-media"`
 }
 
 // CreateConversation creates a new conversation and returns its ID and UUID.
