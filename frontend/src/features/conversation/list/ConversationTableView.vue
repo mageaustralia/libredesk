@@ -1,5 +1,5 @@
 <template>
-  <table class="conversation-table w-full text-sm">
+  <table class="conversation-table w-full text-sm table-fixed">
     <thead class="sticky top-0 bg-background z-10 border-b">
       <tr class="text-left text-xs text-muted-foreground">
         <th class="w-8 px-2 py-2">
@@ -8,7 +8,7 @@
             @update:checked="toggleSelectAll"
           />
         </th>
-        <th class="px-2 py-2 font-medium">Contact</th>
+        <th class="px-2 py-2 font-medium w-32">Contact</th>
         <th class="px-2 py-2 font-medium">Subject</th>
         <th class="px-2 py-2 font-medium w-20">State</th>
         <th class="px-2 py-2 font-medium w-28">Group</th>

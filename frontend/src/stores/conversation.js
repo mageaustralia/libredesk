@@ -151,7 +151,8 @@ export const useConversationStore = defineStore('conversation', () => {
     page: 1,
     hasMore: false,
     total: 0,
-    errorMessage: ''
+    errorMessage: '',
+    adHocFilters: []
   })
 
   const conversation = reactive({
@@ -191,6 +192,22 @@ export const useConversationStore = defineStore('conversation', () => {
     conversations.sortField = field
     resetConversations()
     reFetchConversationsList()
+  }
+
+
+  let _adHocDebounce = null
+  function setAdHocFilters (filters) {
+    // Deduplicate by model+field, keeping last entry per field
+    const seen = new Map()
+    for (const f of filters) {
+      seen.set(f.model + "." + f.field, f)
+    }
+    conversations.adHocFilters = Array.from(seen.values())
+    if (_adHocDebounce) clearTimeout(_adHocDebounce)
+    _adHocDebounce = setTimeout(() => {
+      resetConversations()
+      reFetchConversationsList()
+    }, 500)
   }
 
   const getListSortField = computed(() => {
@@ -450,6 +467,13 @@ export const useConversationStore = defineStore('conversation', () => {
     if (listType) conversations.listType = listType
     if (teamID) conversations.teamID = teamID
     if (viewID) conversations.viewID = viewID
+    // Save base filters BEFORE merging ad-hoc (prevents accumulation)
+    if (filters) conversations.listFilters = [...filters]
+    // Merge ad-hoc filters
+    if (conversations.adHocFilters && conversations.adHocFilters.length > 0) {
+      const validAdHoc = conversations.adHocFilters.filter(f => f.value && f.value !== "[]" && f.value !== "")
+      filters = [...filters, ...validAdHoc]
+    }
     if (conversations.status) {
       filters = filters.filter(f => f.model !== 'conversation_statuses')
       filters.push({
@@ -459,7 +483,6 @@ export const useConversationStore = defineStore('conversation', () => {
         value: conversations.status
       })
     }
-    if (filters) conversations.listFilters = filters
     if (showLoader) conversations.loading = true
     try {
       conversations.errorMessage = ''
@@ -853,6 +876,7 @@ export const useConversationStore = defineStore('conversation', () => {
     fetchPriorities,
     setListSortField,
     setListStatus,
+    setAdHocFilters,
     removeMacroAction,
     getMacro,
     setMacro,

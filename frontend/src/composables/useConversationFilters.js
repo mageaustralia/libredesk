@@ -329,6 +329,21 @@ export function useConversationFilters () {
     }))
 
 
+
+    const conversationsPillBarFields = computed(() => [
+      { key: 'status_id', label: t('globals.terms.status'), type: 'multi_select', options: cStore.statusOptions, model: 'conversations' },
+      { key: 'priority_id', label: t('globals.terms.priority'), type: 'multi_select', options: cStore.priorityOptions, model: 'conversations' },
+      { key: 'assigned_user_id', label: t('globals.terms.agent'), type: 'multi_select', options: uStore.options, model: 'conversations' },
+      { key: 'assigned_team_id', label: t('globals.terms.team'), type: 'multi_select', options: tStore.options, model: 'conversations' },
+      { key: 'inbox_id', label: t('globals.terms.inbox'), type: 'multi_select', options: iStore.options, model: 'conversations' },
+      { key: 'tags', label: t('globals.terms.tag', 2), type: 'multi_select', options: tagStore.tagOptions, model: 'conversations' },
+      { key: 'created_at', label: 'Created', type: 'date', model: 'conversations' },
+      { key: 'last_message_at', label: 'Last activity', type: 'date', model: 'conversations' },
+      { key: 'closed_at', label: 'Closed at', type: 'date', model: 'conversations' },
+      { key: 'resolved_at', label: 'Resolved at', type: 'date', model: 'conversations' },
+      { key: 'next_sla_deadline_at', label: 'SLA deadline', type: 'date', model: 'conversations' },
+    ])
+
     return {
         conversationsListFilters,
         conversationFilters,
@@ -336,5 +351,6 @@ export function useConversationFilters () {
         conversationActions,
         macroActions,
         contactCustomAttributes,
+        conversationsPillBarFields,
     }
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex flex-col">
+  <div class="h-screen flex flex-col overflow-hidden">
     <!-- Header -->
     <div class="flex items-center space-x-4 px-2 h-12 border-b shrink-0">
       <SidebarTrigger class="cursor-pointer" />
@@ -100,16 +100,14 @@
     </div>
 
     <!-- Filters (hidden when bulk selecting) -->
-    <div v-else class="p-2 flex justify-between items-center">
+    <div v-else class="p-2 flex flex-wrap items-center gap-1.5">
       <!-- Status dropdown-menu, hidden when a view is selected as views are pre-filtered -->
       <DropdownMenu v-if="!route.params.viewID">
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" class="w-30">
-            <div>
-              <span class="mr-1">{{ conversationStore.conversations.total }}</span>
-              <span>{{ conversationStore.getListStatus }}</span>
-            </div>
-            <ChevronDown class="w-4 h-4 ml-2 opacity-50" />
+          <Button variant="ghost" size="sm" class="shrink-0">
+            <span class="mr-1">{{ conversationStore.conversations.total }}</span>
+            <span>{{ conversationStore.getListStatus }}</span>
+            <ChevronDown class="w-4 h-4 ml-1 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -123,18 +121,26 @@
         </DropdownMenuContent>
       </DropdownMenu>
       <div v-else>
-        <Button variant="ghost" class="w-30">
+        <Button variant="ghost" size="sm" class="shrink-0">
           <span>{{ conversationStore.conversations.total }}</span>
         </Button>
       </div>
 
-      <div class="flex items-center gap-1">
+      <!-- Filter pills + add filter button (inline) -->
+      <FilterBar
+        :fields="pillBarFields"
+        :modelValue="adHocFilters"
+        @update:modelValue="handleFiltersChange"
+      />
+
+      <!-- Right-side controls -->
+      <div class="flex items-center gap-1 ml-auto shrink-0">
         <!-- Layout switcher -->
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" class="h-8 px-2">
-              <LayoutGrid v-if="viewMode === 'card'" class="w-4 h-4" />
-              <LayoutList v-else class="w-4 h-4" />
+            <Button variant="ghost" size="sm" class="h-7 px-1.5">
+              <LayoutGrid v-if="viewMode === 'card'" class="w-3.5 h-3.5" />
+              <LayoutList v-else class="w-3.5 h-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -154,9 +160,9 @@
         <!-- Sort dropdown-menu -->
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" class="w-30">
+            <Button variant="ghost" size="sm" class="h-7">
               {{ conversationStore.getListSortField }}
-              <ChevronDown class="w-4 h-4 ml-2 opacity-50" />
+              <ChevronDown class="w-3.5 h-3.5 ml-1 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
@@ -294,6 +300,8 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import FilterBar from '@/components/filter/FilterBar.vue'
+import { useConversationFilters } from '@/composables/useConversationFilters'
 import EmptyList from '@/features/conversation/list/ConversationEmptyList.vue'
 import ConversationListItem from '@/features/conversation/list/ConversationListItem.vue'
 import ConversationTableView from '@/features/conversation/list/ConversationTableView.vue'
@@ -314,6 +322,22 @@ const { t } = useI18n()
 const emitter = useEmitter()
 const { viewMode, setViewMode } = useTheme()
 const bulkLoading = ref(false)
+const { conversationsPillBarFields } = useConversationFilters()
+const pillBarFields = conversationsPillBarFields
+const adHocFilters = ref([])
+
+function handleFiltersChange(filters) {
+  // Deduplicate by field key (keep last per field)
+  const seen = new Map()
+  for (const f of filters) {
+    seen.set(f.field, f)
+  }
+  const deduped = Array.from(seen.values())
+  adHocFilters.value = deduped
+  // Only send filters with actual values to the API
+  const meaningful = deduped.filter(f => f.value && f.value !== "[]" && f.value !== "")
+  conversationStore.setAdHocFilters(meaningful)
+}
 
 onMounted(() => {
   usersStore.fetchUsers()
