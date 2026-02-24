@@ -15,7 +15,38 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Bulk Actions with conversation selection, and inline agent/team assignment directly from the conversation list.
+**Latest** — Spam & Trash management with configurable auto-cleanup, multi-folder IMAP polling, and advanced view filters.
+
+### Spam & Trash
+
+Full spam and trash lifecycle for conversations — manual actions, automatic cleanup, and Gmail spam folder integration.
+
+- **Spam status**: Mark conversations as Spam manually, or automatically via IMAP spam/junk folder detection
+- **Trash status**: Move conversations to Trash manually or via bulk action
+- **Restore / Not Spam**: One-click actions to move conversations back to the inbox
+- **Sidebar sections**: Dedicated Spam and Trash views in the sidebar
+- **TrashManager background worker** (runs hourly):
+  - Auto-trash resolved/closed conversations after configurable days (default 90)
+  - Auto-trash spam conversations after configurable days (default 30)
+  - Permanently purge trashed conversations after configurable days (default 30)
+  - Media and attachments cleaned up on purge
+- **Admin settings**: Configure all retention periods at Admin > Trash & Cleanup (set to 0 to disable)
+- **Multi-folder IMAP polling**: Enter comma-separated mailbox names (e.g. `INBOX, [Gmail]/Spam`) to poll multiple folders — messages from spam/junk folders automatically get Spam status
+- New incoming messages on Spam or Trashed conversations do not reopen them
+
+### Advanced View Filters
+
+Enhanced filter operators for personal and shared views, enabling multi-select agent/team filtering.
+
+- **"is any of"** (`in`) — match conversations assigned to any of the selected agents/teams
+- **"is none of"** (`not_in`) — exclude conversations assigned to specific agents/teams
+- **"is any of (or unassigned)"** (`in_or_null`) — match selected agents/teams OR unassigned conversations (common pattern: "my tickets + unassigned")
+- Multi-select dropdowns for agent and team fields in the view builder
+- Filter pill bar on conversation list showing active filters
+
+### Table View Layout
+
+Switch between card view and table view for the conversation list via a toggle in the toolbar. Table view shows conversations in a compact, data-dense format.
 
 ### Bulk Actions & Conversation Selection
 
@@ -27,6 +58,7 @@ Select multiple conversations from the list and perform bulk operations — no m
 - **Bulk Assign** to any agent or team via dropdown
 - **Bulk Status** change (Open, Replied, Resolved, Closed)
 - **Bulk Priority** change (Urgent, High, Medium, Low, None)
+- **Bulk Move to Trash**
 - Toast notifications with success/error counts
 
 ### Quick-Assign Dropdowns on Conversation List
@@ -105,11 +137,23 @@ Each inbox can have its own email signature with dynamic placeholders, configure
 
 Conversation attachments (images) are extracted, resized to 500x500, and included as base64 in AI prompts for multimodal models that support vision.
 
+### Security Hardening
+
+- **SSRF protection** on external URL fetching (webhook URLs, knowledge source URLs)
+- **Prompt injection mitigation** in AI-generated content
+- **Sensitive data redaction** in ecommerce API logs
+- **AI-generated HTML sanitisation** before editor insertion
+- **Internal error details** no longer leak to API clients
+- **Inbox ID override validation** on message send
+- **OpenRouter API key encryption** at rest in the database
+
 ### Other UI Customisations
 
 - **Ticket ID in header**: Shows contact name, reference number, and subject (e.g., "John Smith #105 - Order enquiry")
 - **Simplified sidebar name**: Contact name only in sidebar to avoid overflow
 - **Self-assign notification suppression**: Assigning to yourself doesn't trigger a notification
+- **Macro toolbar button**: Quick-access Zap icon in the reply toolbar for canned responses
+- **Image resize handles**: Drag to resize inline images in the editor
 
 ---
 
