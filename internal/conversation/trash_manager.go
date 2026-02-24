@@ -6,9 +6,13 @@ import (
 	"time"
 )
 
+// TrashSettingsFunc is a function that returns trash cleanup settings.
+// Returns (autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays).
+type TrashSettingsFunc func() (int, int, int)
+
 // RunTrashManager runs the trash management routine every hour.
-// It auto-trashes old resolved/spam conversations and purges old trash.
-func (c *Manager) RunTrashManager(ctx context.Context, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays int) {
+// It reads settings each cycle via the provided function so changes take effect without restart.
+func (c *Manager) RunTrashManager(ctx context.Context, getSettings TrashSettingsFunc) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -16,6 +20,7 @@ func (c *Manager) RunTrashManager(ctx context.Context, autoTrashResolvedDays, au
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays := getSettings()
 			c.runTrashCycle(ctx, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays)
 		}
 	}

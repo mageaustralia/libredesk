@@ -207,6 +207,12 @@ const routes = [
             meta: { title: 'Ecommerce' }
           },
           {
+            path: 'trash',
+            name: 'trash-settings',
+            component: () => import('@/views/admin/trash/TrashSettings.vue'),
+            meta: { title: 'Trash & Cleanup' }
+          },
+          {
             path: 'business-hours',
             component: () => import('@/views/admin/business-hours/BusinessHours.vue'),
             meta: { title: 'Business Hours' },

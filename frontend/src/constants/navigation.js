@@ -36,6 +36,11 @@ export const adminNavItems = [
         href: '/admin/sla',
         permission: 'sla:manage',
         isTitleKeyPlural: true
+      },
+      {
+        titleKey: 'Trash & Cleanup',
+        href: '/admin/trash',
+        permission: 'general_settings:manage'
       }
     ]
   },
