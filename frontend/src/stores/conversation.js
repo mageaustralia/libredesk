@@ -548,6 +548,22 @@ export const useConversationStore = defineStore('conversation', () => {
           order: sortFieldMap[conversations.sortField].order,
           filters
         })
+      case CONVERSATION_LIST_TYPE.SPAM:
+        return await api.getSpamConversations({
+          page: page,
+          page_size: CONV_LIST_PAGE_SIZE,
+          order_by: sortFieldMap[conversations.sortField].model + "." + sortFieldMap[conversations.sortField].field,
+          order: sortFieldMap[conversations.sortField].order,
+          filters
+        })
+      case CONVERSATION_LIST_TYPE.TRASH:
+        return await api.getTrashConversations({
+          page: page,
+          page_size: CONV_LIST_PAGE_SIZE,
+          order_by: sortFieldMap[conversations.sortField].model + "." + sortFieldMap[conversations.sortField].field,
+          order: sortFieldMap[conversations.sortField].order,
+          filters
+        })
       default:
         throw new Error('Invalid conversation list type: ' + listType)
     }

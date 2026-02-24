@@ -115,7 +115,7 @@ const routes = [
         meta: { title: 'Search', hidePageHeader: true }
       },
       {
-        path: '/inboxes/:type(assigned|unassigned|all|mentioned)?',
+        path: '/inboxes/:type(assigned|unassigned|all|mentioned|spam|trash)?',
         name: 'inboxes',
         redirect: '/inboxes/assigned',
         component: InboxLayout,
