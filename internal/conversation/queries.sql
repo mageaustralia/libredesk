@@ -413,7 +413,7 @@ SET
 WHERE 
   uuid = $1
   AND status_id IN (
-    SELECT id FROM conversation_statuses WHERE name NOT IN ('Open')
+    SELECT id FROM conversation_statuses WHERE name NOT IN ('Open', 'Spam', 'Trashed')
   )
 
 -- name: get-conversation-by-message-id
@@ -694,6 +694,15 @@ UPDATE conversations SET
     updated_at = NOW()
 WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam')
 AND created_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: purge-old-trash-media
+DELETE FROM media WHERE model_type = 'messages' AND model_id IN (
+    SELECT id FROM conversation_messages WHERE conversation_id IN (
+        SELECT id FROM conversations
+        WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
+        AND trashed_at < NOW() - INTERVAL '1 day' * $1
+    )
+);
 
 -- name: purge-old-trash
 DELETE FROM conversations

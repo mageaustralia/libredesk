@@ -455,6 +455,11 @@ func handleUpdateTrashSettings(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
 	}
 
+	// Validate that day values are not negative.
+	if req.AutoTrashResolvedDays < 0 || req.AutoTrashSpamDays < 0 || req.AutoDeleteDays < 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Day values must be 0 or greater", nil, envelope.InputError)
+	}
+
 	if err := app.setting.Update(req); err != nil {
 		return sendErrorEnvelope(r, err)
 	}

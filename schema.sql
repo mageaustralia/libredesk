@@ -260,6 +260,7 @@ CREATE INDEX index_conversations_on_last_message_at ON conversations (last_messa
 CREATE INDEX index_conversations_on_last_interaction_at ON conversations (last_interaction_at);
 CREATE INDEX index_conversations_on_next_sla_deadline_at ON conversations (next_sla_deadline_at);
 CREATE INDEX index_conversations_on_waiting_since ON conversations (waiting_since);
+CREATE INDEX IF NOT EXISTS index_conversations_trashed_at ON conversations (trashed_at) WHERE trashed_at IS NOT NULL;
 
 DROP TABLE IF EXISTS conversation_messages CASCADE;
 CREATE TABLE conversation_messages (

@@ -49,6 +49,11 @@ func (c *Manager) runTrashCycle(ctx context.Context, autoTrashResolvedDays, auto
 
 	// Purge old trashed conversations (permanent delete)
 	if purgeTrashDays > 0 {
+		// Clean up media first (before cascade deletes messages)
+		if _, err := c.q.PurgeOldTrashMedia.ExecContext(ctx, purgeTrashDays); err != nil {
+			c.lo.Error("error purging media for old trash", "error", err)
+		}
+
 		res, err := c.q.PurgeOldTrash.ExecContext(ctx, purgeTrashDays)
 		if err != nil {
 			c.lo.Error("error purging old trash", "error", err)
