@@ -391,6 +391,16 @@ func (c *Manager) GetMentionedConversationsList(viewingUserID int, order, orderB
 	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.MentionedConversations}, order, orderBy, filters, page, pageSize)
 }
 
+// GetSpamConversationsList retrieves spam conversations.
+func (c *Manager) GetSpamConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
+	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.SpamConversations}, order, orderBy, filters, page, pageSize)
+}
+
+// GetTrashedConversationsList retrieves trashed conversations.
+func (c *Manager) GetTrashedConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
+	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.TrashedConversations}, order, orderBy, filters, page, pageSize)
+}
+
 // InsertMentions inserts mentions for a message.
 func (c *Manager) InsertMentions(conversationID, messageID, mentionedByUserID int, mentions []models.MentionInput) error {
 	for _, mention := range mentions {
@@ -1355,6 +1365,10 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 					   WHERE tm.team_id = cm.mentioned_team_id AND tm.user_id = $1
 				   )
 			)`)
+		case models.SpamConversations:
+			conditions = append(conditions, "conversations.status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam')")
+		case models.TrashedConversations:
+			conditions = append(conditions, "conversations.status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')")
 		default:
 			return "", nil, fmt.Errorf("unknown conversation type: %s", lt)
 		}
@@ -1364,6 +1378,11 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 	var whereClause string
 	if len(conditions) > 0 {
 		whereClause = "AND (" + strings.Join(conditions, " OR ") + ")"
+	}
+
+	// Exclude Spam and Trashed from normal views
+	if !slices.Contains(listTypes, models.SpamConversations) && !slices.Contains(listTypes, models.TrashedConversations) {
+		whereClause += " AND conversations.status_id NOT IN (SELECT id FROM conversation_statuses WHERE name IN ('Spam', 'Trashed'))"
 	}
 
 	// Add tag filter conditions
