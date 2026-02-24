@@ -85,6 +85,18 @@
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <!-- Trash -->
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        :disabled="bulkLoading"
+        @click="bulkMoveToTrash"
+      >
+        <Trash2 class="w-3 h-3 mr-1" />
+        Trash
+      </Button>
+
       <!-- Clear selection -->
       <Button
         variant="ghost"
@@ -288,7 +300,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -414,6 +426,10 @@ const bulkAssignTeam = (teamId) => {
 
 const bulkUpdateStatus = (status) => {
   runBulkAction((uuid) => api.updateConversationStatus(uuid, { status }))
+}
+
+const bulkMoveToTrash = () => {
+  runBulkAction((uuid) => api.moveToTrash(uuid))
 }
 
 const bulkUpdatePriority = (priority) => {
