@@ -1,21 +1,88 @@
 <template>
   <table class="conversation-table w-full text-sm table-fixed">
+    <colgroup>
+      <col :style="{ width: columnWidths.checkbox + 'px' }">
+      <col :style="{ width: columnWidths.contact + 'px' }">
+      <col :style="{ width: columnWidths.subject + 'px' }">
+      <col :style="{ width: columnWidths.state + 'px' }">
+      <col :style="{ width: columnWidths.group + 'px' }">
+      <col :style="{ width: columnWidths.agent + 'px' }">
+      <col :style="{ width: columnWidths.priority + 'px' }">
+      <col :style="{ width: columnWidths.status + 'px' }">
+      <col :style="{ width: columnWidths.updated + 'px' }">
+    </colgroup>
     <thead class="sticky top-0 bg-background z-10 border-b">
       <tr class="text-left text-xs text-muted-foreground">
-        <th class="w-8 px-2 py-2">
+        <th class="px-2 py-2">
           <Checkbox
             :checked="conversationStore.allSelected"
             @update:checked="toggleSelectAll"
           />
         </th>
-        <th class="px-2 py-2 font-medium w-32">Contact</th>
-        <th class="px-2 py-2 font-medium">Subject</th>
-        <th class="px-2 py-2 font-medium w-20">State</th>
-        <th class="px-2 py-2 font-medium w-28">Group</th>
-        <th class="px-2 py-2 font-medium w-28">Agent</th>
-        <th class="px-2 py-2 font-medium w-20">Priority</th>
-        <th class="px-2 py-2 font-medium w-20">Status</th>
-        <th class="px-2 py-2 font-medium w-20 text-right">Updated</th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Contact
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'contact')"
+            @dblclick="resetColumn('contact')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Subject
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'subject')"
+            @dblclick="resetColumn('subject')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          State
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'state')"
+            @dblclick="resetColumn('state')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Group
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'group')"
+            @dblclick="resetColumn('group')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Agent
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'agent')"
+            @dblclick="resetColumn('agent')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Priority
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'priority')"
+            @dblclick="resetColumn('priority')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium relative select-none">
+          Status
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'status')"
+            @dblclick="resetColumn('status')"
+          />
+        </th>
+        <th class="px-2 py-2 font-medium text-right relative select-none">
+          Updated
+          <div
+            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            @mousedown.prevent="startResize($event, 'updated')"
+            @dblclick="resetColumn('updated')"
+          />
+        </th>
       </tr>
     </thead>
     <tbody class="divide-y">
@@ -226,10 +293,90 @@ defineProps({
   conversations: Array
 })
 
+// ── Column resize logic ──────────────────────────────────────────────
+const STORAGE_KEY = 'libredesk-table-col-widths'
+
+const defaultWidths = {
+  checkbox: 36,
+  contact: 140,
+  subject: 400,
+  state: 80,
+  group: 120,
+  agent: 120,
+  priority: 80,
+  status: 80,
+  updated: 90,
+}
+
+const MIN_WIDTH = 60
+
+const loadWidths = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return { ...defaultWidths, ...parsed }
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return { ...defaultWidths }
+}
+
+const columnWidths = ref(loadWidths())
+
+const saveWidths = () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths.value))
+}
+
+let resizingCol = null
+let startX = 0
+let startWidth = 0
+
+const startResize = (event, col) => {
+  resizingCol = col
+  startX = event.clientX
+  startWidth = columnWidths.value[col]
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+const onMouseMove = (event) => {
+  if (!resizingCol) return
+  const delta = event.clientX - startX
+  const newWidth = Math.max(MIN_WIDTH, startWidth + delta)
+  columnWidths.value[resizingCol] = newWidth
+}
+
+const onMouseUp = () => {
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  saveWidths()
+  resizingCol = null
+}
+
+const resetColumn = (col) => {
+  columnWidths.value[col] = defaultWidths[col]
+  saveWidths()
+}
+// ── End column resize logic ──────────────────────────────────────────
+
 onMounted(() => {
   timer = setInterval(() => { now.value = new Date() }, 60000)
 })
-onUnmounted(() => { if (timer) clearInterval(timer) })
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+  // Clean up resize listeners in case unmount happens mid-drag
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+})
 
 const toggleSelectAll = () => {
   if (conversationStore.allSelected) {
