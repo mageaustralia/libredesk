@@ -7,6 +7,8 @@ import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents'
 import MessageCache from '@/utils/conversation-message-cache'
 import api from '@/api'
+import { useUsersStore } from '@/stores/users'
+import { useTeamStore } from '@/stores/team'
 
 export const useConversationStore = defineStore('conversation', () => {
   const CONV_LIST_PAGE_SIZE = 50
@@ -754,15 +756,39 @@ export const useConversationStore = defineStore('conversation', () => {
 
     const { uuid, prop, value } = update
 
+    // Resolve names for ID-only WebSocket updates so the UI shows names, not IDs
+    const resolveAssignmentName = (obj) => {
+      if (prop === 'assigned_user_id') {
+        if (value) {
+          const usersStore = useUsersStore()
+          const user = usersStore.options.find(u => String(u.value) === String(value))
+          obj.assigned_user_name = user ? user.label : obj.assigned_user_name
+        } else {
+          obj.assigned_user_name = null
+        }
+      }
+      if (prop === 'assigned_team_id') {
+        if (value) {
+          const teamStore = useTeamStore()
+          const team = teamStore.options.find(t => String(t.value) === String(value))
+          obj.assigned_team_name = team ? team.label : obj.assigned_team_name
+        } else {
+          obj.assigned_team_name = null
+        }
+      }
+    }
+
     // Conversation is currently open? Update it.
     if (conversation.data?.uuid === uuid) {
       updateNested(conversation.data, prop, value)
+      resolveAssignmentName(conversation.data)
     }
 
     // Update conversation if it exists in the list.
     const existingConversation = conversations?.data?.find(c => c.uuid === uuid)
     if (existingConversation) {
       updateNested(existingConversation, prop, value)
+      resolveAssignmentName(existingConversation)
     }
   }
 
