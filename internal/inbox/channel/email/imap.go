@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -558,6 +559,18 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Check if this is a contact form email — extract real customer details from body
+	if firstName, lastName, email, ok := parseContactFormFields(envelope.Text); ok {
+		e.lo.Info("parsed contact form fields from email body",
+			"parsed_name", firstName+" "+lastName,
+			"parsed_email", email,
+			"original_from", incomingMsg.Contact.Email.String)
+		incomingMsg.Contact.FirstName = firstName
+		incomingMsg.Contact.LastName = lastName
+		incomingMsg.Contact.Email = null.NewString(email, true)
+		incomingMsg.Contact.SourceChannelID = null.NewString(email, true)
+	}
+
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.Message.SourceID.String,
 		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines))
 
@@ -565,6 +578,46 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		return err
 	}
 	return nil
+}
+
+// parseContactFormFields checks if the email body contains contact form fields
+// (Name:, E-mail:) and extracts the real customer details. This handles the common
+// case where a website contact form sends email from a system address (e.g.,
+// orders@company.com) but the actual customer name and email are in the body.
+func parseContactFormFields(text string) (firstName, lastName, email string, found bool) {
+	if text == "" {
+		return "", "", "", false
+	}
+
+	// Look for Name: field
+	nameRe := regexp.MustCompile(`(?i)(?:^|\n)\s*name\s*:\s*(.+?)\s*(?:\n|$)`)
+	nameMatch := nameRe.FindStringSubmatch(text)
+
+	// Look for E-mail/Email: field
+	emailRe := regexp.MustCompile(`(?i)(?:^|\n)\s*e-?mail\s*:\s*([^\s]+?)\s*(?:\n|$)`)
+	emailMatch := emailRe.FindStringSubmatch(text)
+
+	if nameMatch == nil || emailMatch == nil {
+		return "", "", "", false
+	}
+
+	name := strings.TrimSpace(nameMatch[1])
+	parsedEmail := strings.TrimSpace(emailMatch[1])
+
+	// Validate email has @ sign
+	if !strings.Contains(parsedEmail, "@") {
+		return "", "", "", false
+	}
+
+	names := strings.Fields(name)
+	if len(names) == 0 {
+		return "", "", "", false
+	}
+
+	if len(names) == 1 {
+		return names[0], "", strings.ToLower(parsedEmail), true
+	}
+	return names[0], strings.Join(names[1:], " "), strings.ToLower(parsedEmail), true
 }
 
 // getContactName extracts the contact's first and last name from the IMAP address.
