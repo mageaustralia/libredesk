@@ -560,7 +560,7 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 	}
 
 	// Check if this is a contact form email — extract real customer details from body
-	if firstName, lastName, email, ok := parseContactFormFields(envelope.Text); ok {
+	if firstName, lastName, email, ok := parseContactFormFields(envelope.Text, incomingMsg.Message.Content); ok {
 		e.lo.Info("parsed contact form fields from email body",
 			"parsed_name", firstName+" "+lastName,
 			"parsed_email", email,
@@ -584,17 +584,29 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 // (Name:, E-mail:) and extracts the real customer details. This handles the common
 // case where a website contact form sends email from a system address (e.g.,
 // orders@company.com) but the actual customer name and email are in the body.
-func parseContactFormFields(text string) (firstName, lastName, email string, found bool) {
+func parseContactFormFields(plainText, html string) (firstName, lastName, email string, found bool) {
+	// Try plain text first, fall back to HTML with tags stripped
+	text := plainText
+	if text == "" && html != "" {
+		// Strip HTML tags to get plain text
+		text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(html, " ")
+		// Collapse whitespace but preserve newlines from <br> tags
+		text = regexp.MustCompile(`<br\s*/?>|<br>`).ReplaceAllString(html, "\n")
+		text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, " ")
+		// Normalise whitespace
+		text = regexp.MustCompile(`[ \t]+`).ReplaceAllString(text, " ")
+	}
+
 	if text == "" {
 		return "", "", "", false
 	}
 
-	// Look for Name: field
-	nameRe := regexp.MustCompile(`(?i)(?:^|\n)\s*name\s*:\s*(.+?)\s*(?:\n|$)`)
+	// Look for Name: field (handles "Name: John Smith" or "Name: John Smith\n")
+	nameRe := regexp.MustCompile(`(?i)name\s*:\s*([^\n<]+?)\s*(?:\n|<|$)`)
 	nameMatch := nameRe.FindStringSubmatch(text)
 
 	// Look for E-mail/Email: field
-	emailRe := regexp.MustCompile(`(?i)(?:^|\n)\s*e-?mail\s*:\s*([^\s]+?)\s*(?:\n|$)`)
+	emailRe := regexp.MustCompile(`(?i)e-?mail\s*:\s*([^\s<]+?)\s*(?:\n|<|\s|$)`)
 	emailMatch := emailRe.FindStringSubmatch(text)
 
 	if nameMatch == nil || emailMatch == nil {
