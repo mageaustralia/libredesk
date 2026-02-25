@@ -19,58 +19,58 @@
             @update:checked="toggleSelectAll"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Contact
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'contact')"
             @dblclick="resetColumn('contact')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Subject
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'subject')"
             @dblclick="resetColumn('subject')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           State
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'state')"
             @dblclick="resetColumn('state')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Group
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'group')"
             @dblclick="resetColumn('group')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Agent
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'agent')"
             @dblclick="resetColumn('agent')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Priority
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'priority')"
             @dblclick="resetColumn('priority')"
           />
         </th>
-        <th class="px-2 py-2 font-medium relative select-none">
+        <th class="px-2 py-2 font-medium relative select-none group/th">
           Status
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'status')"
             @dblclick="resetColumn('status')"
           />
@@ -78,7 +78,7 @@
         <th class="px-2 py-2 font-medium text-right relative select-none">
           Updated
           <div
-            class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'updated')"
             @dblclick="resetColumn('updated')"
           />
