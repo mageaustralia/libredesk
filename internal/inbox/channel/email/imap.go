@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"time"
@@ -559,16 +560,48 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Check if the From address was rewritten (e.g., Google Workspace DMARC forwarding).
+	// This handles cases where emails sent to info@company.com get forwarded to the
+	// monitored inbox with From rewritten to info@company.com instead of the real sender.
+	if realFirst, realLast, realEmail := extractRealSender(envelope, strings.ToLower(incomingMsg.Contact.Email.String)); realEmail != "" {
+		e.lo.Info("detected rewritten From address, using real sender",
+			"real_email", realEmail,
+			"real_name", realFirst+" "+realLast,
+			"rewritten_from", incomingMsg.Contact.Email.String)
+		incomingMsg.Contact.FirstName = realFirst
+		incomingMsg.Contact.LastName = realLast
+		incomingMsg.Contact.Email = null.NewString(realEmail, true)
+		incomingMsg.Contact.SourceChannelID = null.NewString(realEmail, true)
+
+		// Update message meta.from
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal(incomingMsg.Message.Meta, &metaMap); err == nil {
+			metaMap["from"] = []string{realEmail}
+			if updated, err := json.Marshal(metaMap); err == nil {
+				incomingMsg.Message.Meta = updated
+			}
+		}
+	}
+
 	// Check if this is a contact form email — extract real customer details from body
-	if firstName, lastName, email, ok := parseContactFormFields(envelope.Text, incomingMsg.Message.Content); ok {
+	if firstName, lastName, parsedEmail, ok := parseContactFormFields(envelope.Text, incomingMsg.Message.Content); ok {
 		e.lo.Info("parsed contact form fields from email body",
 			"parsed_name", firstName+" "+lastName,
-			"parsed_email", email,
+			"parsed_email", parsedEmail,
 			"original_from", incomingMsg.Contact.Email.String)
 		incomingMsg.Contact.FirstName = firstName
 		incomingMsg.Contact.LastName = lastName
-		incomingMsg.Contact.Email = null.NewString(email, true)
-		incomingMsg.Contact.SourceChannelID = null.NewString(email, true)
+		incomingMsg.Contact.Email = null.NewString(parsedEmail, true)
+		incomingMsg.Contact.SourceChannelID = null.NewString(parsedEmail, true)
+
+		// Update message meta.from so reply TO field shows the real customer email
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal(incomingMsg.Message.Meta, &metaMap); err == nil {
+			metaMap["from"] = []string{strings.ToLower(parsedEmail)}
+			if updated, err := json.Marshal(metaMap); err == nil {
+				incomingMsg.Message.Meta = updated
+			}
+		}
 	}
 
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.Message.SourceID.String,
@@ -580,6 +613,70 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 	return nil
 }
 
+
+// extractRealSender checks email headers for the real sender when the From address
+// has been rewritten (e.g., by Google Workspace DMARC forwarding). When a group/alias
+// like info@company.com forwards to the monitored inbox, Google may rewrite From to
+// the group address. The real sender is preserved in X-Google-Original-From or Reply-To.
+// Returns the real sender's name and email, or empty strings if no rewrite detected.
+func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName, lastName, email string) {
+	// Priority 1: X-Google-Original-From — definitive proof of From rewriting
+	if origFrom := envelope.GetHeader("X-Google-Original-From"); origFrom != "" {
+		// Parse the address: "Name <email>" or just "<email>" or just "email"
+		if addr, err := mail.ParseAddress(origFrom); err == nil && addr.Address != "" {
+			realEmail := strings.ToLower(addr.Address)
+			if realEmail != strings.ToLower(currentFrom) {
+				parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+				first := ""
+				last := ""
+				if len(parts) > 0 {
+					first = parts[0]
+				}
+				if len(parts) > 1 {
+					last = parts[1]
+				}
+				return first, last, realEmail
+			}
+		}
+	}
+
+	// Priority 2: Reply-To — but only if From domain matches To domain (forwarding signal)
+	if replyTo := envelope.GetHeader("Reply-To"); replyTo != "" {
+		if addr, err := mail.ParseAddress(replyTo); err == nil && addr.Address != "" {
+			realEmail := strings.ToLower(addr.Address)
+			if realEmail != strings.ToLower(currentFrom) {
+				// Check if From and To share the same domain (forwarding indicator)
+				fromDomain := ""
+				if parts := strings.SplitN(currentFrom, "@", 2); len(parts) == 2 {
+					fromDomain = strings.ToLower(parts[1])
+				}
+				toDomain := ""
+				toHeader := envelope.GetHeader("To")
+				if toAddr, err := mail.ParseAddress(toHeader); err == nil {
+					if parts := strings.SplitN(strings.ToLower(toAddr.Address), "@", 2); len(parts) == 2 {
+						toDomain = parts[1]
+					}
+				}
+				// If From domain == To domain, it's likely a forwarded email
+				if fromDomain != "" && fromDomain == toDomain {
+					parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+					first := ""
+					last := ""
+					if len(parts) > 0 {
+						first = parts[0]
+					}
+					if len(parts) > 1 {
+						last = parts[1]
+					}
+					return first, last, realEmail
+				}
+			}
+		}
+	}
+
+	return "", "", ""
+}
+
 // parseContactFormFields checks if the email body contains contact form fields
 // (Name:, E-mail:) and extracts the real customer details. This handles the common
 // case where a website contact form sends email from a system address (e.g.,
@@ -588,25 +685,38 @@ func parseContactFormFields(plainText, html string) (firstName, lastName, email 
 	// Try plain text first, fall back to HTML with tags stripped
 	text := plainText
 	if text == "" && html != "" {
-		// Strip HTML tags to get plain text
-		text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(html, " ")
-		// Collapse whitespace but preserve newlines from <br> tags
-		text = regexp.MustCompile(`<br\s*/?>|<br>`).ReplaceAllString(html, "\n")
-		text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, " ")
-		// Normalise whitespace
+		text = html
+		// Replace <br> variants with newlines FIRST (before stripping other tags)
+		text = regexp.MustCompile(`(?i)<br\s*/?>\s*`).ReplaceAllString(text, "\n")
+		// Strip all remaining HTML tags
+		text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, "")
+		// Decode common HTML entities
+		text = strings.ReplaceAll(text, "&amp;", "&")
+		text = strings.ReplaceAll(text, "&lt;", "<")
+		text = strings.ReplaceAll(text, "&gt;", ">")
+		text = strings.ReplaceAll(text, "&nbsp;", " ")
+		text = strings.ReplaceAll(text, "&#39;", "'")
+		text = strings.ReplaceAll(text, "&quot;", "\"")
+		// Normalise whitespace (preserve newlines)
 		text = regexp.MustCompile(`[ \t]+`).ReplaceAllString(text, " ")
+		// Trim each line
+		lines := strings.Split(text, "\n")
+		for i, line := range lines {
+			lines[i] = strings.TrimSpace(line)
+		}
+		text = strings.Join(lines, "\n")
 	}
 
 	if text == "" {
 		return "", "", "", false
 	}
 
-	// Look for Name: field (handles "Name: John Smith" or "Name: John Smith\n")
-	nameRe := regexp.MustCompile(`(?i)name\s*:\s*([^\n<]+?)\s*(?:\n|<|$)`)
+	// Look for Name: field
+	nameRe := regexp.MustCompile(`(?i)(?:^|\n)\s*\*?name\*?\s*:\*?\s*(.+?)\s*(?:\n|$)`)
 	nameMatch := nameRe.FindStringSubmatch(text)
 
 	// Look for E-mail/Email: field
-	emailRe := regexp.MustCompile(`(?i)e-?mail\s*:\s*([^\s<]+?)\s*(?:\n|<|\s|$)`)
+	emailRe := regexp.MustCompile(`(?i)(?:^|\n)\s*\*?e-?mail\*?\s*:\*?\s*(\S+?)\s*(?:\n|$)`)
 	emailMatch := emailRe.FindStringSubmatch(text)
 
 	if nameMatch == nil || emailMatch == nil {
@@ -706,3 +816,4 @@ func extractConversationUUIDFromRecipient(envelope *enmime.Envelope) string {
 	}
 	return ""
 }
+
