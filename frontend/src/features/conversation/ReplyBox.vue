@@ -75,6 +75,10 @@
           @generateResponse="handleGenerateResponse"
           @generateWithOrders="handleGenerateWithOrders"
           @inboxChange="handleInboxChange"
+          @sendWithStatus="processSendWithStatus"
+          @deleteDraft="handleDeleteDraft"
+          :hasDraft="hasDraftContent"
+          :sendStatuses="availableSendStatuses"
           class="h-full flex-grow"
         />
       </DialogContent>
@@ -115,6 +119,10 @@
         @generateResponse="handleGenerateResponse"
         @generateWithOrders="handleGenerateWithOrders"
         @inboxChange="handleInboxChange"
+        @sendWithStatus="processSendWithStatus"
+        @deleteDraft="handleDeleteDraft"
+        :hasDraft="hasDraftContent"
+        :sendStatuses="availableSendStatuses"
       />
     </div>
   </div>
@@ -374,7 +382,7 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
       insertSignature()
     }
   }, 200)
-})
+}, { immediate: true })
 
 /**
  * Handles the AI prompt selection event.
@@ -593,6 +601,53 @@ const processSend = async () => {
     isSending.value = false
   }
 }
+
+/**
+ * Send message and set conversation status in one action.
+ */
+const processSendWithStatus = async (status) => {
+  await processSend()
+  // After successful send, update the conversation status
+  if (!isSending.value) {
+    try {
+      await api.updateConversationStatus(conversationStore.current.uuid, { status })
+    } catch (error) {
+      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+        variant: 'destructive',
+        description: handleHTTPError(error).message
+      })
+    }
+  }
+}
+
+/**
+ * Delete the current draft and clear the editor.
+ */
+const handleDeleteDraft = async () => {
+  clearDraft(currentDraftKey.value)
+  clearMediaFiles()
+  emailErrors.value = []
+  mentions.value = []
+  emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+    description: 'Draft deleted'
+  })
+}
+
+/**
+ * Whether the editor has draft content.
+ */
+const hasDraftContent = computed(() => {
+  return hasTextContent.value > 0 || mediaFiles.value.length > 0
+})
+
+/**
+ * Statuses available for "Send and set as" dropdown.
+ */
+const availableSendStatuses = computed(() => {
+  return conversationStore.statuses
+    .filter(s => !['Snoozed', 'Spam', 'Trashed'].includes(s.name))
+    .map(s => s.name)
+})
 
 watch(
   () => conversationStore.getMacro('reply').id,

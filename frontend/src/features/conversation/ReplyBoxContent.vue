@@ -38,8 +38,7 @@
       <div class="flex items-center space-x-2" v-if="inboxes.length > 1">
         <label class="w-12 text-sm font-medium text-muted-foreground">FROM:</label>
         <select
-          :value="String(selectedInboxId)"
-          @change="onInboxChange($event.target.value)"
+          v-model="localSelectedInbox"
           class="flex-grow h-9 px-3 py-1 text-sm border rounded bg-background text-foreground focus:ring-2 focus:ring-ring outline-none"
         >
           <option
@@ -142,9 +141,13 @@
       :handleSend="handleSend"
       :showGenerateButton="messageType === 'reply'"
       :showOrdersButton="ecommerceConfigured"
+      :hasDraft="hasDraft"
+      :sendStatuses="sendStatuses"
       @emojiSelect="handleEmojiSelect"
       @generateResponse="handleGenerateResponse"
       @generateWithOrders="handleGenerateWithOrders"
+      @sendWithStatus="handleSendWithStatus"
+      @deleteDraft="handleDeleteDraft"
     />
   </div>
 </template>
@@ -261,12 +264,22 @@ const props = defineProps({
   selectedInboxId: {
     type: [Number, null],
     default: null
+  },
+  hasDraft: {
+    type: Boolean,
+    default: false
+  },
+  sendStatuses: {
+    type: Array,
+    default: () => ['Resolved', 'Closed', 'Open']
   }
 })
 
 const emit = defineEmits([
   'toggleFullscreen',
   'send',
+  'sendWithStatus',
+  'deleteDraft',
   'fileUpload',
   'inlineImageUpload',
   'fileDelete',
@@ -285,6 +298,12 @@ const editorRef = ref(null)
 const onInboxChange = (newId) => {
   emit('inboxChange', Number(newId))
 }
+
+// Local two-way binding for the FROM select — syncs prop down and emits changes up
+const localSelectedInbox = computed({
+  get: () => String(props.selectedInboxId || ''),
+  set: (val) => emit('inboxChange', Number(val))
+})
 
 const toggleBcc = async () => {
   showBcc.value = !showBcc.value
@@ -338,6 +357,22 @@ const handleSend = async () => {
     return
   }
   emit('send')
+}
+
+const handleSendWithStatus = async (status) => {
+  await validateEmails()
+  if (emailErrors.value.length > 0) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: t('globals.messages.correctEmailErrors')
+    })
+    return
+  }
+  emit('sendWithStatus', status)
+}
+
+const handleDeleteDraft = () => {
+  emit('deleteDraft')
 }
 
 const handleFileUpload = (event) => {
