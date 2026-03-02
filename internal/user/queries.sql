@@ -148,7 +148,9 @@ WITH contact AS (
    INSERT INTO users (email, type, first_name, last_name, "password", avatar_url)
    VALUES ($1, 'contact', $2, $3, $4, $5)
    ON CONFLICT (email, type) WHERE deleted_at IS NULL
-   DO UPDATE SET updated_at = now()
+   DO UPDATE SET updated_at = now(),
+   first_name = CASE WHEN EXCLUDED.first_name != '' AND (users.first_name LIKE '%.%' OR users.first_name = '' OR users.first_name IS NULL) THEN EXCLUDED.first_name ELSE users.first_name END,
+   last_name = CASE WHEN EXCLUDED.first_name != '' AND (users.first_name LIKE '%.%' OR users.first_name = '' OR users.first_name IS NULL) THEN EXCLUDED.last_name ELSE users.last_name END
    RETURNING id
 )
 INSERT INTO contact_channels (contact_id, inbox_id, identifier)
