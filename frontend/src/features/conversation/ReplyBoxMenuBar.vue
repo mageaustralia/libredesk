@@ -63,9 +63,41 @@
         {{ isGenerating ? 'Generating...' : '+ Orders' }}
       </Button>
     </div>
-    <Button class="h-8 w-6 px-8" @click="handleSend" :disabled="!enableSend" :isLoading="isSending" v-if="showSendButton">
-      {{ $t('globals.messages.send') }}
-    </Button>
+    <div class="flex items-center" v-if="showSendButton">
+      <!-- Delete draft button -->
+      <Button
+        v-if="hasDraft"
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 mr-1 text-muted-foreground hover:text-destructive"
+        @click="$emit('deleteDraft')"
+        title="Delete draft"
+      >
+        <Trash2 class="h-4 w-4" />
+      </Button>
+      <!-- Split send button with status dropdown -->
+      <div class="flex">
+        <Button class="h-8 px-8 rounded-r-none" @click="handleSend" :disabled="!enableSend" :isLoading="isSending">
+          {{ $t('globals.messages.send') }}
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button class="h-8 px-1.5 rounded-l-none border-l border-primary-foreground/20" :disabled="!enableSend || isSending">
+              <ChevronDown class="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" class="w-56">
+            <DropdownMenuItem
+              v-for="status in sendStatuses"
+              :key="status"
+              @click="$emit('sendWithStatus', status)"
+            >
+              Send and set as {{ status }}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -74,7 +106,13 @@ import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
-import { Paperclip, Smile, Sparkles, ShoppingCart, Zap } from 'lucide-vue-next'
+import { Paperclip, Smile, Sparkles, ShoppingCart, Zap, ChevronDown, Trash2 } from 'lucide-vue-next'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 import { useEmitter } from '@/composables/useEmitter'
@@ -84,7 +122,7 @@ const emitter = useEmitter()
 const attachmentInput = ref(null)
 const isEmojiPickerVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders'])
+const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders', 'sendWithStatus', 'deleteDraft'])
 
 // Using defineProps for props that don't need two-way binding
 defineProps({
@@ -109,7 +147,15 @@ defineProps({
     default: false
   },
   handleFileUpload: Function,
-  handleInlineImageUpload: Function
+  handleInlineImageUpload: Function,
+  hasDraft: {
+    type: Boolean,
+    default: false
+  },
+  sendStatuses: {
+    type: Array,
+    default: () => ['Resolved', 'Closed', 'Open']
+  }
 })
 
 onClickOutside(emojiPickerRef, () => {

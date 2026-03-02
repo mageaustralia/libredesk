@@ -18,6 +18,7 @@
               <span class="text-secondary font-medium inline-block">
                 {{ conversationStore.current?.status }}
               </span>
+              <ChevronDown class="w-3 h-3 text-secondary" />
             </div>
             <Skeleton class="w-[70px] h-6 rounded-full" v-else />
           </DropdownMenuTrigger>
@@ -127,7 +128,7 @@ import {
 import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown } from 'lucide-vue-next'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
@@ -162,6 +163,7 @@ const handleMoveToTrash = async () => {
   try {
     await api.moveToTrash(conversationStore.conversation.data.uuid)
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Moved to trash' })
+    await conversationStore.fetchFirstPageConversations()
     router.push({ name: 'inbox', params: { type: 'assigned' } })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
@@ -172,6 +174,7 @@ const handleRestore = async () => {
   try {
     await api.restoreFromTrash(conversationStore.conversation.data.uuid)
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Conversation restored' })
+    await conversationStore.fetchFirstPageConversations()
     router.push({ name: 'inbox', params: { type: 'assigned' } })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
@@ -182,6 +185,7 @@ const handleMarkAsSpam = async () => {
   try {
     await api.markAsSpam(conversationStore.conversation.data.uuid)
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Marked as spam' })
+    await conversationStore.fetchFirstPageConversations()
     router.push({ name: 'inbox', params: { type: 'assigned' } })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
@@ -192,6 +196,7 @@ const handleMarkAsNotSpam = async () => {
   try {
     await api.markAsNotSpam(conversationStore.conversation.data.uuid)
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Moved to inbox' })
+    await conversationStore.fetchFirstPageConversations()
     router.push({ name: 'inbox', params: { type: 'assigned' } })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: handleHTTPError(error).message })
