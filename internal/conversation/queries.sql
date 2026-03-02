@@ -64,6 +64,7 @@ SELECT
     FROM (
         SELECT 1 FROM conversation_messages
         WHERE conversation_id = conversations.id
+        AND type != 'activity'
         AND created_at > COALESCE(
             (SELECT last_seen_at FROM conversation_last_seen
              WHERE conversation_id = conversations.id AND user_id = $1),
