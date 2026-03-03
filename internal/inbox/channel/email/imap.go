@@ -626,15 +626,17 @@ func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName
 		if addr, err := mail.ParseAddress(origFrom); err == nil && addr.Address != "" {
 			realEmail := strings.ToLower(addr.Address)
 			if realEmail != strings.ToLower(currentFrom) {
-				parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
-				first := ""
-				last := ""
-				if len(parts) > 0 {
-					first = parts[0]
+				if strings.TrimSpace(addr.Name) != "" {
+					parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+					first := parts[0]
+					last := ""
+					if len(parts) > 1 {
+						last = parts[1]
+					}
+					return first, last, realEmail
 				}
-				if len(parts) > 1 {
-					last = parts[1]
-				}
+				// No display name - derive from email
+				first, last := nameFromEmail(realEmail)
 				return first, last, realEmail
 			}
 		}
@@ -659,15 +661,17 @@ func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName
 				}
 				// If From domain == To domain, it's likely a forwarded email
 				if fromDomain != "" && fromDomain == toDomain {
-					parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
-					first := ""
-					last := ""
-					if len(parts) > 0 {
-						first = parts[0]
+					if strings.TrimSpace(addr.Name) != "" {
+						parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+						first := parts[0]
+						last := ""
+						if len(parts) > 1 {
+							last = parts[1]
+						}
+						return first, last, realEmail
 					}
-					if len(parts) > 1 {
-						last = parts[1]
-					}
+					// No display name - derive from email
+					first, last := nameFromEmail(realEmail)
 					return first, last, realEmail
 				}
 			}
@@ -743,16 +747,46 @@ func parseContactFormFields(plainText, html string) (firstName, lastName, email 
 }
 
 // getContactName extracts the contact's first and last name from the IMAP address.
+// nameFromEmail extracts a human-readable name from an email local part.
+// e.g. "sharynblakemore" -> ("Sharynblakemore", ""), "john.smith" -> ("John", "Smith"),
+// "paul_sallemi" -> ("Paul", "Sallemi")
+func nameFromEmail(emailAddr string) (string, string) {
+	parts := strings.SplitN(emailAddr, "@", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return emailAddr, ""
+	}
+	local := parts[0]
+	// Split on dots, underscores, dashes, or camelCase-ish boundaries
+	nameParts := regexp.MustCompile(`[._\-]+`).Split(local, -1)
+	// Filter out empty parts and numeric-only parts
+	var cleaned []string
+	for _, p := range nameParts {
+		p = strings.TrimSpace(p)
+		if p != "" && !regexp.MustCompile(`^[0-9]+$`).MatchString(p) {
+			// Title case each part
+			cleaned = append(cleaned, strings.ToUpper(p[:1])+strings.ToLower(p[1:]))
+		}
+	}
+	if len(cleaned) == 0 {
+		return local, ""
+	}
+	if len(cleaned) == 1 {
+		return cleaned[0], ""
+	}
+	return cleaned[0], strings.Join(cleaned[1:], " ")
+}
+
 func getContactName(imapAddr imap.Address) (string, string) {
 	from := strings.TrimSpace(imapAddr.Name)
 	names := strings.Fields(from)
 	if len(names) == 0 {
-		return imapAddr.Host, ""
+		// No display name - derive from email address
+		return nameFromEmail(imapAddr.Addr())
 	}
 	if len(names) == 1 {
 		return names[0], ""
 	}
-	return names[0], names[1]
+	return names[0], strings.Join(names[1:], " ")
 }
 
 // isAutoReply checks if a given email envelope indicates an auto-reply message.
