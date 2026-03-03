@@ -899,6 +899,40 @@ func (c *Manager) generateMessagesQuery(baseQuery string, qArgs []interface{}, p
 	return sqlQuery, pageSize, qArgs, nil
 }
 
+// replaceCIDInContent replaces cid: references in message HTML content.
+// For image content types, it replaces the cid: URL with the upload URL (normal behavior).
+// For non-image content types (e.g. PDF), it replaces the entire <img> tag with a download link,
+// since browsers cannot render non-image files in <img> tags.
+func replaceCIDInContent(content, cidRef, uploadURL, filename, contentType string) string {
+	contentType = strings.ToLower(contentType)
+	isImage := strings.HasPrefix(contentType, "image/")
+
+	if isImage {
+		// Normal behavior: just replace the cid: URL with upload URL.
+		return strings.ReplaceAll(content, cidRef, uploadURL)
+	}
+
+	// Non-image: replace the entire <img> tag containing this cid with a download link.
+	// Match <img ... src="cid:xxx" ...> or <img ... src='cid:xxx' ...> or unquoted.
+	escapedCID := regexp.QuoteMeta(cidRef)
+	imgPattern := regexp.MustCompile(`<img[^>]*src=["']?` + escapedCID + `["']?[^>]*/?>`)
+
+	if filename == "" {
+		filename = "attachment"
+	}
+
+	downloadLink := fmt.Sprintf(`<a href="%s" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#f0f0f0;border-radius:4px;text-decoration:none;color:#333;font-size:13px;border:1px solid #ddd;">📎 %s</a>`, uploadURL, filename)
+
+	replaced := imgPattern.ReplaceAllString(content, downloadLink)
+
+	// If no <img> tag was found (cid used elsewhere), fall back to simple URL replacement.
+	if replaced == content {
+		return strings.ReplaceAll(content, cidRef, uploadURL)
+	}
+
+	return replaced
+}
+
 // uploadMessageAttachments uploads all attachments for a message.
 func (m *Manager) uploadMessageAttachments(message *models.Message) error {
 	if len(message.Attachments) == 0 {
@@ -922,7 +956,7 @@ func (m *Manager) uploadMessageAttachments(message *models.Message) error {
 			// This attachment already exists, replace the cid:content_id with the media relative url, not using absolute path as the root path can change.
 			if exists {
 				m.lo.Debug("attachment with content ID already exists replacing content ID with media relative URL", "content_id", contentID, "media_uuid", uuid)
-				message.Content = strings.ReplaceAll(message.Content, fmt.Sprintf("cid:%s", attachment.ContentID), "/uploads/"+uuid)
+				message.Content = replaceCIDInContent(message.Content, fmt.Sprintf("cid:%s", attachment.ContentID), "/uploads/"+uuid, attachment.Name, attachment.ContentType)
 				continue
 			}
 
@@ -962,6 +996,11 @@ func (m *Manager) uploadMessageAttachments(message *models.Message) error {
 				m.lo.Error("error uploading thumbnail", "error", err)
 			}
 		}
+		// Replace the cid: reference with the upload URL now that the file is uploaded.
+		if contentID != "" {
+			message.Content = replaceCIDInContent(message.Content, fmt.Sprintf("cid:%s", contentID), "/uploads/"+media.UUID, attachment.Name, attachment.ContentType)
+		}
+
 		message.Media = append(message.Media, media)
 	}
 	return nil
