@@ -172,8 +172,20 @@
   @apply flex flex-col px-4 pt-2 pb-3 w-fit min-w-[30%] max-w-full border overflow-x-auto rounded shadow-sm;
   overflow-wrap: break-all;
 
-  * {
+  // Block-level elements should fill width, but images/tables should respect their original dimensions
+  > div, > p, > section, > article, > header, > footer,
+  .native-html > div, .native-html > p, .native-html > section {
     width: 100%;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    width: auto;
+  }
+
+  table {
+    max-width: 100%;
   }
 
   // Force normal whitespace handling for HTML email content
