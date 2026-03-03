@@ -122,22 +122,35 @@
           </div>
         </td>
 
-        <!-- Subject -->
+        <!-- Subject with hover preview -->
         <td class="px-2 py-2">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="text-[10px] text-muted-foreground whitespace-nowrap" v-if="conversation.reference_number">
-              #{{ conversation.reference_number }}
-            </span>
-            <span class="truncate font-medium text-xs">
-              {{ conversation.subject || 'No subject' }}
-            </span>
-            <div
-              v-if="conversation.unread_message_count > 0"
-              class="shrink-0 w-4 h-4 flex items-center justify-center bg-green-600 text-white text-[9px] font-medium rounded-full"
-            >
-              {{ conversation.unread_message_count }}
-            </div>
-          </div>
+          <TooltipProvider :delay-duration="400">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[10px] text-muted-foreground whitespace-nowrap" v-if="conversation.reference_number">
+                    #{{ conversation.reference_number }}
+                  </span>
+                  <span class="truncate font-medium text-xs">
+                    {{ conversation.subject || 'No subject' }}
+                  </span>
+                  <div
+                    v-if="conversation.unread_message_count > 0"
+                    class="shrink-0 w-4 h-4 flex items-center justify-center bg-green-600 text-white text-[9px] font-medium rounded-full"
+                  >
+                    {{ conversation.unread_message_count }}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent v-if="conversation.first_message" side="bottom" align="start" class="max-w-md p-3 text-xs leading-relaxed !bg-white !text-gray-900 border shadow-lg">
+                <div class="flex items-center gap-2 mb-1.5 text-muted-foreground">
+                  <span class="font-medium text-gray-900">{{ conversation.contact?.first_name }} {{ conversation.contact?.last_name }}</span>
+                  <span class="text-gray-500" v-if="conversation.last_message_at">{{ formatMessageTimestamp(conversation.last_message_at) }}</span>
+                </div>
+                <div class="text-gray-700 whitespace-pre-line">{{ (conversation.first_message || '').slice(0, 300) }}{{ (conversation.first_message || '').length > 300 ? '...' : '' }}</div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </td>
 
         <!-- State (last_message_sender indicator) -->
@@ -277,7 +290,8 @@ import {
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { getRelativeTime } from '@/utils/datetime'
+import { getRelativeTime, formatMessageTimestamp } from '@/utils/datetime'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { handleHTTPError } from '@/utils/http'
 import api from '@/api'
 
