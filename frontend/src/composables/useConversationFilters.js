@@ -99,7 +99,12 @@ export function useConversationFilters () {
 
     const newConversationFilters = computed(() => ({
         contact_email: {
-            label: t('globals.terms.email'),
+            label: 'From email',
+            type: FIELD_TYPE.TEXT,
+            operators: FIELD_OPERATORS.TEXT
+        },
+        inbox_email: {
+            label: 'To email',
             type: FIELD_TYPE.TEXT,
             operators: FIELD_OPERATORS.TEXT
         },
