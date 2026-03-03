@@ -3,11 +3,12 @@
 
     <!-- Fresh theme: show one panel at a time (list OR detail) -->
     <template v-if="hideListOnTicketOpen">
-      <!-- Back button when viewing a ticket -->
+      <!-- Back button + sidebar toggle when viewing a ticket -->
       <div
         v-if="hasConversationOpen"
-        class="flex items-center px-3 py-1.5 border-b bg-background shrink-0"
+        class="flex items-center gap-2 px-3 py-1.5 border-b bg-background shrink-0"
       >
+        <SidebarTrigger class="cursor-pointer" />
         <button
           @click="goBack"
           class="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -71,6 +72,7 @@ import { useStorage } from '@vueuse/core'
 import { useTheme } from '@/composables/useTheme'
 import ConversationList from '@/features/conversation/list/ConversationList.vue'
 import { ArrowLeft } from 'lucide-vue-next'
+import SidebarTrigger from '@/components/ui/sidebar/SidebarTrigger.vue'
 import {
   ResizablePanelGroup,
   ResizablePanel,
