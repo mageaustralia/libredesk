@@ -50,7 +50,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.POST("/api/v1/rag/sources/{id}/sync", perm(handleSyncRAGSource, "ai:manage"))
 	g.POST("/api/v1/rag/upload", perm(handleRAGFileUpload, "ai:manage"))
 	g.POST("/api/v1/rag/search", perm(handleRAGSearch, "ai:manage"))
-	g.POST("/api/v1/rag/generate", perm(handleRAGGenerateResponse, "conversations:write"))
+	g.POST("/api/v1/rag/generate", perm(handleRAGGenerateResponse, "messages:write"))
 	// Ecommerce integration
 	g.GET("/api/v1/settings/ecommerce", perm(handleGetEcommerceSettings, "general_settings:manage"))
 	g.PUT("/api/v1/settings/ecommerce", perm(handleUpdateEcommerceSettings, "general_settings:manage"))
