@@ -201,3 +201,39 @@
     background-color: hsl(174 62% 33%);
   }
 }
+
+// ─── Message content typography ─────────────────────────
+// Match Freshdesk's larger, more readable message font
+.theme-fresh {
+  // Base font for entire app - slightly larger
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+
+  // Message bubbles - Freshdesk-like readability
+  .message-bubble {
+    font-size: 14px;
+    line-height: 1.6;
+
+    .native-html {
+      font-size: 14px;
+      line-height: 1.6;
+      color: hsl(220 14% 15%);
+
+      p {
+        margin-bottom: 0.65rem;
+      }
+    }
+  }
+
+  // Message envelope (From/To/Subject header)
+  .message-envelope {
+    font-size: 13px;
+  }
+
+  // Sidebar contact info
+  .text-sm {
+    font-size: 0.8125rem;
+  }
+}
+

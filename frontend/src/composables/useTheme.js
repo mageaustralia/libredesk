@@ -9,7 +9,7 @@ const storedTheme = localStorage.getItem(STORAGE_KEY)
 if (storedTheme === 'freshdesk') {
   localStorage.setItem(STORAGE_KEY, 'fresh')
 }
-const currentTheme = ref(localStorage.getItem(STORAGE_KEY) || 'default')
+const currentTheme = ref(localStorage.getItem(STORAGE_KEY) || 'fresh')
 const viewMode = ref(localStorage.getItem(VIEW_MODE_KEY) || 'card')
 
 export function useTheme() {
