@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Spam & Trash management with configurable auto-cleanup, multi-folder IMAP polling, and advanced view filters.
+**Latest** — Improved email rendering (image sizing, inline PDF handling), relative timestamps, DMARC sender detection, and larger fullscreen reply editor.
 
 ### Spam & Trash
 
@@ -147,6 +147,35 @@ Conversation attachments (images) are extracted, resized to 500x500, and include
 - **Inbox ID override validation** on message send
 - **OpenRouter API key encryption** at rest in the database
 
+### DMARC / Forwarding Sender Detection
+
+Google Workspace rewrites the `From:` header on forwarded emails for DMARC compliance, causing all messages to show the group address instead of the real sender. This fork detects and corrects the real sender:
+
+- **X-Google-Original-From** header (priority 1): The original sender before Google rewrote the header
+- **Reply-To** header (priority 2): Used when From and To domains match (forwarding indicator)
+- **Smart name derivation**: When no display name is available, derives a name from the email local part (e.g., `sharyn.blakemore@gmail.com` → "Sharyn Blakemore")
+
+### Email Rendering Fixes
+
+- **Image sizing**: Images in emails now respect their original HTML dimensions instead of stretching to fill the container width
+- **Non-image inline attachments**: When a non-image file (e.g., PDF) is referenced via CID in an `<img>` tag, it renders as a styled download link instead of a broken image
+- **CID replacement**: Fixed missing CID-to-URL replacement after initial attachment upload
+
+### Relative Timestamps
+
+Message timestamps show relative time with the full date in parentheses:
+- "Just now", "5 minutes ago", "2 hours ago", "3 days ago"
+- Format: `2 days ago (Mon, 3 Mar 2026 at 7:50 AM)`
+- Falls back to full date format after 30 days
+
+### Fullscreen Reply Editor
+
+The fullscreen compose mode now uses 92% of the viewport (up from 60% width / 70% height), matching the Freshdesk compose experience. The sidebar toggle button also persists when viewing a conversation, allowing the nav sidebar to be collapsed for more screen space.
+
+### Unread Count Accuracy
+
+The unread message count badge now excludes activity messages (assignment changes, status updates, etc.), showing only actual messages from contacts and agents.
+
 ### Other UI Customisations
 
 - **Ticket ID in header**: Shows contact name, reference number, and subject (e.g., "John Smith #105 - Order enquiry")
@@ -154,6 +183,10 @@ Conversation attachments (images) are extracted, resized to 500x500, and include
 - **Self-assign notification suppression**: Assigning to yourself doesn't trigger a notification
 - **Macro toolbar button**: Quick-access Zap icon in the reply toolbar for canned responses
 - **Image resize handles**: Drag to resize inline images in the editor
+- **Macro import support**: Bulk import canned responses from Freshdesk (82 macros with folder prefixes)
+- **Macro append mode**: Applying a macro appends to existing editor content instead of replacing it
+- **Fresh theme as default**: New users get the Fresh theme by default
+- **Improved message typography**: Larger, more readable font in Fresh theme matching Freshdesk's style
 
 ---
 
