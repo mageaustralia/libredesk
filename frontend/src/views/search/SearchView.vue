@@ -62,11 +62,11 @@ import api from '@/api'
 const MIN_SEARCH_LENGTH = 3
 const DEBOUNCE_DELAY = 300
 
-const searchQuery = ref('')
-const results = ref({ messages: [], tickets: [] })
+const searchQuery = ref(sessionStorage.getItem('searchQuery') || '')
+const results = ref(JSON.parse(sessionStorage.getItem('searchResults') || '{"messages":[],"tickets":[]}'))
 const loading = ref(false)
 const error = ref(null)
-const searchPerformed = ref(false)
+const searchPerformed = ref(searchQuery.value.length >= MIN_SEARCH_LENGTH && (results.value.messages.length > 0 || results.value.tickets.length > 0))
 let debounceTimer = null
 
 const totalResults = computed(() => {
@@ -94,6 +94,8 @@ const handleSearch = async () => {
       messages: messagesResults.data.data || [],
       tickets: convResults.data.data || []
     }
+    sessionStorage.setItem('searchQuery', searchQuery.value)
+    sessionStorage.setItem('searchResults', JSON.stringify(results.value))
   } catch (err) {
     error.value = handleHTTPError(err).message
   } finally {
