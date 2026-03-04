@@ -63,7 +63,7 @@ const MIN_SEARCH_LENGTH = 3
 const DEBOUNCE_DELAY = 300
 
 const searchQuery = ref('')
-const results = ref({ conversations: [], messages: [] })
+const results = ref({ messages: [], tickets: [] })
 const loading = ref(false)
 const error = ref(null)
 const searchPerformed = ref(false)
@@ -91,8 +91,8 @@ const handleSearch = async () => {
     ])
 
     results.value = {
-      tickets: convResults.data.data || [],
-      messages: messagesResults.data.data || []
+      messages: messagesResults.data.data || [],
+      tickets: convResults.data.data || []
     }
   } catch (err) {
     error.value = handleHTTPError(err).message
