@@ -93,6 +93,11 @@ const onLayoutChange = (sizes) => {
 }
 
 function goBack() {
+  // If we came from search, go back to search results
+  if (window.history.state?.back?.includes('/search')) {
+    router.back()
+    return
+  }
   const routeName = route.name
   if (routeName === 'team-inbox-conversation') {
     router.push({ name: 'team-inbox', params: { teamID: route.params.teamID } })
