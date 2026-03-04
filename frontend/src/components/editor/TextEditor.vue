@@ -626,7 +626,7 @@ const extractMentions = () => {
 
 const editor = useEditor({
   extensions: buildExtensions(),
-  autofocus: props.autoFocus,
+  autofocus: props.autoFocus ? 'start' : false,
   content: htmlContent.value,
   editorProps: {
     attributes: { class: 'outline-none' },
@@ -663,7 +663,7 @@ watch(
     if (!isInternalUpdate.value && editor.value && newContent !== editor.value.getHTML()) {
       editor.value.commands.setContent(newContent || '', false)
       textContent.value = editor.value.getText()
-      editor.value.commands.focus()
+      editor.value.commands.focus('start')
     }
   },
   { immediate: true }
