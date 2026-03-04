@@ -70,7 +70,7 @@ const searchPerformed = ref(false)
 let debounceTimer = null
 
 const totalResults = computed(() => {
-  return results.value.conversations.length + results.value.messages.length
+  return results.value.tickets.length + results.value.messages.length
 })
 
 const handleSearch = async () => {
@@ -91,8 +91,8 @@ const handleSearch = async () => {
     ])
 
     results.value = {
-      tickets: convResults.data.data,
-      messages: messagesResults.data.data
+      tickets: convResults.data.data || [],
+      messages: messagesResults.data.data || []
     }
   } catch (err) {
     error.value = handleHTTPError(err).message
