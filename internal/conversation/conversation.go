@@ -1342,7 +1342,7 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 			conditions = append(conditions, fmt.Sprintf("conversations.assigned_user_id = $%d", len(qArgs)+1))
 			qArgs = append(qArgs, userID)
 		case models.UnassignedConversations:
-			conditions = append(conditions, "conversations.assigned_user_id IS NULL AND conversations.assigned_team_id IS NULL")
+			conditions = append(conditions, "conversations.assigned_user_id IS NULL")
 		case models.TeamUnassignedConversations:
 			placeholders := make([]string, len(teamIDs))
 			for i := range teamIDs {
