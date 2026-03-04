@@ -787,8 +787,31 @@ export const useConversationStore = defineStore('conversation', () => {
     // Update conversation if it exists in the list.
     const existingConversation = conversations?.data?.find(c => c.uuid === uuid)
     if (existingConversation) {
+      const oldStatus = existingConversation.status
       updateNested(existingConversation, prop, value)
       resolveAssignmentName(existingConversation)
+
+      // If status changed, remove from list if it no longer matches the view/filter.
+      if (prop === 'status' && oldStatus !== value) {
+        // For views: status filtering is server-side, so remove if status changed
+        if (conversations.viewID > 0) {
+          conversations.data = conversations.data.filter(c => c.uuid !== uuid)
+          conversations.total = Math.max(0, conversations.total - 1)
+        }
+        // For normal inbox: the computed conversationsList filter handles it
+      }
+
+      // Also remove if assignment changed and we're on assigned/unassigned view
+      if (prop === 'assigned_user_id') {
+        if (conversations.listType === 'assigned' && !value) {
+          conversations.data = conversations.data.filter(c => c.uuid !== uuid)
+          conversations.total = Math.max(0, conversations.total - 1)
+        }
+        if (conversations.listType === 'unassigned' && value) {
+          conversations.data = conversations.data.filter(c => c.uuid !== uuid)
+          conversations.total = Math.max(0, conversations.total - 1)
+        }
+      }
     }
   }
 
