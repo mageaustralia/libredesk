@@ -3,6 +3,7 @@
     <div class="flex items-center px-2 h-12">
       <SidebarTrigger class="cursor-pointer" />
       <Input
+        data-search-input
         v-model="model"
         :placeholder="t('globals.terms.search')"
         class="w-full border-none shadow-none focus:ring-0 focus:ring-offset-0"
@@ -23,6 +24,15 @@ const model = defineModel({
   required: false
 })
 const { t } = useI18n()
+
+import { ref, onMounted, nextTick } from 'vue'
+const searchInput = ref(null)
+onMounted(() => {
+  nextTick(() => {
+    const input = document.querySelector('[data-search-input] input, [data-search-input]')
+    if (input) input.focus()
+  })
+})
 </script>
 
 <style scoped>

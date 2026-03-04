@@ -32,7 +32,7 @@
                 :to="{
                   name: 'inbox-conversation',
                   params: {
-                    uuid: type === 'conversations' ? item.uuid : item.conversation_uuid,
+                    uuid: type === 'tickets' ? item.uuid : item.conversation_uuid,
                     type: 'assigned'
                   }
                 }"
@@ -45,7 +45,7 @@
                       class="text-sm font-semibold mb-2 text-muted-foreground group-hover:text-primary transition duration-200"
                     >
                       #{{
-                        type === 'conversations'
+                        type === 'tickets'
                           ? item.reference_number
                           : item.conversation_reference_number
                       }}
@@ -57,7 +57,7 @@
                     >
                       {{
                         truncateText(
-                          type === 'conversations' ? item.subject : item.text_content,
+                          type === 'tickets' ? item.subject : item.text_content,
                           100
                         )
                       }}
@@ -68,7 +68,7 @@
                       <ClockIcon class="h-4 w-4 mr-1" />
                       {{
                         formatDate(
-                          type === 'conversations' ? item.created_at : item.conversation_created_at
+                          type === 'tickets' ? item.created_at : item.conversation_created_at
                         )
                       }}
                     </div>
@@ -108,6 +108,8 @@ const props = defineProps({
 // Get the first available tab as default
 const defaultTab = computed(() => {
   const types = Object.keys(props.results)
+  // Default to messages tab
+  if (types.includes('messages')) return 'messages'
   return types.length > 0 ? types[0] : ''
 })
 

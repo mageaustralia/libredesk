@@ -75,7 +75,7 @@ const totalResults = computed(() => {
 
 const handleSearch = async () => {
   if (searchQuery.value.length < MIN_SEARCH_LENGTH) {
-    results.value = { conversations: [], messages: [] }
+    results.value = { tickets: [], messages: [] }
     searchPerformed.value = false
     return
   }
@@ -91,7 +91,7 @@ const handleSearch = async () => {
     ])
 
     results.value = {
-      conversations: convResults.data.data,
+      tickets: convResults.data.data,
       messages: messagesResults.data.data
     }
   } catch (err) {
@@ -111,7 +111,7 @@ watch(searchQuery, (newValue) => {
     debouncedSearch()
   } else {
     clearTimeout(debounceTimer)
-    results.value = { conversations: [], messages: [] }
+    results.value = { tickets: [], messages: [] }
     searchPerformed.value = false
   }
 })
