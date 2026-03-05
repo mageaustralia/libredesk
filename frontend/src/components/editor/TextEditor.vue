@@ -329,7 +329,7 @@ const insertImage = (url) => {
 /**
  * Handle paste events to capture images from clipboard
  */
-const handlePaste = async (view, event) => {
+const handlePaste = (view, event) => {
   const items = event.clipboardData?.items
   if (!items) return false
 
@@ -338,10 +338,9 @@ const handlePaste = async (view, event) => {
       event.preventDefault()
       const file = item.getAsFile()
       if (file) {
-        const url = await uploadImage(file)
-        if (url) {
-          insertImage(url)
-        }
+        uploadImage(file).then((url) => {
+          if (url) insertImage(url)
+        })
       }
       return true
     }
@@ -352,17 +351,16 @@ const handlePaste = async (view, event) => {
 /**
  * Handle drop events for drag & drop images
  */
-const handleDrop = async (view, event) => {
+const handleDrop = (view, event) => {
   const files = event.dataTransfer?.files
   if (!files || files.length === 0) return false
 
   for (const file of files) {
     if (file.type.startsWith('image/')) {
       event.preventDefault()
-      const url = await uploadImage(file)
-      if (url) {
-        insertImage(url)
-      }
+      uploadImage(file).then((url) => {
+        if (url) insertImage(url)
+      })
       return true
     }
   }
