@@ -205,7 +205,7 @@
     </div>
 
     <!-- Content -->
-    <div class="flex-grow overflow-y-auto">
+    <div class="flex-grow overflow-y-auto overflow-x-auto">
       <EmptyList
         v-if="!hasConversations && !hasErrored && !isLoading"
         key="empty"

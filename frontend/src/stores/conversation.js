@@ -19,6 +19,7 @@ export const useConversationStore = defineStore('conversation', () => {
   const currentBCC = ref([])
   const currentCC = ref([])
   const macros = ref({})
+  const isNewConversationOpen = ref(false)
   const drafts = ref(new Map())
 
   // Bulk selection state
@@ -942,6 +943,7 @@ export const useConversationStore = defineStore('conversation', () => {
     setListSortField,
     setListStatus,
     setAdHocFilters,
+    isNewConversationOpen,
     removeMacroAction,
     getMacro,
     setMacro,

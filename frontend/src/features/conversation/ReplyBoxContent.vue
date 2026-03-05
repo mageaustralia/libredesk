@@ -418,5 +418,30 @@ watch(
 const focus = () => {
   editorRef.value?.focus()
 }
-defineExpose({ focus })
+
+function replacePlaceholders(html) {
+  const contact = conversationStore.current?.contact || {}
+  const agent = conversationStore.current?.assignee || {}
+  const replacements = {
+    '{{contact.first_name}}': contact.first_name || '',
+    '{{contact.last_name}}': contact.last_name || '',
+    '{{contact.full_name}}': [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '',
+    '{{contact.email}}': contact.email || '',
+    '{{contact.phone}}': contact.phone_number || '',
+  }
+  let result = html
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    result = result.replaceAll(placeholder, value)
+  }
+  return result
+}
+
+function insertMacro(html) {
+  insertContent.value = undefined
+  nextTick(() => {
+    insertContent.value = replacePlaceholders(html)
+  })
+}
+
+defineExpose({ focus, insertMacro })
 </script>

@@ -885,6 +885,17 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 		return fmt.Errorf("fetching agent: %w", err)
 	}
 
+	// Fetch the latest incoming message content for the notification email.
+	var latestMsg models.Message
+	if err := m.q.GetLatestMessage.Get(&latestMsg,
+		conversation.ID,
+		pq.Array([]string{models.MessageIncoming}),
+		pq.Array([]string{models.MessageStatusReceived}),
+		true, // private = NOT true (i.e. public messages only)
+	); err != nil {
+		m.lo.Warn("could not fetch latest message for assignment notification", "conversation_id", conversation.ID, "error", err)
+	}
+
 	// Render email template.
 	content, subject, err := m.template.RenderStoredEmailTemplate(template.TmplConversationAssigned,
 		map[string]any{
@@ -893,6 +904,10 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 				"Subject":         conversation.Subject.String,
 				"Priority":        conversation.Priority.String,
 				"UUID":            conversation.UUID,
+			},
+			"Message": map[string]any{
+				"Content":     latestMsg.Content,
+				"TextContent": latestMsg.TextContent,
 			},
 			"Contact": map[string]any{
 				"FirstName": conversation.Contact.FirstName,
