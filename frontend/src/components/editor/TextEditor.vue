@@ -672,7 +672,13 @@ watch(
 watch(
   () => props.insertContent,
   (val) => {
-    if (val) editor.value?.commands.insertContent(val)
+    if (val && editor.value) {
+      // Focus editor if not already focused, placing cursor at start
+      if (!editor.value.isFocused) {
+        editor.value.commands.focus('start')
+      }
+      editor.value.commands.insertContent(val)
+    }
   }
 )
 

@@ -271,7 +271,7 @@ const highlightedMacro = ref(null)
 function handleApplyMacro(macro) {
   // Create a deep copy.
   const plainMacro = JSON.parse(JSON.stringify(macro))
-  if (nestedCommand.value === 'apply-macro-to-new-conversation') {
+  if (nestedCommand.value === 'apply-macro-to-new-conversation' || conversationStore.isNewConversationOpen) {
     conversationStore.setMacro(plainMacro, MACRO_CONTEXT.NEW_CONVERSATION)
   } else {
     conversationStore.setMacro(plainMacro, MACRO_CONTEXT.REPLY)

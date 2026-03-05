@@ -17,6 +17,15 @@ type MessageResult struct {
 	ConversationReferenceNumber string    `db:"conversation_reference_number" json:"conversation_reference_number"`
 }
 
+type UnifiedResult struct {
+	Total           int       `db:"total" json:"-"`
+	CreatedAt       time.Time `db:"created_at" json:"created_at"`
+	UUID            string    `db:"uuid" json:"uuid"`
+	ReferenceNumber string    `db:"reference_number" json:"reference_number"`
+	Subject         string    `db:"subject" json:"subject"`
+	Snippet         string    `db:"snippet" json:"snippet"`
+}
+
 type ContactResult struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	FirstName string    `db:"first_name" json:"first_name"`

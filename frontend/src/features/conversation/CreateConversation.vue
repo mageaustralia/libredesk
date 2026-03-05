@@ -333,6 +333,7 @@ onUnmounted(() => {
   clearTimeout(timeoutId)
   clearMediaFiles()
   conversationStore.resetMacro(MACRO_CONTEXT.NEW_CONVERSATION)
+  conversationStore.isNewConversationOpen = false
   emitter.emit(EMITTER_EVENTS.SET_NESTED_COMMAND, {
     command: null,
     open: false
@@ -341,6 +342,7 @@ onUnmounted(() => {
 
 onMounted(() => {
   macroStore.setCurrentView('starting_conversation')
+  conversationStore.isNewConversationOpen = true
   emitter.emit(EMITTER_EVENTS.SET_NESTED_COMMAND, {
     command: 'apply-macro-to-new-conversation',
     open: false
@@ -534,8 +536,20 @@ const createConversation = form.handleSubmit(async (values) => {
  */
 watch(
   () => conversationStore.getMacro(MACRO_CONTEXT.NEW_CONVERSATION).id,
-  () => {
-    form.setFieldValue('content', conversationStore.getMacro(MACRO_CONTEXT.NEW_CONVERSATION).message_content)
+  (newId) => {
+    if (!newId) return
+    const macroContent = conversationStore.getMacro(MACRO_CONTEXT.NEW_CONVERSATION).message_content
+    if (!macroContent) return
+    // Replace placeholders with form values and insert
+    const replaced = macroContent
+      .replaceAll('{{contact.first_name}}', form.values.first_name || '')
+      .replaceAll('{{contact.last_name}}', form.values.last_name || '')
+      .replaceAll('{{contact.full_name}}', [form.values.first_name, form.values.last_name].filter(Boolean).join(' ') || '')
+      .replaceAll('{{contact.email}}', form.values.contact_email || '')
+    insertContent.value = undefined
+    nextTick(() => {
+      insertContent.value = replaced
+    })
   },
   { deep: true }
 )

@@ -1,5 +1,5 @@
 <template>
-  <table class="conversation-table w-full text-sm table-fixed">
+  <table class="conversation-table w-full min-w-[900px] text-sm table-fixed">
     <colgroup>
       <col :style="{ width: columnWidths.checkbox + 'px' }">
       <col :style="{ width: columnWidths.contact + 'px' }">

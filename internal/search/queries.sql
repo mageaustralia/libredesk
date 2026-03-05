@@ -42,3 +42,47 @@ WHERE type = 'contact'
 AND deleted_at IS NULL
 AND email ILIKE '%' || $1 || '%'
 LIMIT 15;
+
+-- name: search-conversations-by-subject
+SELECT
+    conversations.created_at,
+    conversations.uuid,
+    conversations.reference_number,
+    conversations.subject
+FROM conversations
+WHERE subject ILIKE '%' || $1 || '%'
+ORDER BY conversations.created_at DESC
+LIMIT 50;
+
+
+
+-- name: search-unified
+SELECT *, COUNT(*) OVER() AS total FROM (
+    SELECT DISTINCT ON (c.id)
+        c.created_at,
+        c.uuid,
+        c.reference_number,
+        c.subject,
+        COALESCE(
+            (SELECT m.text_content FROM conversation_messages m
+             WHERE m.conversation_id = c.id AND m.type != 'activity'
+             AND m.text_content ILIKE '%' || $1 || '%'
+             ORDER BY m.created_at DESC LIMIT 1),
+            (SELECT m.text_content FROM conversation_messages m
+             WHERE m.conversation_id = c.id AND m.type = 'incoming' AND m.sender_type = 'contact'
+             ORDER BY m.id ASC LIMIT 1),
+            ''
+        ) AS snippet
+    FROM conversations c
+    LEFT JOIN users u ON c.contact_id = u.id
+    WHERE c.reference_number::text = $1
+       OR c.subject ILIKE '%' || $1 || '%'
+       OR u.email = $1
+       OR c.id IN (
+           SELECT m.conversation_id FROM conversation_messages m
+           WHERE m.type != 'activity' AND m.text_content ILIKE '%' || $1 || '%'
+       )
+    ORDER BY c.id
+) sub
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;

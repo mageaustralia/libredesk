@@ -38,6 +38,25 @@ func handleSearchContacts(r *fastglue.Request) error {
 	return handleSearch(r, wrapper)
 }
 
+// handleUnifiedSearch performs a single search across conversations and messages.
+func handleUnifiedSearch(r *fastglue.Request) error {
+	var (
+		app = r.Context.(*App)
+		q   = string(r.RequestCtx.QueryArgs().Peek("query"))
+	)
+
+	if len(q) < minSearchQueryLength {
+		return sendErrorEnvelope(r, envelope.NewError(envelope.InputError, app.i18n.Ts("search.minQueryLength", "length", fmt.Sprintf("%d", minSearchQueryLength)), nil))
+	}
+
+	page, pageSize := getPagination(r)
+	results, err := app.search.Unified(q, page, pageSize)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(results)
+}
+
 // handleSearch searches for the given query using the provided search function.
 func handleSearch(r *fastglue.Request, searchFunc func(string) (interface{}, error)) error {
 	var (

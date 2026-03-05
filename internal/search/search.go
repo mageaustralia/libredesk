@@ -35,8 +35,10 @@ type Opts struct {
 type queries struct {
 	SearchConversationsByRefNum       *sqlx.Stmt `query:"search-conversations-by-reference-number"`
 	SearchConversationsByContactEmail *sqlx.Stmt `query:"search-conversations-by-contact-email"`
+	SearchConversationsBySubject      *sqlx.Stmt `query:"search-conversations-by-subject"`
 	SearchMessages                    *sqlx.Stmt `query:"search-messages"`
 	SearchContacts                    *sqlx.Stmt `query:"search-contacts"`
+	SearchUnified                     *sqlx.Stmt `query:"search-unified"`
 }
 
 // New creates a new search manager
@@ -61,7 +63,26 @@ func (s *Manager) Conversations(query string) ([]models.ConversationResult, erro
 		s.lo.Error("error searching conversations", "error", err)
 		return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.conversation")), nil)
 	}
-	return append(refNumResults, emailResults...), nil
+
+	var subjectResults = make([]models.ConversationResult, 0)
+	if err := s.q.SearchConversationsBySubject.Select(&subjectResults, query); err != nil {
+		s.lo.Error("error searching conversations by subject", "error", err)
+		return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.conversation")), nil)
+	}
+
+	// Combine results, deduplicating by UUID.
+	seen := make(map[string]bool)
+	var combined []models.ConversationResult
+	for _, r := range append(append(refNumResults, emailResults...), subjectResults...) {
+		if !seen[r.UUID] {
+			seen[r.UUID] = true
+			combined = append(combined, r)
+		}
+	}
+	if combined == nil {
+		combined = make([]models.ConversationResult, 0)
+	}
+	return combined, nil
 }
 
 // Messages searches messages based on the query
@@ -72,6 +93,28 @@ func (s *Manager) Messages(query string) ([]models.MessageResult, error) {
 		return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.message")), nil)
 	}
 	return results, nil
+}
+
+// UnifiedResponse wraps search results with total count.
+type UnifiedResponse struct {
+	Results []models.UnifiedResult `json:"results"`
+	Total   int                    `json:"total"`
+	Page    int                    `json:"page"`
+}
+
+// Unified performs a single search across conversations and messages.
+func (s *Manager) Unified(query string, page, pageSize int) (*UnifiedResponse, error) {
+	var results = make([]models.UnifiedResult, 0)
+	offset := (page - 1) * pageSize
+	if err := s.q.SearchUnified.Select(&results, query, pageSize, offset); err != nil {
+		s.lo.Error("error in unified search", "error", err)
+		return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.conversation")), nil)
+	}
+	total := 0
+	if len(results) > 0 {
+		total = results[0].Total
+	}
+	return &UnifiedResponse{Results: results, Total: total, Page: page}, nil
 }
 
 // Contacts searches contacts based on the query

@@ -653,10 +653,10 @@ watch(
   () => conversationStore.getMacro('reply').id,
   (newId) => {
     if (!newId) return
-    if (conversationStore.getMacro('reply').message_content) {
-      const macroContent = conversationStore.getMacro('reply').message_content
-      htmlContent.value = htmlContent.value ? htmlContent.value + macroContent : macroContent
-    }
+    const macroContent = conversationStore.getMacro('reply').message_content
+    if (!macroContent) return
+    // Insert at cursor position via ReplyBoxContent
+    replyBoxContentRef.value?.insertMacro(macroContent)
   },
   { deep: true }
 )
