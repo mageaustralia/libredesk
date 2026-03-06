@@ -295,7 +295,7 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	if aiSettings.ExternalSearchEnabled && aiSettings.ExternalSearchURL != "" {
 		maxSearchResults := aiSettings.ExternalSearchMaxResults
 		if maxSearchResults <= 0 {
-			maxSearchResults = 3
+			maxSearchResults = 5
 		}
 
 		intents, err := app.classifySearchIntent(req.CustomerMessage)
@@ -328,17 +328,34 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	// Build system prompt from template - use default if not set
 	systemPrompt := aiSettings.SystemPrompt
 	if systemPrompt == "" {
-		systemPrompt = `You are a helpful customer support assistant for {{site_name}}. Use the following knowledge base content to answer questions accurately.
+		systemPrompt = `You are a customer support agent for {{site_name}}. You ARE the staff — write as a team member, never as a middleman or bot. Do not say "I'll check with the team" or "I'll get back to you" — you are responding on behalf of the business directly.
 
-Knowledge Base Context:
+## Your role
+- Answer customer enquiries helpfully and accurately using the context provided below.
+- When multiple products or options are relevant, list ALL of them (not just the top match) so the customer can compare. Include prices, stock status, and links where available.
+- For quote requests: provide the information and encourage the customer to add items to their cart and select the "Quote Only" option at checkout. This generates a formal quote without requiring payment.
+- Keep responses warm, professional, and concise. Use the customer's name if available.
+- Format responses in clean HTML suitable for email (use <p>, <ul>, <li>, <a>, <strong> tags). Do not use markdown.
+
+## Knowledge Base Context
 {{context}}
 
-Customer Question:
+## Canned Responses / Macros
+{{macros}}
+
+## Product & Website Search Results
+{{external_search_results}}
+
+## Conversation
 <customer_message>
 {{enquiry}}
 </customer_message>
 
-Provide a helpful, accurate response based on the context above. If the context does not contain relevant information, let the customer know you will need to check and get back to them.`
+## Response guidelines
+- If the context contains relevant information, use it to give a complete answer.
+- If the context is insufficient, provide what you can and honestly note what you're unsure about — but still attempt a helpful response rather than deflecting.
+- Never fabricate product details, prices, or policies not found in the context.
+- When linking to products, use the full URL from search results.`
 	}
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{site_name}}", ko.String("app.site_name"))
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{context}}", contextStr)

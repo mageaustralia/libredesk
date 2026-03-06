@@ -145,7 +145,7 @@ export const useConversationStore = defineStore('conversation', () => {
   const conversations = reactive({
     data: [],
     listType: null,
-    status: 'Open',
+    status: ['Open'],
     sortField: 'newest',
     listFilters: [],
     viewID: 0,
@@ -179,15 +179,31 @@ export const useConversationStore = defineStore('conversation', () => {
   const incrementMessageVersion = () => setTimeout(() => messages.version++, 0)
 
   function setListStatus (status, fetch = true) {
-    conversations.status = status
+    conversations.status = Array.isArray(status) ? status : [status]
     if (fetch) {
       resetConversations()
       reFetchConversationsList()
     }
   }
 
+  function toggleListStatus (status) {
+    const idx = conversations.status.indexOf(status)
+    if (idx >= 0) {
+      // Don't allow deselecting the last status
+      if (conversations.status.length > 1) {
+        conversations.status.splice(idx, 1)
+      }
+    } else {
+      conversations.status.push(status)
+    }
+    resetConversations()
+    reFetchConversationsList()
+  }
+
   const getListStatus = computed(() => {
-    return conversations.status
+    if (conversations.status.length === 0) return 'All'
+    if (conversations.status.length === 1) return conversations.status[0]
+    return conversations.status.length + ' statuses'
   })
 
   function setListSortField (field) {
@@ -254,10 +270,10 @@ export const useConversationStore = defineStore('conversation', () => {
     if (!conversations.data) return []
     let filteredConversations = conversations.data
     // Filter by status if set.
-    if (conversations.status !== "") {
+    if (conversations.status.length > 0) {
       filteredConversations = conversations.data
         .filter(conv => {
-          return conv.status === conversations.status
+          return conversations.status.includes(conv.status)
         })
     }
 
@@ -477,13 +493,13 @@ export const useConversationStore = defineStore('conversation', () => {
       const validAdHoc = conversations.adHocFilters.filter(f => f.value && f.value !== "[]" && f.value !== "")
       filters = [...filters, ...validAdHoc]
     }
-    if (conversations.status) {
+    if (conversations.status && conversations.status.length > 0) {
       filters = filters.filter(f => f.model !== 'conversation_statuses')
       filters.push({
         model: 'conversation_statuses',
         field: 'name',
-        operator: 'equals',
-        value: conversations.status
+        operator: 'in',
+        value: JSON.stringify(conversations.status)
       })
     }
     if (showLoader) conversations.loading = true
@@ -942,6 +958,7 @@ export const useConversationStore = defineStore('conversation', () => {
     fetchPriorities,
     setListSortField,
     setListStatus,
+    toggleListStatus,
     setAdHocFilters,
     isNewConversationOpen,
     removeMacroAction,

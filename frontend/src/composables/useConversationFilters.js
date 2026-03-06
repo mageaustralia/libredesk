@@ -342,6 +342,7 @@ export function useConversationFilters () {
       { key: 'assigned_team_id', label: t('globals.terms.team'), type: 'multi_select', options: tStore.options, model: 'conversations' },
       { key: 'inbox_id', label: t('globals.terms.inbox'), type: 'multi_select', options: iStore.options, model: 'conversations' },
       { key: 'tags', label: t('globals.terms.tag', 2), type: 'multi_select', options: tagStore.tagOptions, model: 'conversations' },
+      { key: 'email', label: 'Contact email', type: 'text', model: 'users' },
       { key: 'created_at', label: 'Created', type: 'date', model: 'conversations' },
       { key: 'last_message_at', label: 'Last activity', type: 'date', model: 'conversations' },
       { key: 'closed_at', label: 'Closed at', type: 'date', model: 'conversations' },

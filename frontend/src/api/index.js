@@ -362,6 +362,9 @@ const moveToTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/trash`)
 const restoreFromTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/restore`)
 const markAsSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/spam`)
 const markAsNotSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/not-spam`)
+const mergeConversations = (data) => http.post('/api/v1/conversations/merge', data, {
+  headers: { 'Content-Type': 'application/json' }
+})
 const getViewConversations = (id, params) =>
   http.get(`/api/v1/views/${id}/conversations`, { params })
 const uploadMedia = (data) =>
@@ -589,6 +592,7 @@ export default {
   restoreFromTrash,
   markAsSpam,
   markAsNotSpam,
+  mergeConversations,
   getTeamUnassignedConversations,
   getViewConversations,
   getOverviewCharts,

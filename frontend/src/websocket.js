@@ -1,5 +1,6 @@
 import { useConversationStore } from './stores/conversation'
 import { useNotificationStore } from './stores/notification'
+import { usePresenceStore } from './stores/presence'
 import { WS_EVENT } from './constants/websocket'
 
 export class WebSocketClient {
@@ -15,6 +16,7 @@ export class WebSocketClient {
     this.lastPong = Date.now()
     this.convStore = useConversationStore()
     this.notificationStore = useNotificationStore()
+    this.presenceStore = usePresenceStore()
   }
 
   init () {
@@ -64,7 +66,8 @@ export class WebSocketClient {
         },
         [WS_EVENT.MESSAGE_PROP_UPDATE]: () => this.convStore.updateMessageProp(data.data),
         [WS_EVENT.CONVERSATION_PROP_UPDATE]: () => this.convStore.updateConversationProp(data.data),
-        [WS_EVENT.NEW_NOTIFICATION]: () => this.notificationStore.addNotification(data.data)
+        [WS_EVENT.NEW_NOTIFICATION]: () => this.notificationStore.addNotification(data.data),
+        [WS_EVENT.PRESENCE_UPDATE]: () => this.presenceStore.updatePresence(data.data.conversation_uuid, data.data.viewers || [])
       }
 
       const handler = handlers[data.type]

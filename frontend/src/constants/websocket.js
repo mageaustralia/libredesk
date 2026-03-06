@@ -3,4 +3,5 @@ export const WS_EVENT = {
     MESSAGE_PROP_UPDATE: 'message_prop_update',
     CONVERSATION_PROP_UPDATE: 'conversation_prop_update',
     NEW_NOTIFICATION: 'new_notification',
+    PRESENCE_UPDATE: 'presence_update',
 }

@@ -2,11 +2,31 @@
   <div class="flex flex-col h-full">
     <!-- Header -->
     <div class="h-12 flex-shrink-0 px-2 border-b flex items-center justify-between">
-      <div>
+      <div class="flex items-center gap-2">
         <span v-if="!conversationStore.conversation.loading">
           {{ conversationStore.currentContactName }}
         </span>
         <Skeleton class="w-[130px] h-6" v-else />
+        <!-- Presence: other agents viewing -->
+        <div v-if="otherViewers.length > 0" class="flex items-center gap-1 ml-2">
+          <Eye class="w-3.5 h-3.5 text-blue-500 animate-blink" />
+          <TooltipProvider :delay-duration="200">
+            <div class="flex -space-x-1.5">
+              <Tooltip v-for="viewer in otherViewers.slice(0, 3)" :key="viewer.user_id">
+                <TooltipTrigger asChild>
+                  <Avatar class="w-5 h-5 rounded-full border border-background cursor-default">
+                    <AvatarImage :src="viewer.avatar_url || ''" v-if="viewer.avatar_url" />
+                    <AvatarFallback class="text-[8px]">{{ (viewer.first_name || '?').substring(0, 1) }}</AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="text-xs">
+                  {{ viewer.first_name || 'Unknown' }}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+          <span v-if="otherViewers.length > 3" class="text-[10px] text-muted-foreground">+{{ otherViewers.length - 3 }}</span>
+        </div>
       </div>
       <div>
         <DropdownMenu>
@@ -75,6 +95,22 @@
       </div>
     </div>
 
+    <!-- Merge banner -->
+    <div
+      v-if="conversationStore.current?.merged_into_id"
+      class="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-sm border-b"
+    >
+      <GitMerge class="w-4 h-4 shrink-0" />
+      <span>
+        This ticket was merged into
+        <router-link
+          v-if="conversationStore.current?.merged_into_uuid"
+          :to="{ name: 'inbox-conversation', params: { uuid: conversationStore.current.merged_into_uuid } }"
+          class="font-medium underline"
+        >#{{ conversationStore.current.merged_into_ref }}</router-link>
+      </span>
+    </div>
+
     <!-- Fresh theme: unified scroll with collapsible reply -->
     <template v-if="isFresh">
       <!-- Scrollable area: messages + expanded reply -->
@@ -115,8 +151,9 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
+import { usePresenceStore } from '@/stores/presence'
 import { useTheme } from '@/composables/useTheme'
 import {
   DropdownMenu,
@@ -128,7 +165,10 @@ import {
 import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye } from 'lucide-vue-next'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { sendMessage as wsSendMessage } from '@/websocket'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
@@ -137,10 +177,45 @@ import { useRouter } from 'vue-router'
 import api from '@/api'
 import { handleHTTPError } from '@/utils/http'
 
+import { useUserStore } from '@/stores/user'
+
 const conversationStore = useConversationStore()
+const presenceStore = usePresenceStore()
+const userStore = useUserStore()
 const emitter = useEmitter()
 const router = useRouter()
 const { currentTheme } = useTheme()
+
+// Presence tracking
+const currentViewingUUID = ref('')
+
+const otherViewers = computed(() => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return []
+  return presenceStore.getViewers(uuid, userStore.userID)
+})
+
+function sendViewingPresence(uuid) {
+  if (currentViewingUUID.value === uuid) return
+  currentViewingUUID.value = uuid
+  wsSendMessage({ type: 'view_conversation', data: { conversation_uuid: uuid || '' } })
+}
+
+// Watch for conversation changes and send presence
+watch(
+  () => conversationStore.current?.uuid,
+  (newUUID) => {
+    if (newUUID) {
+      sendViewingPresence(newUUID)
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  // Clear presence when leaving
+  sendViewingPresence('')
+})
 
 const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)
@@ -214,3 +289,14 @@ const handleUpdateStatus = (status) => {
   conversationStore.updateStatus(status)
 }
 </script>
+
+<style scoped>
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+.animate-blink {
+  animation: blink 3s ease-in-out infinite;
+  transform-origin: center;
+}
+</style>

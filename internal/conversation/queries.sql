@@ -181,7 +181,11 @@ SELECT
    as_latest.resolution_deadline_at,
    as_latest.id as applied_sla_id,
    nxt_resp_event.deadline_at AS next_response_deadline_at,
-   nxt_resp_event.met_at as next_response_met_at
+   nxt_resp_event.met_at as next_response_met_at,
+   c.merged_into_id,
+   c.merged_at,
+   (SELECT uuid FROM conversations mc WHERE mc.id = c.merged_into_id) AS merged_into_uuid,
+   (SELECT reference_number FROM conversations mc WHERE mc.id = c.merged_into_id) AS merged_into_ref
 FROM conversations c
 JOIN users ct ON c.contact_id = ct.id
 JOIN inboxes inb ON c.inbox_id = inb.id
@@ -712,3 +716,35 @@ DELETE FROM media WHERE model_type = 'messages' AND model_id IN (
 DELETE FROM conversations
 WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
 AND trashed_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: move-messages-to-conversation
+UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2;
+
+-- name: mark-conversation-merged
+UPDATE conversations SET
+    merged_into_id = $2,
+    merged_at = NOW(),
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Closed'),
+    closed_at = COALESCE(closed_at, NOW()),
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: get-conversations-by-uuids
+SELECT id, uuid, reference_number, subject, contact_id
+FROM conversations
+WHERE uuid = ANY($1::uuid[]);
+
+-- name: get-conversation-uuid-by-id
+SELECT uuid, reference_number FROM conversations WHERE id = $1;
+
+-- name: copy-tags-to-conversation
+INSERT INTO conversation_tags (conversation_id, tag_id)
+SELECT $1, tag_id FROM conversation_tags WHERE conversation_id = $2
+ON CONFLICT (conversation_id, tag_id) DO NOTHING;
+
+-- name: get-latest-message-for-conversation
+SELECT content, text_content, sender_type, type, private, created_at
+FROM conversation_messages
+WHERE conversation_id = $1
+ORDER BY created_at DESC
+LIMIT 1;

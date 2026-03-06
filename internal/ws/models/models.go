@@ -7,6 +7,8 @@ const (
 	MessageTypeNewMessage                 = "new_message"
 	MessageTypeNewConversation            = "new_conversation"
 	MessageTypeNewNotification            = "new_notification"
+	MessageTypePresenceUpdate             = "presence_update"
+	MessageTypeViewConversation           = "view_conversation"
 	MessageTypeError                      = "error"
 )
 

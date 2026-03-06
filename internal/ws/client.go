@@ -33,8 +33,12 @@ func (b *SafeBool) Get() bool {
 
 // Client is a single connected WS user.
 type Client struct {
-	// Client ID.
+	// Client ID (user ID).
 	ID int
+
+	// User display info for presence.
+	FirstName string
+	AvatarURL string
 
 	// Hub.
 	Hub *Hub
@@ -92,6 +96,17 @@ func (c *Client) Listen() {
 	c.close()
 }
 
+// incomingMessage represents a JSON message from the client.
+type incomingMessage struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
+
+// viewConversationData represents the data for a view_conversation message.
+type viewConversationData struct {
+	ConversationUUID string `json:"conversation_uuid"`
+}
+
 // processIncomingMessage processes incoming messages from the client.
 func (c *Client) processIncomingMessage(data []byte) {
 	// Handle ping messages, and update last active time for user.
@@ -100,7 +115,29 @@ func (c *Client) processIncomingMessage(data []byte) {
 		c.SendMessage([]byte("pong"), websocket.TextMessage)
 		return
 	}
-	c.SendError("unknown incoming message type")
+
+	// Try to parse as JSON message.
+	var msg incomingMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		c.SendError("invalid message format")
+		return
+	}
+
+	switch msg.Type {
+	case models.MessageTypeViewConversation:
+		var viewData viewConversationData
+		if err := json.Unmarshal(msg.Data, &viewData); err != nil {
+			c.SendError("invalid view_conversation data")
+			return
+		}
+		c.Hub.SetViewing(c, viewData.ConversationUUID, &PresenceInfo{
+			UserID:    c.ID,
+			FirstName: c.FirstName,
+			AvatarURL: c.AvatarURL,
+		})
+	default:
+		c.SendError("unknown incoming message type")
+	}
 }
 
 // close closes the client connection.

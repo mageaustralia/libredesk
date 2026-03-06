@@ -4,6 +4,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { X } from 'lucide-vue-next'
 import FilterMultiSelect from './FilterMultiSelect.vue'
 import FilterDatePicker from './FilterDatePicker.vue'
+import FilterTextInput from './FilterTextInput.vue'
 
 const props = defineProps({
   field: {
@@ -15,6 +16,10 @@ const props = defineProps({
     required: true
   },
   isDateField: {
+    type: Boolean,
+    default: false
+  },
+  isTextField: {
     type: Boolean,
     default: false
   },
@@ -31,6 +36,12 @@ const popoverOpen = ref(props.autoOpen)
 const summaryText = computed(() => {
   if (!props.modelValue) return props.field.label
   const label = props.field.label
+
+  if (props.isTextField) {
+    const val = props.modelValue.value
+    if (!val) return label
+    return `${label}: ${val}`
+  }
 
   if (props.isDateField) {
     if (props.modelValue.operator === 'relative_date') {
@@ -113,6 +124,13 @@ function preventFocusClose(event) {
     >
       <FilterDatePicker
         v-if="isDateField"
+        :field="field"
+        :model-value="modelValue"
+        @update:model-value="handleUpdate"
+        @remove="handleRemove"
+      />
+      <FilterTextInput
+        v-else-if="isTextField"
         :field="field"
         :model-value="modelValue"
         @update:model-value="handleUpdate"

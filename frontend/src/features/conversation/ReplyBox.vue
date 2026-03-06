@@ -37,7 +37,35 @@
     </DialogContent>
   </Dialog>
 
+  <!-- Collision confirmation dialog -->
+  <AlertDialog :open="showCollisionConfirm" @update:open="showCollisionConfirm = false">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Another agent has replied</AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ collisionAgentName }} sent a reply while you were composing. Review their message before sending to avoid a duplicate response.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogAction @click="confirmSend">Send anyway</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
   <div class="text-foreground bg-background">
+    <!-- Collision warning banner -->
+    <div
+      v-if="collisionWarning"
+      class="flex items-center gap-2 px-3 py-2 mx-2 mt-2 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-sm border border-amber-200 dark:border-amber-800"
+    >
+      <AlertTriangle class="w-4 h-4 shrink-0" />
+      <span class="flex-1">{{ collisionAgentName }} just sent a reply. Check before sending yours.</span>
+      <button @click="dismissCollisionWarning" class="text-amber-600 hover:text-amber-800 dark:hover:text-amber-200">
+        <X class="w-3.5 h-3.5" />
+      </button>
+    </div>
+
     <!-- Fullscreen editor -->
     <Dialog :open="isEditorFullscreen" @update:open="isEditorFullscreen = false">
       <DialogContent
@@ -129,7 +157,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, toRaw, onMounted } from 'vue'
+import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { handleHTTPError } from '@/utils/http'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
@@ -154,6 +182,17 @@ import { useEmitter } from '@/composables/useEmitter'
 import { useFileUpload } from '@/composables/useFileUpload'
 import ReplyBoxContent from '@/features/conversation/ReplyBoxContent.vue'
 import { UserTypeAgent } from '@/constants/user'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
+import { AlertTriangle, X } from 'lucide-vue-next'
 import {
   Form,
   FormField,
@@ -216,6 +255,13 @@ const aiPrompts = ref([])
 const replyBoxContentRef = ref(null)
 const mentions = ref([])
 const ecommerceConfigured = ref(false)
+
+// Collision detection state
+const composingStartedAt = ref(null)
+const collisionWarning = ref(false)
+const collisionAgentName = ref('')
+const showCollisionConfirm = ref(false)
+let pendingSendAction = null
 
 // Inbox switcher state
 const inboxes = ref([])
@@ -340,7 +386,45 @@ onMounted(() => {
   fetchAiPrompts()
   fetchEcommerceStatus()
   fetchInboxes()
+
+  // Listen for new messages to detect other agent replies while composing
+  emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
 })
+
+// Clean up listener
+onBeforeUnmount(() => {
+  emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+})
+
+/**
+ * Handles collision detection when a new message arrives while composing.
+ */
+function handleNewMessageCollision({ conversation_uuid, message }) {
+  if (!composingStartedAt.value) return
+  if (conversation_uuid !== conversationStore.current?.uuid) return
+  // Only care about outgoing (agent) replies, not private notes or customer messages
+  if (message?.type !== 'outgoing' || message?.private) return
+  // Ignore messages from the current user
+  if (message?.sender_id === userStore.userID) return
+
+  collisionWarning.value = true
+  collisionAgentName.value = message?.sender?.first_name || 'Another agent'
+}
+
+function dismissCollisionWarning() {
+  collisionWarning.value = false
+}
+
+function confirmSend() {
+  showCollisionConfirm.value = false
+  collisionWarning.value = false
+  if (pendingSendAction === 'send') {
+    doSend()
+  } else if (pendingSendAction) {
+    doSendWithStatus(pendingSendAction)
+  }
+  pendingSendAction = null
+}
 
 // When conversation changes, set selected inbox and fetch signature
 watch(() => conversationStore.current?.uuid, async (newUuid) => {
@@ -529,10 +613,29 @@ const hasTextContent = computed(() => {
   return textContent.value.trim().length > 0
 })
 
+// Track when agent starts composing
+watch(textContent, (newVal) => {
+  if (newVal && newVal.trim().length > 0 && !composingStartedAt.value) {
+    composingStartedAt.value = new Date()
+  }
+})
+
 /**
- * Processes the send action.
+ * Checks for collision before sending. If another agent replied while composing, shows confirmation.
  */
 const processSend = async () => {
+  if (collisionWarning.value) {
+    pendingSendAction = 'send'
+    showCollisionConfirm.value = true
+    return
+  }
+  await doSend()
+}
+
+/**
+ * Actually sends the message.
+ */
+const doSend = async () => {
   let hasMessageSendingErrored = false
   isEditorFullscreen.value = false
   try {
@@ -597,6 +700,10 @@ const processSend = async () => {
       clearMediaFiles()
       emailErrors.value = []
       mentions.value = []
+      // Reset collision state
+      composingStartedAt.value = null
+      collisionWarning.value = false
+      collisionAgentName.value = ''
     }
     isSending.value = false
   }
@@ -606,7 +713,16 @@ const processSend = async () => {
  * Send message and set conversation status in one action.
  */
 const processSendWithStatus = async (status) => {
-  await processSend()
+  if (collisionWarning.value) {
+    pendingSendAction = status
+    showCollisionConfirm.value = true
+    return
+  }
+  await doSendWithStatus(status)
+}
+
+const doSendWithStatus = async (status) => {
+  await doSend()
   // After successful send, update the conversation status
   if (!isSending.value) {
     try {
@@ -714,6 +830,10 @@ watch(
   () => {
     clearMediaFiles()
     conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
+    // Reset collision state
+    composingStartedAt.value = null
+    collisionWarning.value = false
+    collisionAgentName.value = ''
     setTimeout(() => {
       replyBoxContentRef.value?.focus()
     }, 100)

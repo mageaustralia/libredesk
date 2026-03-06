@@ -97,6 +97,19 @@
         Trash
       </Button>
 
+      <!-- Merge (2+ selected) -->
+      <Button
+        v-if="conversationStore.selectedCount >= 2"
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        :disabled="bulkLoading"
+        @click="showMergeDialog = true"
+      >
+        <GitMerge class="w-3 h-3 mr-1" />
+        Merge
+      </Button>
+
       <!-- Clear selection -->
       <Button
         variant="ghost"
@@ -113,7 +126,7 @@
 
     <!-- Filters (hidden when bulk selecting) -->
     <div v-else class="p-2 flex flex-wrap items-center gap-1.5">
-      <!-- Status dropdown-menu, hidden when a view is selected as views are pre-filtered -->
+      <!-- Status multi-select dropdown, hidden when a view is selected as views are pre-filtered -->
       <DropdownMenu v-if="!route.params.viewID">
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" class="shrink-0">
@@ -123,13 +136,17 @@
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem
+          <label
             v-for="status in conversationStore.statusOptions"
             :key="status.value"
-            @click="handleStatusChange(status)"
+            class="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded-sm"
           >
+            <Checkbox
+              :checked="conversationStore.conversations.status.includes(status.label)"
+              @update:checked="conversationStore.toggleListStatus(status.label)"
+            />
             {{ status.label }}
-          </DropdownMenuItem>
+          </label>
         </DropdownMenuContent>
       </DropdownMenu>
       <div v-else>
@@ -292,6 +309,9 @@
         </p>
       </div>
     </div>
+
+    <!-- Merge Dialog -->
+    <MergeDialog v-model:open="showMergeDialog" />
   </div>
 </template>
 
@@ -300,7 +320,8 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2 } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2, GitMerge } from 'lucide-vue-next'
+import MergeDialog from '@/features/conversation/MergeDialog.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -334,6 +355,7 @@ const { t } = useI18n()
 const emitter = useEmitter()
 const { viewMode, setViewMode } = useTheme()
 const bulkLoading = ref(false)
+const showMergeDialog = ref(false)
 const { conversationsPillBarFields } = useConversationFilters()
 const pillBarFields = conversationsPillBarFields
 const adHocFilters = ref([])
