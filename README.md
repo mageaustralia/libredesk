@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Improved email rendering (image sizing, inline PDF handling), relative timestamps, DMARC sender detection, and larger fullscreen reply editor.
+**Latest** — Agent collision detection, ticket merging, contact email filter, multi-status filtering, and smart team reassignment.
 
 ### Spam & Trash
 
@@ -60,6 +60,57 @@ Select multiple conversations from the list and perform bulk operations — no m
 - **Bulk Priority** change (Urgent, High, Medium, Low, None)
 - **Bulk Move to Trash**
 - Toast notifications with success/error counts
+
+### Agent Collision Detection
+
+Real-time awareness of other agents working on the same conversation, preventing duplicate replies.
+
+- **Presence tracking**: Eye icon with agent avatars in the conversation header when others are viewing the same ticket
+- **Blinking eye animation** draws attention to active viewers
+- **Hover tooltips** on avatar initials show the agent's name
+- **Viewer count** on conversation list items (both card and table view)
+- **Reply collision warning**: Amber banner appears in the reply box when another agent sends a reply while you're composing
+- **Send confirmation dialog**: Before sending, a confirmation prompt warns if another agent replied since you started typing
+- Presence automatically clears when an agent navigates away or disconnects
+- WebSocket-based with no polling overhead
+
+### Ticket Merging
+
+Merge duplicate or related conversations into a single ticket, consolidating all messages and tags.
+
+- Select 2+ conversations from the list using bulk checkboxes
+- **Merge button** appears in the bulk action toolbar
+- **Primary ticket picker**: Choose which conversation keeps its identity (others merge into it)
+- Messages from secondary tickets are moved to the primary, preserving chronological order
+- Tags from secondary tickets are copied (duplicates skipped)
+- Secondary tickets are marked as merged and closed with an activity note
+- **Merge banner** on merged tickets links back to the primary conversation
+- Cannot be undone — confirmation dialog warns before merging
+
+### Contact Email Filter
+
+Filter the conversation list by contact email address using a free-text search.
+
+- Added as a pill bar filter option ("Contact email")
+- Uses case-insensitive partial matching (ILIKE) — type `campbell` to find all conversations from emails containing "campbell"
+- New `FilterTextInput` component for text-based pill bar filters (with Enter to apply)
+
+### Multi-Status Filtering
+
+The status dropdown now supports selecting multiple statuses simultaneously.
+
+- **Checkboxes** instead of single-select radio behaviour
+- Select any combination (e.g., "Open + Replied" to see all active conversations)
+- Button label shows count when multiple selected (e.g., "2 statuses")
+- At least one status must remain selected
+
+### Smart Team Reassignment
+
+Changing a conversation's team no longer blindly unassigns the agent.
+
+- If the assigned agent is a member of the new team, they stay assigned
+- If the agent is NOT a member of the new team, they are unassigned (previous behaviour)
+- Uses the existing `UserBelongsToTeam` check — no additional database queries
 
 ### Quick-Assign Dropdowns on Conversation List
 
