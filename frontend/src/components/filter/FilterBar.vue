@@ -45,6 +45,11 @@ function isDateField(fieldKey) {
   return DATE_FIELDS.includes(fieldKey)
 }
 
+function isTextField(fieldKey) {
+  const fieldDef = props.fields.find((f) => f.key === fieldKey)
+  return fieldDef?.type === 'text'
+}
+
 function getFieldDef(fieldKey) {
   return props.fields.find((f) => f.key === fieldKey) || { key: fieldKey, label: fieldKey }
 }
@@ -55,11 +60,28 @@ function handleFieldSelect(field) {
 
   newestFieldKey.value = field.key
 
-  const newFilter = {
-    field: field.key,
-    operator: isDateField(field.key) ? 'relative_date' : (field.key === 'tags' ? 'contains' : 'in'),
-    value: isDateField(field.key) ? 'last_7_days' : '[]',
-    model: field.model || ''
+  let newFilter
+  if (isDateField(field.key)) {
+    newFilter = {
+      field: field.key,
+      operator: 'relative_date',
+      value: 'last_7_days',
+      model: field.model || ''
+    }
+  } else if (field.type === 'text') {
+    newFilter = {
+      field: field.key,
+      operator: 'ilike',
+      value: '',
+      model: field.model || ''
+    }
+  } else {
+    newFilter = {
+      field: field.key,
+      operator: field.key === 'tags' ? 'contains' : 'in',
+      value: '[]',
+      model: field.model || ''
+    }
   }
   emit('update:modelValue', [...props.modelValue, newFilter])
 }
@@ -92,6 +114,7 @@ function handleClearAll() {
       :field="getFieldDef(filter.field)"
       :model-value="filter"
       :is-date-field="isDateField(filter.field)"
+      :is-text-field="isTextField(filter.field)"
       :auto-open="filter.field === newestFieldKey && !isDateField(filter.field)"
       @update:model-value="handleFilterUpdate(index, $event)"
       @remove="handleFilterRemove(index)"

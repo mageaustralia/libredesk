@@ -188,7 +188,15 @@
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <div class="flex justify-end">
+            <div class="flex items-center justify-end gap-1.5">
+              <div
+                v-if="viewerCount > 0"
+                class="flex items-center gap-0.5 text-blue-500"
+                :title="viewerCount + ' agent(s) viewing'"
+              >
+                <Eye class="w-3 h-3" />
+                <span class="text-[10px]">{{ viewerCount }}</span>
+              </div>
               <div
                 v-if="conversation.unread_message_count > 0"
                 class="flex items-center justify-center w-6 h-6 bg-green-600 text-white text-xs font-medium rounded-full"
@@ -213,7 +221,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getRelativeTime } from '@/utils/datetime'
-import { Mail, Reply, Pencil, MailOpen, User, Users, ChevronDown } from 'lucide-vue-next'
+import { Mail, Reply, Pencil, MailOpen, User, Users, ChevronDown, Eye } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   ContextMenu,
@@ -231,6 +239,8 @@ import {
 import SlaBadge from '@/features/sla/SlaBadge.vue'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useConversationStore } from '@/stores/conversation'
+import { usePresenceStore } from '@/stores/presence'
+import { useUserStore } from '@/stores/user'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { handleHTTPError } from '@/utils/http'
@@ -240,6 +250,8 @@ let timer = null
 const now = ref(new Date())
 const route = useRoute()
 const conversationStore = useConversationStore()
+const presenceStore = usePresenceStore()
+const userStore = useUserStore()
 const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
 const frdStatus = ref('')
@@ -334,6 +346,10 @@ const relativeLastMessageTime = computed(() => {
 
 const hasDraftForConversation = computed(() => {
   return conversationStore.hasDraft(props.conversation.uuid)
+})
+
+const viewerCount = computed(() => {
+  return presenceStore.getViewerCount(props.conversation.uuid, userStore.userID)
 })
 
 const isItemSelected = computed(() => {

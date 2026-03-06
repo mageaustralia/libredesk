@@ -1000,3 +1000,36 @@ func handleGetTrashedConversations(r *fastglue.Request) error {
 		Page:       page,
 	})
 }
+
+type mergeConversationsReq struct {
+	PrimaryUUID    string   `json:"primary_uuid"`
+	SecondaryUUIDs []string `json:"secondary_uuids"`
+}
+
+// handleMergeConversations merges multiple conversations into a primary conversation.
+func handleMergeConversations(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+		req   mergeConversationsReq
+	)
+
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid request body", nil, envelope.InputError)
+	}
+
+	if req.PrimaryUUID == "" || len(req.SecondaryUUIDs) == 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "primary_uuid and at least one secondary_uuid are required", nil, envelope.InputError)
+	}
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	if err := app.conversation.MergeConversations(req.PrimaryUUID, req.SecondaryUUIDs, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	return r.SendEnvelope(true)
+}

@@ -265,9 +265,18 @@
 
         <!-- Updated -->
         <td class="px-2 py-2 text-right">
-          <span class="text-xs text-muted-foreground whitespace-nowrap">
-            {{ getRelativeTime(conversation.last_message_at, now) }}
-          </span>
+          <div class="flex items-center justify-end gap-1.5">
+            <div
+              v-if="presenceStore.getViewerCount(conversation.uuid, userStore.userID) > 0"
+              class="flex items-center gap-0.5 text-blue-500"
+            >
+              <Eye class="w-3 h-3" />
+              <span class="text-[10px]">{{ presenceStore.getViewerCount(conversation.uuid, userStore.userID) }}</span>
+            </div>
+            <span class="text-xs text-muted-foreground whitespace-nowrap">
+              {{ getRelativeTime(conversation.last_message_at, now) }}
+            </span>
+          </div>
         </td>
       </tr>
     </tbody>
@@ -277,7 +286,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ChevronDown } from 'lucide-vue-next'
+import { ChevronDown, Eye } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -288,6 +297,8 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useConversationStore } from '@/stores/conversation'
+import { usePresenceStore } from '@/stores/presence'
+import { useUserStore } from '@/stores/user'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { getRelativeTime, formatMessageTimestamp } from '@/utils/datetime'
@@ -296,6 +307,8 @@ import { handleHTTPError } from '@/utils/http'
 import api from '@/api'
 
 const conversationStore = useConversationStore()
+const presenceStore = usePresenceStore()
+const userStore = useUserStore()
 const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
 const router = useRouter()

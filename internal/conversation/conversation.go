@@ -258,6 +258,14 @@ type queries struct {
 	AutoTrashSpam      *sqlx.Stmt `query:"auto-trash-old-spam"`
 	PurgeOldTrash      *sqlx.Stmt `query:"purge-old-trash"`
 	PurgeOldTrashMedia *sqlx.Stmt `query:"purge-old-trash-media"`
+
+	// Merge queries.
+	MoveMessagesToConversation      *sqlx.Stmt `query:"move-messages-to-conversation"`
+	MarkConversationMerged          *sqlx.Stmt `query:"mark-conversation-merged"`
+	GetConversationsByUUIDs         *sqlx.Stmt `query:"get-conversations-by-uuids"`
+	GetConversationUUIDByID         *sqlx.Stmt `query:"get-conversation-uuid-by-id"`
+	CopyTagsToConversation          *sqlx.Stmt `query:"copy-tags-to-conversation"`
+	GetLatestMessageForConversation *sqlx.Stmt `query:"get-latest-message-for-conversation"`
 }
 
 // CreateConversation creates a new conversation and returns its ID and UUID.
@@ -1499,4 +1507,119 @@ func (m *Manager) MarkAsNotSpam(uuid string) error {
 		return err
 	}
 	return nil
+}
+
+// MergeConversationRow is a lightweight struct for merge operations.
+type MergeConversationRow struct {
+	ID              int    `db:"id"`
+	UUID            string `db:"uuid"`
+	ReferenceNumber string `db:"reference_number"`
+	Subject         string `db:"subject"`
+	ContactID       int    `db:"contact_id"`
+}
+
+// MergeConversations merges secondary conversations into a primary conversation.
+// It moves all messages and tags from secondaries into the primary, marks secondaries as merged+closed,
+// and adds activity notes on all affected conversations.
+func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string, actor umodels.User) error {
+	// Fetch all conversations (primary + secondaries).
+	allUUIDs := append([]string{primaryUUID}, secondaryUUIDs...)
+	var rows []MergeConversationRow
+	if err := m.q.GetConversationsByUUIDs.Select(&rows, pq.Array(allUUIDs)); err != nil {
+		m.lo.Error("error fetching conversations for merge", "error", err)
+		return envelope.NewError(envelope.GeneralError, "Error fetching conversations for merge", nil)
+	}
+
+	// Build a map for quick lookup.
+	convMap := make(map[string]MergeConversationRow, len(rows))
+	for _, r := range rows {
+		convMap[r.UUID] = r
+	}
+
+	primary, ok := convMap[primaryUUID]
+	if !ok {
+		return envelope.NewError(envelope.InputError, "Primary conversation not found", nil)
+	}
+
+	// Use a transaction for atomicity.
+	tx, err := m.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		m.lo.Error("error starting merge transaction", "error", err)
+		return envelope.NewError(envelope.GeneralError, "Error starting merge transaction", nil)
+	}
+	defer tx.Rollback()
+
+	for _, secUUID := range secondaryUUIDs {
+		sec, ok := convMap[secUUID]
+		if !ok {
+			m.lo.Warn("secondary conversation not found, skipping", "uuid", secUUID)
+			continue
+		}
+
+		// Move messages from secondary to primary.
+		if _, err := tx.Exec("UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2", primary.ID, sec.ID); err != nil {
+			m.lo.Error("error moving messages", "from", sec.ID, "to", primary.ID, "error", err)
+			return envelope.NewError(envelope.GeneralError, "Error moving messages during merge", nil)
+		}
+
+		// Copy tags (skip duplicates).
+		if _, err := tx.Exec("INSERT INTO conversation_tags (conversation_id, tag_id) SELECT $1, tag_id FROM conversation_tags WHERE conversation_id = $2 ON CONFLICT (conversation_id, tag_id) DO NOTHING", primary.ID, sec.ID); err != nil {
+			m.lo.Error("error copying tags", "from", sec.ID, "to", primary.ID, "error", err)
+			return envelope.NewError(envelope.GeneralError, "Error copying tags during merge", nil)
+		}
+
+		// Mark secondary as merged + closed.
+		if _, err := tx.Exec("UPDATE conversations SET merged_into_id = $2, merged_at = NOW(), status_id = (SELECT id FROM conversation_statuses WHERE name = 'Closed'), closed_at = COALESCE(closed_at, NOW()), updated_at = NOW() WHERE id = $1", sec.ID, primary.ID); err != nil {
+			m.lo.Error("error marking conversation as merged", "id", sec.ID, "error", err)
+			return envelope.NewError(envelope.GeneralError, "Error marking conversation as merged", nil)
+		}
+	}
+
+	// Update primary's last_message from the latest message across all merged messages.
+	var lastMsg struct {
+		Content    string    `db:"text_content"`
+		SenderType string    `db:"sender_type"`
+		MsgType    string    `db:"type"`
+		Private    bool      `db:"private"`
+		CreatedAt  time.Time `db:"created_at"`
+	}
+	err = tx.Get(&lastMsg, "SELECT text_content, sender_type, type, private, created_at FROM conversation_messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1", primary.ID)
+	if err == nil {
+		_, _ = tx.Exec("UPDATE conversations SET last_message = $2, last_message_sender = $3, last_message_at = $4, updated_at = NOW() WHERE id = $1",
+			primary.ID, lastMsg.Content, lastMsg.SenderType, lastMsg.CreatedAt)
+	}
+
+	if err := tx.Commit(); err != nil {
+		m.lo.Error("error committing merge transaction", "error", err)
+		return envelope.NewError(envelope.GeneralError, "Error committing merge transaction", nil)
+	}
+
+	// Insert activity notes (outside transaction — non-critical).
+	for _, secUUID := range secondaryUUIDs {
+		sec := convMap[secUUID]
+		// Activity on primary: "Merged #REF into this conversation"
+		m.InsertConversationActivity(models.ActivityStatusChange, primaryUUID,
+			fmt.Sprintf("Merged #%s into this conversation", sec.ReferenceNumber), actor)
+		// Activity on secondary: "Merged into #REF"
+		m.InsertConversationActivity(models.ActivityStatusChange, secUUID,
+			fmt.Sprintf("Merged into #%s", primary.ReferenceNumber), actor)
+	}
+
+	// Broadcast updates.
+	m.BroadcastConversationUpdate(primaryUUID, "status", "Open")
+	for _, secUUID := range secondaryUUIDs {
+		m.BroadcastConversationUpdate(secUUID, "status", "Closed")
+		m.BroadcastConversationUpdate(secUUID, "merged_into_id", primary.ID)
+	}
+
+	return nil
+}
+
+// GetMergedIntoConversation returns the UUID and reference number of the conversation this was merged into.
+func (m *Manager) GetMergedIntoConversation(mergedIntoID int) (string, string, error) {
+	var uuid, refNum string
+	if err := m.q.GetConversationUUIDByID.QueryRow(mergedIntoID).Scan(&uuid, &refNum); err != nil {
+		return "", "", err
+	}
+	return uuid, refNum, nil
 }

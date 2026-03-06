@@ -142,6 +142,10 @@ type Conversation struct {
 	LastInteraction       null.String            `db:"last_interaction" json:"last_interaction"`
 	LastInteractionAt     null.Time              `db:"last_interaction_at" json:"last_interaction_at"`
 	LastInteractionSender null.String            `db:"last_interaction_sender" json:"last_interaction_sender"`
+	MergedIntoID          null.Int               `db:"merged_into_id" json:"merged_into_id"`
+	MergedAt              null.Time              `db:"merged_at" json:"merged_at"`
+	MergedIntoUUID        null.String            `db:"merged_into_uuid" json:"merged_into_uuid"`
+	MergedIntoRef         null.String            `db:"merged_into_ref" json:"merged_into_ref"`
 	Contact               ConversationContact    `db:"contact" json:"contact"`
 	SLAPolicyID           null.Int               `db:"sla_policy_id" json:"sla_policy_id"`
 	SlaPolicyName         null.String            `db:"sla_policy_name" json:"sla_policy_name"`
