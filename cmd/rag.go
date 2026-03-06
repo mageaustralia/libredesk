@@ -42,6 +42,8 @@ type ExternalSearchHit struct {
 	BrandID         string                 `json:"brand_id"`
 	InStock         int                    `json:"in_stock"`
 	ProductCount    int                    `json:"product_count"`
+	BulkyGoods         string                 `json:"bulky_goods"`
+	DisableFreeShip    string                 `json:"disable_free_shipping"`
 	Price           map[string]interface{} `json:"price"`
 	Categories      map[string]interface{} `json:"categories"`
 }
@@ -630,6 +632,9 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 					line += " - " + price
 				}
 				line += " - " + stock
+				if strings.EqualFold(hit.DisableFreeShip, "Yes") {
+					line += " - CUSTOM FREIGHT QUOTE REQUIRED"
+				}
 				line += "\n   URL: " + hit.URL
 				desc := stripHTML(hit.Description)
 				if len(desc) > 200 {

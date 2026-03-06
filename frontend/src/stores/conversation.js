@@ -155,7 +155,8 @@ export const useConversationStore = defineStore('conversation', () => {
     hasMore: false,
     total: 0,
     errorMessage: '',
-    adHocFilters: []
+    adHocFilters: [],
+    pendingUpdates: 0
   })
 
   const conversation = reactive({
@@ -706,8 +707,8 @@ export const useConversationStore = defineStore('conversation', () => {
         listConversation.unread_message_count += 1
       }
     } else {
-      // Conversation is not in the list, fetch the first page of the conversations list as this updated conversation might be at the top.
-      fetchFirstPageConversations()
+      // Conversation is not in the list — buffer as a pending update instead of auto-refreshing.
+      conversations.pendingUpdates++
     }
   }
 
@@ -734,11 +735,17 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  function addNewConversation (conversation) {
-    if (!conversationUUIDExists(conversation.uuid)) {
-      // Fetch list of conversations again.
-      fetchFirstPageConversations()
+  function addNewConversation (conv) {
+    if (!conversationUUIDExists(conv.uuid)) {
+      // Buffer as a pending update instead of auto-refreshing.
+      conversations.pendingUpdates++
     }
+  }
+
+  function applyPendingUpdates () {
+    conversations.pendingUpdates = 0
+    resetConversations()
+    reFetchConversationsList()
   }
 
   /**
@@ -845,6 +852,7 @@ export const useConversationStore = defineStore('conversation', () => {
   function resetConversations () {
     conversations.data = []
     conversations.page = 1
+    conversations.pendingUpdates = 0
     seenConversationUUIDs = new Map()
     clearSelection()
   }
@@ -935,6 +943,7 @@ export const useConversationStore = defineStore('conversation', () => {
     conversationUUIDExists,
     updateConversationProp,
     addNewConversation,
+    applyPendingUpdates,
     getContactFullName,
     fetchParticipants,
     fetchNextMessages,
