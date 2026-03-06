@@ -221,6 +221,20 @@
       </div>
     </div>
 
+    <!-- Pending updates pill -->
+    <div
+      v-if="conversationStore.conversations.pendingUpdates > 0"
+      class="flex justify-center py-1.5 border-b shrink-0"
+    >
+      <button
+        @click="conversationStore.applyPendingUpdates()"
+        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border bg-background text-sm font-medium hover:bg-accent transition-colors shadow-sm"
+      >
+        <RefreshCw class="w-3.5 h-3.5 text-primary" />
+        {{ conversationStore.conversations.pendingUpdates }} update{{ conversationStore.conversations.pendingUpdates === 1 ? '' : 's' }}
+      </button>
+    </div>
+
     <!-- Content -->
     <div class="flex-grow overflow-y-auto overflow-x-auto">
       <EmptyList
@@ -320,7 +334,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2, GitMerge } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2, GitMerge, RefreshCw } from 'lucide-vue-next'
 import MergeDialog from '@/features/conversation/MergeDialog.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
