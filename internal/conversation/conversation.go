@@ -618,8 +618,17 @@ func (c *Manager) UpdateConversationTeamAssignee(uuid string, teamID int, actor 
 
 	// Team changed?
 	if previousAssignedTeamID != teamID {
-		// Remove assigned user if team has changed.
-		c.RemoveConversationAssignee(uuid, models.AssigneeTypeUser, actor)
+		// Remove assigned user only if they are NOT a member of the new team.
+		keepUser := false
+		if conversation.AssignedUserID.Valid && conversation.AssignedUserID.Int > 0 {
+			belongs, err := c.teamStore.UserBelongsToTeam(teamID, conversation.AssignedUserID.Int)
+			if err == nil && belongs {
+				keepUser = true
+			}
+		}
+		if !keepUser {
+			c.RemoveConversationAssignee(uuid, models.AssigneeTypeUser, actor)
+		}
 
 		// Apply SLA policy if this new team has a SLA policy.
 		team, err := c.teamStore.Get(teamID)
