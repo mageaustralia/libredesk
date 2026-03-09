@@ -314,13 +314,25 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 
 	app.lo.Info("TIMING external_search", "elapsed_ms", time.Since(timerStart).Milliseconds())
 
-	// Build context from results
+	// Build context from results, filtering out chunks that mention
+	// bulky/freight shipping policy (these contradict per-product shipping tags).
+	shippingFilterWords := []string{"bulky", "oversized", "freight", "courier"}
 	var contextParts, macroParts []string
 	for _, res := range results {
 		if strings.HasPrefix(res.SourceRef, "macro_") {
 			macroParts = append(macroParts, "- "+res.Title+": "+res.Content)
 		} else {
-			contextParts = append(contextParts, "## "+res.Title+"\n"+res.Content)
+			lower := strings.ToLower(res.Content)
+			skip := false
+			for _, kw := range shippingFilterWords {
+				if strings.Contains(lower, kw) {
+					skip = true
+					break
+				}
+			}
+			if !skip {
+				contextParts = append(contextParts, "## "+res.Title+"\n"+res.Content)
+			}
 		}
 	}
 
@@ -383,6 +395,7 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	}
 
 	app.lo.Info("TIMING before_ai_completion", "elapsed_ms", time.Since(timerStart).Milliseconds(), "prompt_len", len(systemPrompt))
+	app.lo.Info("RAG_DEBUG system_prompt", "content", systemPrompt)
 
 	// Generate response using the prompt payload with optional images
 	response, err := app.ai.CompletionWithPayload(payload)
@@ -634,6 +647,17 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 				line += " - " + stock
 				if strings.EqualFold(hit.DisableFreeShip, "Yes") {
 					line += " - CUSTOM FREIGHT QUOTE REQUIRED"
+				} else {
+					// Calculate if free shipping applies based on price
+					if aud, ok := hit.Price["AUD"]; ok {
+						if audMap, ok := aud.(map[string]interface{}); ok {
+							if defPrice, ok := audMap["default"].(float64); ok && defPrice >= 150 {
+								line += " - FREE SHIPPING"
+							} else {
+								line += " - STANDARD SHIPPING ($5)"
+							}
+						}
+					}
 				}
 				line += "\n   URL: " + hit.URL
 				desc := stripHTML(hit.Description)
@@ -665,7 +689,21 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 
 		case "faq":
 			var lines []string
+			skipKeywords := []string{"bulky", "oversized", "freight", "courier"}
 			for i, hit := range results.Hits {
+				// Skip FAQ entries about bulky/freight shipping to avoid
+				// contradicting the per-product shipping tags.
+				combined := strings.ToLower(hit.Question + " " + hit.Answer)
+				skip := false
+				for _, kw := range skipKeywords {
+					if strings.Contains(combined, kw) {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					continue
+				}
 				line := fmt.Sprintf("%d. Q: %s\n   A: %s", i+1, hit.Question, hit.Answer)
 				line += "\n   URL: " + hit.URL
 				lines = append(lines, line)

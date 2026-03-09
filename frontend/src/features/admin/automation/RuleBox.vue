@@ -113,7 +113,7 @@
               <!-- Tag input -->
               <div v-if="inputType(index) === 'tag'">
                 <TagsInput
-                  :defaultValue="fieldValueAsArray(rule.value)"
+                  :modelValue="fieldValueAsArray(rule.value)"
                   @update:modelValue="(value) => handleValueChange(value, index)"
                 >
                   <TagsInputItem

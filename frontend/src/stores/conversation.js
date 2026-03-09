@@ -270,8 +270,8 @@ export const useConversationStore = defineStore('conversation', () => {
   const conversationsList = computed(() => {
     if (!conversations.data) return []
     let filteredConversations = conversations.data
-    // Filter by status if set.
-    if (conversations.status.length > 0) {
+    // Filter by status if set (skip for custom views — they have server-side filters).
+    if (conversations.status.length > 0 && conversations.listType !== CONVERSATION_LIST_TYPE.VIEW) {
       filteredConversations = conversations.data
         .filter(conv => {
           return conversations.status.includes(conv.status)
@@ -494,7 +494,7 @@ export const useConversationStore = defineStore('conversation', () => {
       const validAdHoc = conversations.adHocFilters.filter(f => f.value && f.value !== "[]" && f.value !== "")
       filters = [...filters, ...validAdHoc]
     }
-    if (conversations.status && conversations.status.length > 0) {
+    if (conversations.status && conversations.status.length > 0 && conversations.listType !== CONVERSATION_LIST_TYPE.VIEW) {
       filters = filters.filter(f => f.model !== 'conversation_statuses')
       filters.push({
         model: 'conversation_statuses',
