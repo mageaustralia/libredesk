@@ -57,11 +57,11 @@
     <!-- Collision warning banner -->
     <div
       v-if="collisionWarning"
-      class="flex items-center gap-2 px-3 py-2 mx-2 mt-2 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-sm border border-amber-200 dark:border-amber-800"
+      class="flex items-center gap-2 px-3 py-2 mx-2 mt-2 rounded-md text-sm border" style="background-color: #fefce8; border-color: #fde047; color: #854d0e;"
     >
       <AlertTriangle class="w-4 h-4 shrink-0" />
       <span class="flex-1">{{ collisionAgentName }} just sent a reply. Check before sending yours.</span>
-      <button @click="dismissCollisionWarning" class="text-amber-600 hover:text-amber-800 dark:hover:text-amber-200">
+      <button @click="dismissCollisionWarning" style="color: #a16207;" class="hover:opacity-70">
         <X class="w-3.5 h-3.5" />
       </button>
     </div>
@@ -529,6 +529,7 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
 
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
+      inbox_id: selectedInboxId.value || conversationStore.current?.inbox_id || 0,
       customer_message: conversationText,
       include_ecommerce: includeEcommerce
     })

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -11,7 +12,10 @@ import (
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	medModels "github.com/abhinavxd/libredesk/internal/media/models"
+	notifier "github.com/abhinavxd/libredesk/internal/notification"
+	nmodels "github.com/abhinavxd/libredesk/internal/notification/models"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
+	"github.com/abhinavxd/libredesk/internal/template"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
 	vmodels "github.com/abhinavxd/libredesk/internal/view/models"
 	wmodels "github.com/abhinavxd/libredesk/internal/webhook/models"
@@ -285,7 +289,16 @@ func handleGetTeamUnassignedConversations(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, envelope.NewError(envelope.PermissionError, app.i18n.T("conversation.notMemberOfTeam"), nil))
 	}
 
-	conversations, err := app.conversation.GetTeamUnassignedConversationsList(auser.ID, teamID, order, orderBy, filters, page, pageSize)
+	// Check setting for team inbox mode.
+	var conversations []cmodels.ConversationListItem
+	app.Lock()
+	showAll := ko.Bool("app.team_inbox_show_all")
+	app.Unlock()
+	if showAll {
+		conversations, err = app.conversation.GetTeamAllConversationsList(auser.ID, teamID, order, orderBy, filters, page, pageSize)
+	} else {
+		conversations, err = app.conversation.GetTeamUnassignedConversationsList(auser.ID, teamID, order, orderBy, filters, page, pageSize)
+	}
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -1031,5 +1044,230 @@ func handleMergeConversations(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
+	return r.SendEnvelope(true)
+}
+
+// handleFollowConversation adds the current user as a participant (follower).
+func handleFollowConversation(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err = enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if err := app.conversation.AddConversationParticipant(auser.ID, uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleUnfollowConversation removes the current user from participants.
+func handleUnfollowConversation(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	if err := app.conversation.RemoveConversationParticipant(auser.ID, uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleAddConversationFollower adds a specified user as a follower/participant.
+func handleAddConversationFollower(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err = enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	var req struct {
+		UserID int `json:"user_id"`
+	}
+	if err := r.Decode(&req, "json"); err != nil || req.UserID <= 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid user_id", nil, envelope.InputError)
+	}
+
+	if err := app.conversation.AddConversationParticipant(req.UserID, uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Notify the added follower (skip if adding yourself).
+	if req.UserID != auser.ID {
+		go notifyFollowerAdded(app, uuid, req.UserID, user)
+	}
+
+	// Return updated participant list.
+	p, err := app.conversation.GetConversationParticipants(uuid)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(p)
+}
+
+// handleRemoveConversationFollower removes a specified user from followers/participants.
+func handleRemoveConversationFollower(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err = enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	userID, _ := strconv.Atoi(r.RequestCtx.UserValue("user_id").(string))
+	if userID <= 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid user_id", nil, envelope.InputError)
+	}
+
+	if err := app.conversation.RemoveConversationParticipant(userID, uuid); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Return updated participant list.
+	p, err := app.conversation.GetConversationParticipants(uuid)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(p)
+}
+
+// notifyFollowerAdded sends an in-app + email notification to a user who was added as a follower.
+func notifyFollowerAdded(app *App, uuid string, followerID int, addedBy umodels.User) {
+	if app.notifDispatcher == nil {
+		return
+	}
+
+	conv, err := app.conversation.GetConversation(0, uuid, "")
+	if err != nil {
+		app.lo.Error("error fetching conversation for follower notification", "error", err)
+		return
+	}
+
+	follower, err := app.user.GetAgent(followerID, "")
+	if err != nil || follower.Email.String == "" {
+		app.lo.Error("error fetching follower for notification", "user_id", followerID, "error", err)
+		return
+	}
+
+	addedByName := addedBy.FirstName + " " + addedBy.LastName
+	title := fmt.Sprintf("%s added you as a follower on #%s", addedByName, conv.ReferenceNumber)
+
+	// Render email.
+	var email *notifier.EmailNotification
+	emailContent, subject, err := app.tmpl.RenderStoredEmailTemplate(template.TmplFollowerAdded,
+		map[string]any{
+			"Conversation": map[string]any{
+				"ReferenceNumber": conv.ReferenceNumber,
+				"Subject":         conv.Subject.String,
+				"UUID":            conv.UUID,
+			},
+			"Recipient": map[string]any{
+				"FirstName": follower.FirstName,
+				"LastName":  follower.LastName,
+				"FullName":  follower.FirstName + " " + follower.LastName,
+				"Email":     follower.Email.String,
+			},
+			"Author": map[string]any{
+				"FirstName": addedBy.FirstName,
+				"FullName":  addedByName,
+			},
+		})
+	if err != nil {
+		app.lo.Error("error rendering follower notification email", "error", err)
+	} else {
+		email = &notifier.EmailNotification{
+			Recipients: []string{follower.Email.String},
+			Subject:    subject,
+			Content:    emailContent,
+		}
+	}
+
+	app.notifDispatcher.Send(notifier.Notification{
+		Type:             nmodels.NotificationTypeFollowerAdded,
+		RecipientIDs:     []int{followerID},
+		Title:            title,
+		Body:             conv.Subject,
+		ConversationID:   null.IntFrom(conv.ID),
+		ConversationUUID: conv.UUID,
+		ActorID:          null.IntFrom(addedBy.ID),
+		ActorFirstName:   addedBy.FirstName,
+		ActorLastName:    addedBy.LastName,
+		Email:            email,
+	})
+}
+
+// handleUpdateConversationSubject updates the subject of a conversation.
+func handleUpdateConversationSubject(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err = enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	var req struct {
+		Subject string `json:"subject"`
+	}
+	if err := r.Decode(&req, "json"); err != nil || req.Subject == "" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Subject is required", nil, envelope.InputError)
+	}
+
+	if err := app.conversation.UpdateConversationSubject(uuid, req.Subject); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleUpdateConversationContact changes the contact of a conversation.
+func handleUpdateConversationContact(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err = enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	var req struct {
+		ContactID int `json:"contact_id"`
+	}
+	if err := r.Decode(&req, "json"); err != nil || req.ContactID <= 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Valid contact_id is required", nil, envelope.InputError)
+	}
+
+	if err := app.conversation.UpdateConversationContact(uuid, req.ContactID); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
 	return r.SendEnvelope(true)
 }

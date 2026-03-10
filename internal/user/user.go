@@ -81,6 +81,7 @@ type queries struct {
 	DeleteNote             *sqlx.Stmt `query:"delete-note"`
 	InsertAgent            *sqlx.Stmt `query:"insert-agent"`
 	InsertContact          *sqlx.Stmt `query:"insert-contact"`
+	InsertContactSimple     *sqlx.Stmt `query:"insert-contact-simple"`
 	InsertNote             *sqlx.Stmt `query:"insert-note"`
 	ToggleEnable           *sqlx.Stmt `query:"toggle-enable"`
 	// API key queries

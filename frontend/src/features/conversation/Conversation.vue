@@ -90,6 +90,12 @@
               <ShieldCheck class="w-4 h-4 mr-2" />
               Not Spam
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="toggleFollow">
+              <EyeOff v-if="isFollowing" class="w-4 h-4 mr-2" />
+              <Eye v-else class="w-4 h-4 mr-2" />
+              {{ isFollowing ? 'Unfollow' : 'Follow' }}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -165,7 +171,7 @@ import {
 import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -185,6 +191,35 @@ const userStore = useUserStore()
 const emitter = useEmitter()
 const router = useRouter()
 const { currentTheme } = useTheme()
+
+// Follow/unfollow state
+const isFollowing = ref(false)
+
+const checkFollowStatus = async () => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return
+  try {
+    const res = await api.getConversationParticipants(uuid)
+    const participants = res.data?.data || []
+    isFollowing.value = participants.some(p => p.id === userStore.userID)
+  } catch { /* ignore */ }
+}
+
+const toggleFollow = async () => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return
+  try {
+    if (isFollowing.value) {
+      await api.unfollowConversation(uuid)
+      isFollowing.value = false
+    } else {
+      await api.followConversation(uuid)
+      isFollowing.value = true
+    }
+  } catch (err) {
+    handleHTTPError(err)
+  }
+}
 
 // Presence tracking
 const currentViewingUUID = ref('')
@@ -207,6 +242,7 @@ watch(
   (newUUID) => {
     if (newUUID) {
       sendViewingPresence(newUUID)
+      checkFollowStatus()
     }
   },
   { immediate: true }

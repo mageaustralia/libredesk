@@ -1,5 +1,5 @@
 <template>
-  <table class="min-w-full table-fixed divide-y divide-border">
+  <table class="min-w-full w-full divide-y divide-border">
     <thead class="bg-muted">
       <tr>
         <th
@@ -24,7 +24,7 @@
           >
             <Skeleton class="h-4 w-[85%]" />
           </td>
-          <td v-if="showDelete" class="px-6 py-4 text-sm text-muted-foreground">
+          <td v-if="showDelete" class="px-6 py-2.5 text-sm text-muted-foreground">
             <Skeleton class="h-8 w-8 rounded" />
           </td>
         </tr>
@@ -53,11 +53,11 @@
           <td
             v-for="key in keys"
             :key="key"
-            class="px-6 py-4 text-sm font-medium text-foreground whitespace-normal break-words"
+            class="px-6 py-2.5 text-sm font-medium text-foreground"
           >
             {{ item[key] }}
           </td>
-          <td v-if="showDelete" class="px-6 py-4 text-sm text-muted-foreground">
+          <td v-if="showDelete" class="px-6 py-2.5 text-sm text-muted-foreground">
             <Button size="xs" variant="ghost" @click.prevent="deleteItem(item)">
               <Trash2 class="h-4 w-4" />
             </Button>

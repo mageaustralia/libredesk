@@ -275,3 +275,12 @@ UPDATE users
 SET deleted_at = now(), updated_at = now()
 WHERE id = $1 AND type = 'contact'
 RETURNING id;
+
+-- name: insert-contact-simple
+INSERT INTO users (email, type, first_name, last_name, "password")
+VALUES ($1, 'contact', $2, $3, $4)
+ON CONFLICT (email, type) WHERE deleted_at IS NULL
+DO UPDATE SET updated_at = now(),
+first_name = CASE WHEN EXCLUDED.first_name != '' THEN EXCLUDED.first_name ELSE users.first_name END,
+last_name = CASE WHEN EXCLUDED.first_name != '' THEN EXCLUDED.last_name ELSE users.last_name END
+RETURNING id;
