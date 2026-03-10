@@ -206,6 +206,17 @@ type ConversationParticipant struct {
 	AvatarURL null.String `db:"avatar_url" json:"avatar_url"`
 }
 
+// QuotedMessage holds data needed to build a quoted reply block.
+type QuotedMessage struct {
+	Content         string    `db:"content"`
+	CreatedAt       time.Time `db:"created_at"`
+	SenderType      string    `db:"sender_type"`
+	Type            string    `db:"type"`
+	SenderFirstName string    `db:"sender_first_name"`
+	SenderLastName  string    `db:"sender_last_name"`
+	SenderEmail     string    `db:"sender_email"`
+}
+
 type MessageAuthor struct {
 	ID        int         `db:"id" json:"id"`
 	FirstName string      `db:"first_name" json:"first_name"`
@@ -296,6 +307,8 @@ type Status struct {
 	ID        int       `db:"id" json:"id"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	Name      string    `db:"name" json:"name"`
+	SortOrder  int  `db:"sort_order" json:"sort_order"`
+	ShowOnSend bool `db:"show_on_send" json:"show_on_send"`
 }
 
 type Priority struct {

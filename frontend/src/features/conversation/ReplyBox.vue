@@ -762,7 +762,7 @@ const hasDraftContent = computed(() => {
  */
 const availableSendStatuses = computed(() => {
   return conversationStore.statuses
-    .filter(s => !['Snoozed', 'Spam', 'Trashed'].includes(s.name))
+    .filter(s => s.show_on_send)
     .map(s => s.name)
 })
 

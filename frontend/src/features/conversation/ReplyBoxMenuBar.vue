@@ -86,11 +86,11 @@
               <ChevronDown class="h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-56">
+          <DropdownMenuContent align="end" class="w-auto min-w-[20rem]">
             <DropdownMenuItem
               v-for="status in sendStatuses"
               :key="status"
-              @click="$emit('sendWithStatus', status)"
+              @click="$emit('sendWithStatus', status)" class="text-xs whitespace-nowrap py-1.5"
             >
               Send and set as {{ status }}
             </DropdownMenuItem>
