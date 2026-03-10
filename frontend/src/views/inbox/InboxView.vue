@@ -17,34 +17,56 @@ const viewID = computed(() => route.params.viewID)
 
 const conversationStore = useConversationStore()
 
+// Views that don't use status filtering (server-side filtered)
+const NO_STATUS_VIEWS = ['spam', 'trash']
+
+/**
+ * Apply filters for a view: restore from localStorage or use sane defaults.
+ * Spam/Trash/Views = no status filter. Everything else = ['Open'] default.
+ */
+function applyFiltersForView (listType, tID, vID) {
+  // Save current view's filters before switching
+  conversationStore.saveViewFilters()
+
+  if (NO_STATUS_VIEWS.includes(listType)) {
+    // Spam/Trash: clear status filter, clear ad-hoc filters
+    conversationStore.setListStatus('', false)
+    conversationStore.setAdHocFilters([], false)
+    return
+  }
+
+  if (vID) {
+    // Custom views: no status filter (server handles it)
+    conversationStore.setListStatus('', false)
+    conversationStore.setAdHocFilters([], false)
+    return
+  }
+
+  // Try restoring saved filters for this view
+  const restored = conversationStore.restoreViewFilters(listType, tID, vID)
+  if (!restored) {
+    // Sane defaults: Open status, newest sort, no ad-hoc filters
+    conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
+    conversationStore.setAdHocFilters([], false)
+  }
+}
+
 // Init conversations list based on route params
 onMounted(() => {
-  // Fetch list based on type
   if (type.value) {
-    // Spam and trash views don't use status filtering
-    if (type.value === 'spam' || type.value === 'trash') {
-      conversationStore.setListStatus('', false)
-    } else if (!conversationStore.getListStatus) {
-      conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
-    }
+    applyFiltersForView(type.value, 0, 0)
     conversationStore.fetchConversationsList(true, type.value)
   }
-  // Fetch team list.
   if (teamID.value) {
-    // Set list status if not already set
-    if (!conversationStore.getListStatus) {
-      conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
-    }
+    applyFiltersForView(CONVERSATION_LIST_TYPE.TEAM_UNASSIGNED, teamID.value, 0)
     conversationStore.fetchConversationsList(
       true,
       CONVERSATION_LIST_TYPE.TEAM_UNASSIGNED,
       teamID.value
     )
   }
-  // Fetch view list.
   if (viewID.value) {
-    // Empty out list status as views are already filtered.
-    conversationStore.setListStatus('', false)
+    applyFiltersForView(CONVERSATION_LIST_TYPE.VIEW, 0, viewID.value)
     conversationStore.fetchConversationsList(true, CONVERSATION_LIST_TYPE.VIEW, 0, [], viewID.value)
   }
 })
@@ -54,19 +76,11 @@ watch(
   [type, teamID, viewID],
   ([newType, newTeamID, newViewID], [oldType, oldTeamID, oldViewID]) => {
     if (newType !== oldType && newType) {
-      // Spam and trash views don't use status filtering
-      if (newType === 'spam' || newType === 'trash') {
-        conversationStore.setListStatus('', false)
-      } else if (!conversationStore.getListStatus) {
-        conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
-      }
+      applyFiltersForView(newType, 0, 0)
       conversationStore.fetchConversationsList(true, newType)
     }
     if (newTeamID !== oldTeamID && newTeamID) {
-      // Set list status if not already set
-      if (!conversationStore.getListStatus) {
-        conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
-      }
+      applyFiltersForView(CONVERSATION_LIST_TYPE.TEAM_UNASSIGNED, newTeamID, 0)
       conversationStore.fetchConversationsList(
         true,
         CONVERSATION_LIST_TYPE.TEAM_UNASSIGNED,
@@ -74,8 +88,7 @@ watch(
       )
     }
     if (newViewID !== oldViewID && newViewID) {
-      // Empty out list status as views are already filtered.
-      conversationStore.setListStatus('', false)
+      applyFiltersForView(CONVERSATION_LIST_TYPE.VIEW, 0, newViewID)
       conversationStore.fetchConversationsList(true, CONVERSATION_LIST_TYPE.VIEW, 0, [], newViewID)
     }
   }

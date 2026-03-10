@@ -64,7 +64,7 @@ export function useConversationFilters () {
             }),
             type: FIELD_TYPE.SELECT,
             operators: FIELD_OPERATORS.SELECT_ASSIGNEE,
-            options: uStore.options
+            options: [{ label: '(Current user)', value: '$current_user' }, ...uStore.options]
         },
         inbox_id: {
             label: t('globals.terms.inbox'),

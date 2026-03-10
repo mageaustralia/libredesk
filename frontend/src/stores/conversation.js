@@ -142,6 +142,44 @@ export const useConversationStore = defineStore('conversation', () => {
     priority_first: 'Priority first'
   }
 
+  // --- Per-view filter persistence (localStorage) ---
+  const FILTER_STORAGE_KEY = 'ld_view_filters'
+
+  function _viewKey (listType, teamID, viewID) {
+    if (teamID) return 'team:' + teamID
+    if (viewID) return 'view:' + viewID
+    return listType || 'assigned'
+  }
+
+  function saveViewFilters () {
+    const key = _viewKey(conversations.listType, conversations.teamID, conversations.viewID)
+    if (!key) return
+    try {
+      const all = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}')
+      all[key] = {
+        status: conversations.status,
+        sortField: conversations.sortField,
+        adHocFilters: conversations.adHocFilters
+      }
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(all))
+    } catch (_) { /* ignore */ }
+  }
+
+  function restoreViewFilters (listType, teamID, viewID) {
+    const key = _viewKey(listType, teamID, viewID)
+    try {
+      const all = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}')
+      const saved = all[key]
+      if (saved) {
+        conversations.status = saved.status || ['Open']
+        conversations.sortField = saved.sortField || 'newest'
+        conversations.adHocFilters = saved.adHocFilters || []
+        return true
+      }
+    } catch (_) { /* ignore */ }
+    return false
+  }
+
   const conversations = reactive({
     data: [],
     listType: null,
@@ -180,7 +218,12 @@ export const useConversationStore = defineStore('conversation', () => {
   const incrementMessageVersion = () => setTimeout(() => messages.version++, 0)
 
   function setListStatus (status, fetch = true) {
-    conversations.status = Array.isArray(status) ? status : [status]
+    if (!status || (Array.isArray(status) && status.length === 0)) {
+      conversations.status = []
+    } else {
+      conversations.status = Array.isArray(status) ? status : [status]
+    }
+    saveViewFilters()
     if (fetch) {
       resetConversations()
       reFetchConversationsList()
@@ -197,6 +240,7 @@ export const useConversationStore = defineStore('conversation', () => {
     } else {
       conversations.status.push(status)
     }
+    saveViewFilters()
     resetConversations()
     reFetchConversationsList()
   }
@@ -210,24 +254,28 @@ export const useConversationStore = defineStore('conversation', () => {
   function setListSortField (field) {
     if (conversations.sortField === field) return
     conversations.sortField = field
+    saveViewFilters()
     resetConversations()
     reFetchConversationsList()
   }
 
 
   let _adHocDebounce = null
-  function setAdHocFilters (filters) {
+  function setAdHocFilters (filters, fetch = true) {
     // Deduplicate by model+field, keeping last entry per field
     const seen = new Map()
     for (const f of filters) {
       seen.set(f.model + "." + f.field, f)
     }
     conversations.adHocFilters = Array.from(seen.values())
-    if (_adHocDebounce) clearTimeout(_adHocDebounce)
-    _adHocDebounce = setTimeout(() => {
-      resetConversations()
-      reFetchConversationsList()
-    }, 500)
+    saveViewFilters()
+    if (fetch) {
+      if (_adHocDebounce) clearTimeout(_adHocDebounce)
+      _adHocDebounce = setTimeout(() => {
+        resetConversations()
+        reFetchConversationsList()
+      }, 500)
+    }
   }
 
   const getListSortField = computed(() => {
@@ -494,7 +542,7 @@ export const useConversationStore = defineStore('conversation', () => {
       const validAdHoc = conversations.adHocFilters.filter(f => f.value && f.value !== "[]" && f.value !== "")
       filters = [...filters, ...validAdHoc]
     }
-    if (conversations.status && conversations.status.length > 0 && conversations.listType !== CONVERSATION_LIST_TYPE.VIEW) {
+    if (conversations.status && conversations.status.length > 0 && conversations.listType !== CONVERSATION_LIST_TYPE.VIEW && conversations.listType !== CONVERSATION_LIST_TYPE.SPAM && conversations.listType !== CONVERSATION_LIST_TYPE.TRASH) {
       filters = filters.filter(f => f.model !== 'conversation_statuses')
       filters.push({
         model: 'conversation_statuses',
@@ -978,6 +1026,8 @@ export const useConversationStore = defineStore('conversation', () => {
     removeAssignee,
     getListSortField,
     getListStatus,
+    saveViewFilters,
+    restoreViewFilters,
     statuses,
     priorities,
     priorityOptions,
