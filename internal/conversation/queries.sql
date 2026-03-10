@@ -749,6 +749,21 @@ WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT 1;
 
+-- name: get-previous-email-messages
+-- Get the last N non-private, non-activity messages for quoting in replies.
+SELECT cm.content, cm.created_at, cm.sender_type, cm.type,
+       COALESCE(u.first_name, '') AS sender_first_name,
+       COALESCE(u.last_name, '') AS sender_last_name,
+       COALESCE(u.email, '') AS sender_email
+FROM conversation_messages cm
+LEFT JOIN users u ON cm.sender_id = u.id
+WHERE cm.conversation_id = $1
+  AND cm.type IN ('incoming', 'outgoing')
+  AND cm.private = false
+  AND cm.id < $2
+ORDER BY cm.created_at DESC
+LIMIT $3;
+
 -- name: get-conversation-inbox-id
 SELECT inbox_id FROM conversations WHERE id = $1;
 

@@ -191,6 +191,8 @@ const bubbleClasses = computed(() => ({
   // Outgoing-specific: private message styling
   'bg-private': isOutgoing.value && props.message.private,
   'border border-border': isOutgoing.value && !props.message.private,
+  'bg-agent-bubble': isOutgoing.value && !props.message.private,
+  'bg-customer-bubble': !isOutgoing.value,
   'opacity-50 animate-pulse': isOutgoing.value && props.message.status === 'pending',
   'border-red-400': isOutgoing.value && props.message.status === 'failed',
   relative: isOutgoing.value,

@@ -168,6 +168,12 @@
   }
 }
 
+.bg-agent-bubble {
+  background-color: #F6F7F9;
+}
+.bg-customer-bubble {
+  background-color: #FFF;
+}
 .message-bubble {
   @apply flex flex-col px-4 pt-2 pb-3 w-fit min-w-[30%] max-w-full border overflow-x-auto rounded shadow-sm;
   overflow-wrap: break-all;

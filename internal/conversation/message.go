@@ -146,6 +146,22 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		return
 	}
 
+	// Append quoted previous messages for email threading.
+	if prevMessages, err := m.GetPreviousEmailMessages(message.ConversationID, message.ID, 3); err == nil && len(prevMessages) > 0 {
+		var quotedHTML strings.Builder
+		quotedHTML.WriteString(`<div class="gmail_quote">`)
+		for _, pm := range prevMessages {
+			senderName := strings.TrimSpace(pm.SenderFirstName + " " + pm.SenderLastName)
+			if senderName == "" {
+				senderName = pm.SenderEmail
+			}
+			dateStr := pm.CreatedAt.Format("Mon, Jan 2, 2006 at 3:04 PM")
+			quotedHTML.WriteString(fmt.Sprintf(`<br><br><div class="gmail_attr" style="color:#666;font-size:12px;">On %s, %s &lt;%s&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">%s</blockquote>`, dateStr, senderName, pm.SenderEmail, pm.Content))
+		}
+		quotedHTML.WriteString(`</div>`)
+		message.Content += quotedHTML.String()
+	}
+
 	// Render content in template
 	if err := m.RenderMessageInTemplate(inbox.Channel(), &message); err != nil {
 		handleError(err, "error rendering content in template")

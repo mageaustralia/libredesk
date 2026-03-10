@@ -135,6 +135,8 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	// Status and priority.
 	g.GET("/api/v1/statuses", auth(handleGetStatuses))
 	g.POST("/api/v1/statuses", perm(handleCreateStatus, "status:manage"))
+	g.PUT("/api/v1/statuses/reorder", perm(handleReorderStatuses, "status:manage"))
+	g.PUT("/api/v1/statuses/{id}/show-on-send", perm(handleToggleStatusShowOnSend, "status:manage"))
 	g.PUT("/api/v1/statuses/{id}", perm(handleUpdateStatus, "status:manage"))
 	g.DELETE("/api/v1/statuses/{id}", perm(handleDeleteStatus, "status:manage"))
 	g.GET("/api/v1/priorities", auth(handleGetPriorities))

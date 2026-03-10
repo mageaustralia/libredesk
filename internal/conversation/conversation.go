@@ -268,6 +268,7 @@ type queries struct {
 	GetConversationUUIDByID         *sqlx.Stmt `query:"get-conversation-uuid-by-id"`
 	CopyTagsToConversation          *sqlx.Stmt `query:"copy-tags-to-conversation"`
 	GetLatestMessageForConversation *sqlx.Stmt `query:"get-latest-message-for-conversation"`
+	GetPreviousEmailMessages        *sqlx.Stmt `query:"get-previous-email-messages"`
 	GetConversationInboxID           *sqlx.Stmt `query:"get-conversation-inbox-id"`
 	DeleteConversationParticipant    *sqlx.Stmt `query:"delete-conversation-participant"`
 }
@@ -413,6 +414,15 @@ func (c *Manager) GetUnassignedConversationsList(viewingUserID int, order, order
 }
 
 // GetTeamUnassignedConversationsList retrieves conversations assigned to a team with optional filtering, ordering, and pagination.
+// GetPreviousEmailMessages returns the last N non-private email messages before the given message ID.
+func (c *Manager) GetPreviousEmailMessages(conversationID, beforeMessageID, limit int) ([]models.QuotedMessage, error) {
+	var messages []models.QuotedMessage
+	if err := c.q.GetPreviousEmailMessages.Select(&messages, conversationID, beforeMessageID, limit); err != nil {
+		return nil, fmt.Errorf("fetching previous email messages: %w", err)
+	}
+	return messages, nil
+}
+
 func (c *Manager) GetTeamAllConversationsList(viewingUserID, teamID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
 	return c.GetConversations(viewingUserID, 0, []int{teamID}, []string{models.TeamAllConversations}, order, orderBy, filters, page, pageSize)
 }

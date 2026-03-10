@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	maxStatusNameLength = 25
+	maxStatusNameLength = 50
 )
 
 // Manager handles changes to statuses.
@@ -44,6 +44,8 @@ type queries struct {
 	InsertStatus   *sqlx.Stmt `query:"insert-status"`
 	DeleteStatus   *sqlx.Stmt `query:"delete-status"`
 	UpdateStatus   *sqlx.Stmt `query:"update-status"`
+	ReorderStatuses  *sqlx.Stmt `query:"reorder-statuses"`
+	ToggleShowOnSend *sqlx.Stmt `query:"toggle-show-on-send"`
 }
 
 // New creates and returns a new instance of the Manager.
@@ -125,6 +127,26 @@ func (m *Manager) Update(id int, name string) (models.Status, error) {
 		return updatedStatus, envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.Ts("globals.terms.status")), nil)
 	}
 	return updatedStatus, nil
+}
+
+// Reorder updates the sort_order for a list of status IDs.
+func (m *Manager) Reorder(ids []int) error {
+	for i, id := range ids {
+		if _, err := m.q.ReorderStatuses.Exec(id, i+1); err != nil {
+			m.lo.Error("error reordering status", "id", id, "error", err)
+			return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.T("globals.terms.status")), nil)
+		}
+	}
+	return nil
+}
+
+// ToggleShowOnSend updates the show_on_send flag for a status.
+func (m *Manager) ToggleShowOnSend(id int, show bool) error {
+	if _, err := m.q.ToggleShowOnSend.Exec(id, show); err != nil {
+		m.lo.Error("error toggling show_on_send", "id", id, "error", err)
+		return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.T("globals.terms.status")), nil)
+	}
+	return nil
 }
 
 // Get retrieves a status by ID.
