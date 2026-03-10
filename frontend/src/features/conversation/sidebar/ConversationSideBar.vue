@@ -51,6 +51,14 @@
               t('globals.messages.select', { name: t('globals.terms.tag', 2).toLowerCase() })
             "
           />
+
+          <!-- Followers -->
+          <SelectTag
+            v-if="conversationStore.current"
+            v-model="followerIds"
+            :items="followerAgentOptions"
+            placeholder="Select followers"
+          />
         </AccordionContent>
       </AccordionItem>
 
@@ -122,6 +130,7 @@ import PreviousConversations from '@/features/conversation/sidebar/PreviousConve
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import api from '@/api'
 
+
 const customAttributeStore = useCustomAttributeStore()
 const emitter = useEmitter()
 const conversationStore = useConversationStore()
@@ -129,6 +138,8 @@ const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
 const tagStore = useTagStore()
 const tags = ref([])
+const followers = ref([])
+const followerSyncInProgress = ref(false)
 // Save the accordion state in local storage
 const accordionState = useStorage('conversation-sidebar-accordion', ['previous_conversations'])
 const { t } = useI18n()
@@ -142,6 +153,7 @@ watch(
     // Set the flag when the conversation changes
     if (newConversation?.uuid !== oldConversation?.uuid) {
       isConversationChange = true
+      fetchFollowers()
     }
   },
   { immediate: true }
@@ -177,6 +189,79 @@ watch(
   },
   { immediate: false }
 )
+
+// Follower IDs as a computed get/set for the SelectTag v-model.
+const followerIds = computed({
+  get: () => followers.value.map(f => String(f.id)),
+  set: (newIds) => {
+    if (followerSyncInProgress.value) return
+    const oldIds = followers.value.map(f => String(f.id))
+    const added = newIds.filter(id => !oldIds.includes(id))
+    const removed = oldIds.filter(id => !newIds.includes(id))
+    if (added.length > 0) addFollower(added[0])
+    if (removed.length > 0) removeFollower(removed[0])
+  }
+})
+
+// Agent options for the follower picker — exclude "System" user.
+const followerAgentOptions = computed(() => {
+  return usersStore.options.filter(o => {
+    const label = (o.label || '').toLowerCase()
+    return label !== 'system' && label !== 'system user'
+  }).map(o => ({ label: o.label, value: o.value }))
+})
+
+const fetchFollowers = async () => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return
+  try {
+    const res = await api.getConversationParticipants(uuid)
+    followers.value = (res.data?.data || []).filter(f => {
+      const name = (f.first_name || '').toLowerCase()
+      return name !== 'system'
+    })
+  } catch { /* ignore */ }
+}
+
+const addFollower = async (userId) => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid || !userId) return
+  followerSyncInProgress.value = true
+  try {
+    const res = await api.addConversationFollower(uuid, userId)
+    followers.value = (res.data?.data || []).filter(f => {
+      const name = (f.first_name || '').toLowerCase()
+      return name !== 'system'
+    })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  } finally {
+    followerSyncInProgress.value = false
+  }
+}
+
+const removeFollower = async (userId) => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return
+  followerSyncInProgress.value = true
+  try {
+    const res = await api.removeConversationFollower(uuid, userId)
+    followers.value = (res.data?.data || []).filter(f => {
+      const name = (f.first_name || '').toLowerCase()
+      return name !== 'system'
+    })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  } finally {
+    followerSyncInProgress.value = false
+  }
+}
 
 const priorityOptions = computed(() => conversationStore.priorityOptions)
 

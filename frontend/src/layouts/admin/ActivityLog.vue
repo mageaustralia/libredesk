@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full h-screen p-0 sm:px-12 md:px-16 lg:px-32 xl:px-56">
+  <div class="w-full h-screen p-0 sm:px-8 md:px-12 lg:px-16 xl:px-24">
     <slot></slot>
   </div>
 </template>

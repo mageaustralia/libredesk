@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -9,13 +10,16 @@ import (
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/abhinavxd/libredesk/internal/user/models"
+	notifier "github.com/abhinavxd/libredesk/internal/notification"
+	nmodels "github.com/abhinavxd/libredesk/internal/notification/models"
 	"github.com/valyala/fasthttp"
 	"github.com/volatiletech/null/v9"
 	"github.com/zerodha/fastglue"
 )
 
 type createContactNoteReq struct {
-	Note string `json:"note"`
+	Note          string `json:"note"`
+	NotifyUserIDs []int  `json:"notify_user_ids"`
 }
 
 type blockContactReq struct {
@@ -214,6 +218,48 @@ func handleCreateContactNote(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+
+	// Send notifications to selected users.
+	if len(req.NotifyUserIDs) > 0 && app.notifDispatcher != nil {
+		// Get the contact name for the notification.
+		contact, contactErr := app.user.Get(contactID, "", "")
+		authorAgent, authorErr := app.user.GetAgent(auser.ID, "")
+		if contactErr == nil && authorErr == nil {
+			contactName := contact.FirstName + " " + contact.LastName
+			authorName := authorAgent.FirstName + " " + authorAgent.LastName
+
+			// Gather recipient emails.
+			var recipientEmails []string
+			for _, uid := range req.NotifyUserIDs {
+				agent, err := app.user.GetAgent(uid, "")
+				if err == nil && agent.Email.Valid {
+					recipientEmails = append(recipientEmails, agent.Email.String)
+				}
+			}
+
+			// Plain text excerpt for email body.
+			noteExcerpt := stripHTML(req.Note)
+			if len(noteExcerpt) > 500 {
+				noteExcerpt = noteExcerpt[:500] + "..."
+			}
+
+			app.notifDispatcher.Send(notifier.Notification{
+				Type:         nmodels.NotificationTypeContactNote,
+				RecipientIDs: req.NotifyUserIDs,
+				Title:        fmt.Sprintf("%s added a note on %s", authorName, contactName),
+				Body:         null.StringFrom(noteExcerpt),
+				ActorID:      null.IntFrom(auser.ID),
+				ActorFirstName: authorAgent.FirstName,
+				ActorLastName:  authorAgent.LastName,
+				Email: &notifier.EmailNotification{
+					Recipients: recipientEmails,
+					Subject:    fmt.Sprintf("New note on contact: %s", contactName),
+					Content:    fmt.Sprintf("<p><strong>%s</strong> added a note on contact <strong>%s</strong>:</p><blockquote>%s</blockquote>", authorName, contactName, req.Note),
+				},
+			})
+		}
+	}
+
 	return r.SendEnvelope(n)
 }
 
@@ -306,4 +352,33 @@ func handleDeleteContact(r *fastglue.Request) error {
 	}
 
 	return r.SendEnvelope(true)
+}
+
+// handleQuickCreateContact creates a contact with just email and name.
+func handleQuickCreateContact(r *fastglue.Request) error {
+	app := r.Context.(*App)
+
+	var req struct {
+		Email     string `json:"email"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	}
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid request", nil, envelope.InputError)
+	}
+	if req.Email == "" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Email is required", nil, envelope.InputError)
+	}
+
+	id, err := app.user.CreateContactSimple(req.Email, req.FirstName, req.LastName)
+	if err != nil {
+		return sendErrorEnvelope(r, envelope.NewError(envelope.GeneralError, "Error creating contact", nil))
+	}
+
+	// Return the created contact.
+	contact, err := app.user.GetContact(id, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(contact)
 }

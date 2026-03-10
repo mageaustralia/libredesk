@@ -3,9 +3,33 @@
     <div class="flex flex-col" v-if="conversation.subject">
       <p class="font-medium">{{ $t('globals.terms.subject') }}</p>
       <Skeleton v-if="conversationStore.conversation.loading" class="w-32 h-4" />
-      <p v-else>
-        {{ conversation.subject }}
-      </p>
+      <div v-else class="group flex items-start gap-1">
+        <p v-if="!editingSubject" class="flex-1 break-words">
+          {{ conversation.subject }}
+        </p>
+        <input
+          v-if="editingSubject"
+          ref="subjectInput"
+          v-model="subjectDraft"
+          class="flex-1 text-sm border rounded px-2 py-1"
+          @keyup.enter="saveSubject"
+          @keyup.escape="editingSubject = false"
+        />
+        <button
+          v-if="!editingSubject"
+          class="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 text-muted-foreground hover:text-foreground"
+          @click="startEditSubject"
+        >
+          <Pencil :size="14" />
+        </button>
+        <button
+          v-if="editingSubject"
+          class="mt-0.5 text-muted-foreground hover:text-foreground"
+          @click="saveSubject"
+        >
+          <Check :size="14" />
+        </button>
+      </div>
     </div>
 
     <div class="flex flex-col">
@@ -107,8 +131,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import { format } from 'date-fns'
+import { Pencil, Check } from 'lucide-vue-next'
 import SlaBadge from '@/features/sla/SlaBadge.vue'
 import { useConversationStore } from '@/stores/conversation'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -126,6 +151,35 @@ const customAttributeStore = useCustomAttributeStore()
 const conversationStore = useConversationStore()
 const conversation = computed(() => conversationStore.current)
 customAttributeStore.fetchCustomAttributes()
+
+const editingSubject = ref(false)
+const subjectDraft = ref('')
+const subjectInput = ref(null)
+
+const startEditSubject = () => {
+  subjectDraft.value = conversation.value.subject
+  editingSubject.value = true
+  nextTick(() => subjectInput.value?.focus())
+}
+
+const saveSubject = async () => {
+  const trimmed = subjectDraft.value.trim()
+  if (!trimmed || trimmed === conversation.value.subject) {
+    editingSubject.value = false
+    return
+  }
+  try {
+    await api.updateConversationSubject(conversation.value.uuid, trimmed)
+    conversationStore.current.subject = trimmed
+    editingSubject.value = false
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Subject updated' })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
 
 const updateCustomAttributes = async (attributes) => {
   let previousAttributes = conversationStore.current.custom_attributes

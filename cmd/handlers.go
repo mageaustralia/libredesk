@@ -41,6 +41,9 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/settings/trash", perm(handleUpdateTrashSettings, "general_settings:manage"))
 	g.GET("/api/v1/settings/ai", perm(handleGetAISettings, "ai:manage"))
 	g.PUT("/api/v1/settings/ai", perm(handleUpdateAISettings, "ai:manage"))
+	g.GET("/api/v1/settings/ai/inbox/{id}", perm(handleGetInboxAISettings, "ai:manage"))
+	g.PUT("/api/v1/settings/ai/inbox/{id}", perm(handleUpdateInboxAISettings, "ai:manage"))
+	g.DELETE("/api/v1/settings/ai/inbox/{id}", perm(handleDeleteInboxAISettings, "ai:manage"))
 	// RAG knowledge sources
 	g.GET("/api/v1/rag/sources", perm(handleGetRAGSources, "ai:manage"))
 	g.GET("/api/v1/rag/sources/{id}", perm(handleGetRAGSource, "ai:manage"))
@@ -77,6 +80,10 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/views/{id}/conversations", perm(handleGetViewConversations, "conversations:read"))
 	g.GET("/api/v1/conversations/{uuid}", perm(handleGetConversation, "conversations:read"))
 	g.GET("/api/v1/conversations/{uuid}/participants", perm(handleGetConversationParticipants, "conversations:read"))
+	g.POST("/api/v1/conversations/{uuid}/follow", auth(handleFollowConversation))
+	g.DELETE("/api/v1/conversations/{uuid}/follow", auth(handleUnfollowConversation))
+	g.POST("/api/v1/conversations/{uuid}/followers", perm(handleAddConversationFollower, "conversations:read"))
+	g.DELETE("/api/v1/conversations/{uuid}/followers/{user_id}", perm(handleRemoveConversationFollower, "conversations:read"))
 	g.PUT("/api/v1/conversations/{uuid}/assignee/user", perm(handleUpdateUserAssignee, "conversations:update_user_assignee"))
 	g.PUT("/api/v1/conversations/{uuid}/assignee/team", perm(handleUpdateTeamAssignee, "conversations:update_team_assignee"))
 	g.PUT("/api/v1/conversations/{uuid}/assignee/user/remove", perm(handleRemoveUserAssignee, "conversations:update_user_assignee"))
@@ -97,6 +104,8 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.POST("/api/v1/conversations", perm(handleCreateConversation, "conversations:write"))
 	g.POST("/api/v1/conversations/merge", perm(handleMergeConversations, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/custom-attributes", auth(handleUpdateConversationCustomAttributes))
+	g.PUT("/api/v1/conversations/{uuid}/subject", auth(handleUpdateConversationSubject))
+	g.PUT("/api/v1/conversations/{uuid}/contact", auth(handleUpdateConversationContact))
 	g.PUT("/api/v1/conversations/{uuid}/contacts/custom-attributes", auth(handleUpdateContactCustomAttributes))
 	// Draft endpoints
 	g.GET("/api/v1/drafts", auth(handleGetAllDrafts))
@@ -168,6 +177,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/contacts", perm(handleGetContacts, "contacts:read_all"))
 	g.GET("/api/v1/contacts/{id}", perm(handleGetContact, "contacts:read"))
 	g.PUT("/api/v1/contacts/{id}", perm(handleUpdateContact, "contacts:write"))
+	g.POST("/api/v1/contacts/quick", perm(handleQuickCreateContact, "contacts:write"))
 	g.PUT("/api/v1/contacts/{id}/block", perm(handleBlockContact, "contacts:block"))
 	g.DELETE("/api/v1/contacts/{id}", perm(handleDeleteContact, "contacts:delete"))
 

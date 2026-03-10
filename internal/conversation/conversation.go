@@ -214,6 +214,8 @@ type queries struct {
 	UpdateConversationAssignedUser     *sqlx.Stmt `query:"update-conversation-assigned-user"`
 	UpdateConversationAssignedTeam     *sqlx.Stmt `query:"update-conversation-assigned-team"`
 	UpdateConversationCustomAttributes *sqlx.Stmt `query:"update-conversation-custom-attributes"`
+	UpdateConversationSubject            *sqlx.Stmt `query:"update-conversation-subject"`
+	UpdateConversationContact            *sqlx.Stmt `query:"update-conversation-contact"`
 	UpdateConversationPriority         *sqlx.Stmt `query:"update-conversation-priority"`
 	UpdateConversationStatus           *sqlx.Stmt `query:"update-conversation-status"`
 	UpdateConversationLastMessage      *sqlx.Stmt `query:"update-conversation-last-message"`
@@ -266,6 +268,8 @@ type queries struct {
 	GetConversationUUIDByID         *sqlx.Stmt `query:"get-conversation-uuid-by-id"`
 	CopyTagsToConversation          *sqlx.Stmt `query:"copy-tags-to-conversation"`
 	GetLatestMessageForConversation *sqlx.Stmt `query:"get-latest-message-for-conversation"`
+	GetConversationInboxID           *sqlx.Stmt `query:"get-conversation-inbox-id"`
+	DeleteConversationParticipant    *sqlx.Stmt `query:"delete-conversation-participant"`
 }
 
 // CreateConversation creates a new conversation and returns its ID and UUID.
@@ -383,6 +387,16 @@ func (c *Manager) GetConversationUUID(id int) (string, error) {
 	return uuid, nil
 }
 
+// GetConversationInboxID retrieves the inbox ID of a conversation by its ID.
+func (c *Manager) GetConversationInboxID(id int) (int, error) {
+	var inboxID int
+	if err := c.q.GetConversationInboxID.QueryRow(id).Scan(&inboxID); err != nil {
+		c.lo.Error("fetching conversation inbox_id from DB", "error", err)
+		return 0, err
+	}
+	return inboxID, nil
+}
+
 // GetAllConversationsList retrieves all conversations with optional filtering, ordering, and pagination.
 func (c *Manager) GetAllConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
 	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.AllConversations}, order, orderBy, filters, page, pageSize)
@@ -399,6 +413,9 @@ func (c *Manager) GetUnassignedConversationsList(viewingUserID int, order, order
 }
 
 // GetTeamUnassignedConversationsList retrieves conversations assigned to a team with optional filtering, ordering, and pagination.
+func (c *Manager) GetTeamAllConversationsList(viewingUserID, teamID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
+	return c.GetConversations(viewingUserID, 0, []int{teamID}, []string{models.TeamAllConversations}, order, orderBy, filters, page, pageSize)
+}
 func (c *Manager) GetTeamUnassignedConversationsList(viewingUserID, teamID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
 	return c.GetConversations(viewingUserID, 0, []int{teamID}, []string{models.TeamUnassignedConversations}, order, orderBy, filters, page, pageSize)
 }
@@ -1291,11 +1308,39 @@ func (c *Manager) UpdateConversationCustomAttributes(uuid string, customAttribut
 	return nil
 }
 
+// UpdateConversationSubject updates the subject of a conversation.
+func (c *Manager) UpdateConversationSubject(uuid, subject string) error {
+	if _, err := c.q.UpdateConversationSubject.Exec(uuid, subject); err != nil {
+		c.lo.Error("error updating conversation subject", "error", err)
+		return envelope.NewError(envelope.GeneralError, c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.conversation}"), nil)
+	}
+	c.BroadcastConversationUpdate(uuid, "subject", subject)
+	return nil
+}
+
+// UpdateConversationContact changes the contact associated with a conversation.
+func (c *Manager) UpdateConversationContact(uuid string, contactID int) error {
+	if _, err := c.q.UpdateConversationContact.Exec(uuid, contactID); err != nil {
+		c.lo.Error("error updating conversation contact", "error", err)
+		return envelope.NewError(envelope.GeneralError, c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.conversation}"), nil)
+	}
+	return nil
+}
+
 // addConversationParticipant adds a user as participant to a conversation.
-func (c *Manager) addConversationParticipant(userID int, conversationUUID string) error {
+func (c *Manager) AddConversationParticipant(userID int, conversationUUID string) error {
 	if _, err := c.q.InsertConversationParticipant.Exec(userID, conversationUUID); err != nil && !dbutil.IsUniqueViolationError(err) {
 		c.lo.Error("error adding conversation participant", "user_id", userID, "conversation_uuid", conversationUUID, "error", err)
 		return envelope.NewError(envelope.GeneralError, c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.conversationParticipant}"), nil)
+	}
+	return nil
+}
+
+// RemoveConversationParticipant removes a user from a conversation's participants.
+func (c *Manager) RemoveConversationParticipant(userID int, conversationUUID string) error {
+	if _, err := c.q.DeleteConversationParticipant.Exec(userID, conversationUUID); err != nil {
+		c.lo.Error("error removing conversation participant", "user_id", userID, "conversation_uuid", conversationUUID, "error", err)
+		return envelope.NewError(envelope.GeneralError, "Error removing participant", nil)
 	}
 	return nil
 }

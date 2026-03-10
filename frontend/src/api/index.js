@@ -288,6 +288,10 @@ const updateContactCustomAttribute = (uuid, data) =>
       'Content-Type': 'application/json'
     }
   })
+const updateConversationSubject = (uuid, subject) => http.put(`/api/v1/conversations/${uuid}/subject`, { subject })
+const updateConversationContact = (uuid, contactId) => http.put(`/api/v1/conversations/${uuid}/contact`, { contact_id: contactId })
+const quickCreateContact = (data) => http.post(`/api/v1/contacts/quick`, data)
+
 const updateConversationCustomAttribute = (uuid, data) =>
   http.put(`/api/v1/conversations/${uuid}/custom-attributes`, data, {
     headers: {
@@ -328,6 +332,10 @@ const sendMessage = (uuid, data) =>
   })
 const getConversation = (uuid) => http.get(`/api/v1/conversations/${uuid}`)
 const getConversationParticipants = (uuid) => http.get(`/api/v1/conversations/${uuid}/participants`)
+const followConversation = (uuid) => http.post(`/api/v1/conversations/${uuid}/follow`)
+const unfollowConversation = (uuid) => http.delete(`/api/v1/conversations/${uuid}/follow`)
+const addConversationFollower = (uuid, userId) => http.post(`/api/v1/conversations/${uuid}/followers`, { user_id: Number(userId) })
+const removeConversationFollower = (uuid, userId) => http.delete(`/api/v1/conversations/${uuid}/followers/${userId}`)
 const getAllMacros = () => http.get('/api/v1/macros')
 const getMacro = (id) => http.get(`/api/v1/macros/${id}`)
 const createMacro = (data) =>
@@ -480,6 +488,9 @@ const ragGenerate = (data) => http.post("/api/v1/rag/generate", data, { timeout:
 const ragFileUpload = (formData) => http.post("/api/v1/rag/upload", formData, { headers: { "Content-Type": "multipart/form-data" } })
 const getAISettings = () => http.get("/api/v1/settings/ai")
 const updateAISettings = (data) => http.put("/api/v1/settings/ai", data)
+const getInboxAISettings = (inboxId) => http.get(`/api/v1/settings/ai/inbox/${inboxId}`)
+const updateInboxAISettings = (inboxId, data) => http.put(`/api/v1/settings/ai/inbox/${inboxId}`, data)
+const deleteInboxAISettings = (inboxId) => http.delete(`/api/v1/settings/ai/inbox/${inboxId}`)
 
 // Ecommerce Settings
 const getEcommerceSettings = () => http.get("/api/v1/settings/ecommerce")
@@ -602,6 +613,10 @@ export default {
   getOverviewMessageVolume,
   getOverviewTagDistribution,
   getConversationParticipants,
+  followConversation,
+  unfollowConversation,
+  addConversationFollower,
+  removeConversationFollower,
   getConversationMessage,
   getConversationMessages,
   getCurrentUser,
@@ -618,6 +633,9 @@ export default {
   updateConversationPriority,
   upsertTags,
   updateConversationCustomAttribute,
+  updateConversationSubject,
+  updateConversationContact,
+  quickCreateContact,
   updateContactCustomAttribute,
   uploadMedia,
   updateAssigneeLastSeen,
@@ -699,6 +717,9 @@ export default {
   ragFileUpload,
   getAISettings,
   updateAISettings,
+  getInboxAISettings,
+  updateInboxAISettings,
+  deleteInboxAISettings,
   getEcommerceSettings,
   updateEcommerceSettings,
   getEcommerceStatus,

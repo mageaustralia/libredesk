@@ -37,10 +37,13 @@ type Opts struct {
 
 // queries contains prepared SQL queries.
 type queries struct {
-	Get         *sqlx.Stmt `query:"get"`
-	GetAll      *sqlx.Stmt `query:"get-all"`
-	Update      *sqlx.Stmt `query:"update"`
-	GetByPrefix *sqlx.Stmt `query:"get-by-prefix"`
+	Get                    *sqlx.Stmt `query:"get"`
+	GetAll                 *sqlx.Stmt `query:"get-all"`
+	Update                 *sqlx.Stmt `query:"update"`
+	GetByPrefix            *sqlx.Stmt `query:"get-by-prefix"`
+	GetInboxAISettings     *sqlx.Stmt `query:"get-inbox-ai-settings"`
+	UpsertInboxAISettings  *sqlx.Stmt `query:"upsert-inbox-ai-settings"`
+	DeleteInboxAISettings  *sqlx.Stmt `query:"delete-inbox-ai-settings"`
 }
 
 // New creates and returns a new instance of the Manager.
@@ -302,6 +305,71 @@ func (m *Manager) decryptIfNeeded(key, value string) (string, error) {
 	}
 
 	return decrypted, nil
+}
+
+// GetInboxAISettings retrieves AI settings for a specific inbox.
+func (m *Manager) GetInboxAISettings(inboxID int) (models.InboxAISettings, error) {
+	var out models.InboxAISettings
+	if err := m.q.GetInboxAISettings.Get(&out, inboxID); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// UpsertInboxAISettings creates or updates AI settings for an inbox.
+func (m *Manager) UpsertInboxAISettings(s models.InboxAISettings) (models.InboxAISettings, error) {
+	var out models.InboxAISettings
+	if s.KnowledgeSourceIDs == nil {
+		s.KnowledgeSourceIDs = []byte("[]")
+	}
+	if err := m.q.UpsertInboxAISettings.Get(&out, s.InboxID, s.SystemPrompt, s.MaxContextChunks,
+		s.SimilarityThreshold, s.ExternalSearchEnabled, s.ExternalSearchURL,
+		s.ExternalSearchMaxResults, s.ExternalSearchEndpoints, s.ExternalSearchHeaders,
+		s.KnowledgeSourceIDs); err != nil {
+		m.lo.Error("error upserting inbox AI settings", "inbox_id", s.InboxID, "error", err)
+		return out, envelope.NewError(envelope.GeneralError, "Error saving inbox AI settings", nil)
+	}
+	return out, nil
+}
+
+// DeleteInboxAISettings removes AI settings for an inbox (falls back to global).
+func (m *Manager) DeleteInboxAISettings(inboxID int) error {
+	_, err := m.q.DeleteInboxAISettings.Exec(inboxID)
+	if err != nil {
+		m.lo.Error("error deleting inbox AI settings", "inbox_id", inboxID, "error", err)
+		return envelope.NewError(envelope.GeneralError, "Error deleting inbox AI settings", nil)
+	}
+	return nil
+}
+
+// GetEffectiveAISettings returns inbox-specific AI settings if they exist,
+// otherwise falls back to global AI settings.
+func (m *Manager) GetEffectiveAISettings(inboxID int) (models.InboxAISettings, error) {
+	if inboxID > 0 {
+		out, err := m.GetInboxAISettings(inboxID)
+		if err == nil {
+			return out, nil
+		}
+		// Not found — fall through to global
+	}
+
+	// Fall back to global settings
+	global, err := m.GetAISettings()
+	if err != nil {
+		return models.InboxAISettings{}, err
+	}
+
+	return models.InboxAISettings{
+		SystemPrompt:             global.SystemPrompt,
+		MaxContextChunks:         global.MaxContextChunks,
+		SimilarityThreshold:      global.SimilarityThreshold,
+		ExternalSearchEnabled:    global.ExternalSearchEnabled,
+		ExternalSearchURL:        global.ExternalSearchURL,
+		ExternalSearchMaxResults: global.ExternalSearchMaxResults,
+		ExternalSearchEndpoints:  global.ExternalSearchEndpoints,
+		ExternalSearchHeaders:    global.ExternalSearchHeaders,
+		KnowledgeSourceIDs:       []byte("[]"),
+	}, nil
 }
 
 // GetAISettings retrieves AI settings.

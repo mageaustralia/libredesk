@@ -545,8 +545,10 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 		m.mediaStore.Attach(media.ID, mmodels.ModelMessages, message.ID)
 	}
 
-	// Add this user as a participant.
-	m.addConversationParticipant(message.SenderID, message.ConversationUUID)
+	// Add contacts as participants (not agents — agents follow explicitly).
+	if message.SenderType == models.SenderTypeContact {
+		m.AddConversationParticipant(message.SenderID, message.ConversationUUID)
+	}
 
 	// Hide CSAT message content as it contains a public link to the survey.
 	lastMessage := message.TextContent
@@ -559,6 +561,12 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 
 	// Broadcast new message.
 	m.BroadcastNewMessage(message)
+
+	// Notify conversation participants (followers) about the new message.
+	// Skip for activity messages and only notify for real replies.
+	if message.Type != "activity" && message.SenderID > 0 {
+		go m.notifyParticipants(message)
+	}
 
 	// Refetch the message to get all fields populated (e.g., author, media URLs).
 	refetchedMessage, err := m.GetMessage(message.UUID)

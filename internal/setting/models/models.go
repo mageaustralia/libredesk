@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 type General struct {
 	SiteName                    string   `json:"app.site_name"`
 	Lang                        string   `json:"app.lang"`
@@ -10,6 +12,7 @@ type General struct {
 	AllowedFileUploadExtensions []string `json:"app.allowed_file_upload_extensions"`
 	Timezone                    string   `json:"app.timezone"`
 	BusinessHoursID             string   `json:"app.business_hours_id"`
+	TeamInboxShowAll            bool     `json:"app.team_inbox_show_all"`
 }
 
 type EmailNotification struct {
@@ -50,6 +53,23 @@ type AISettings struct {
 	ExternalSearchMaxResults int    `json:"ai.external_search_max_results" db:"ai.external_search_max_results"`
 	ExternalSearchEndpoints string  `json:"ai.external_search_endpoints" db:"ai.external_search_endpoints"`
 	ExternalSearchHeaders   string  `json:"ai.external_search_headers" db:"ai.external_search_headers"`
+}
+
+// InboxAISettings holds per-inbox AI/RAG configuration.
+type InboxAISettings struct {
+	ID                       int             `db:"id" json:"id"`
+	CreatedAt                string          `db:"created_at" json:"created_at"`
+	UpdatedAt                string          `db:"updated_at" json:"updated_at"`
+	InboxID                  int             `db:"inbox_id" json:"inbox_id"`
+	SystemPrompt             string          `db:"system_prompt" json:"system_prompt"`
+	MaxContextChunks         int             `db:"max_context_chunks" json:"max_context_chunks"`
+	SimilarityThreshold      float64         `db:"similarity_threshold" json:"similarity_threshold"`
+	ExternalSearchEnabled    bool            `db:"external_search_enabled" json:"external_search_enabled"`
+	ExternalSearchURL        string          `db:"external_search_url" json:"external_search_url"`
+	ExternalSearchMaxResults int             `db:"external_search_max_results" json:"external_search_max_results"`
+	ExternalSearchEndpoints  string          `db:"external_search_endpoints" json:"external_search_endpoints"`
+	ExternalSearchHeaders    string          `db:"external_search_headers" json:"external_search_headers"`
+	KnowledgeSourceIDs       json.RawMessage `db:"knowledge_source_ids" json:"knowledge_source_ids"`
 }
 
 // TrashSettings holds trash/spam auto-cleanup configuration.

@@ -9,48 +9,63 @@ export function stripConvUUID (email) {
 export function computeRecipientsFromMessage (message, contactEmail, inboxEmail) {
     const meta = message?.meta || {}
     const isIncoming = message.type === 'incoming'
+    const contactLower = (contactEmail || '').toLowerCase()
 
-    // Build TO field
-    const toList = isIncoming
-        ? meta.from && meta.from.length
-            ? meta.from
-            : contactEmail
-                ? [contactEmail]
-                : []
-        : meta.to && meta.to.length
-            ? meta.to
-            : contactEmail
-                ? [contactEmail]
-                : []
-
-    // Build CC field
-    let ccList = meta.cc || []
-
+    // Build TO field — the conversation contact is always the primary recipient.
+    let toList
     if (isIncoming) {
-        // Include original 'to' recipients in CC to preserve full thread context (e.g. other participants)
-        if (Array.isArray(meta.to))
-            ccList = ccList.concat(meta.to)
-
-        // If someone else replies (not the original contact), re-add original contact to CC to keep them in the loop.
-        if (
-            contactEmail &&
-            !toList.includes(contactEmail) &&
-            !ccList.includes(contactEmail)
-        ) {
-            ccList.push(contactEmail)
+        if (meta.from && meta.from.length) {
+            // Check if the contact email matches any of the from addresses.
+            const fromLower = meta.from.map(e => e.toLowerCase())
+            if (contactLower && !fromLower.includes(contactLower)) {
+                // Contact was changed — use the new contact as To.
+                toList = [contactEmail]
+            } else {
+                toList = meta.from
+            }
+        } else {
+            toList = contactEmail ? [contactEmail] : []
+        }
+    } else {
+        if (meta.to && meta.to.length) {
+            // For outgoing, check if contact email is in the To list.
+            const toLower = meta.to.map(e => e.toLowerCase())
+            if (contactLower && !toLower.includes(contactLower)) {
+                // Contact was changed — use the new contact as To.
+                toList = [contactEmail]
+            } else {
+                toList = meta.to
+            }
+        } else {
+            toList = contactEmail ? [contactEmail] : []
         }
     }
 
-    // Dedup + remove inbox email (including +conv-uuid variants)
-    const clean = list =>
-        Array.from(new Set(list.filter(email =>
-            email && stripConvUUID(email).toLowerCase() !== inboxEmail?.toLowerCase()
-        )))
+    // Build CC field
+    let ccList = [...(meta.cc || [])]
+
+    if (isIncoming) {
+        // Include original 'to' recipients in CC to preserve full thread context.
+        if (Array.isArray(meta.to))
+            ccList = ccList.concat(meta.to)
+    }
+
+    // Dedup + remove inbox email (including +conv-uuid variants) + remove contact email from CC
+    const clean = (list, excludeExtra) => {
+        const excludeLower = (excludeExtra || []).map(e => e.toLowerCase())
+        return Array.from(new Set(list.filter(email => {
+            if (!email) return false
+            const lower = email.toLowerCase()
+            if (stripConvUUID(lower) === inboxEmail?.toLowerCase()) return false
+            if (excludeLower.includes(lower)) return false
+            return true
+        })))
+    }
 
     return {
         to: clean(toList),
-        cc: clean(ccList),
-        // BCC stays empty user is supposed to add it manually.
+        cc: clean(ccList, toList),
+        // BCC stays empty — user is supposed to add it manually.
         bcc: [],
     }
 }

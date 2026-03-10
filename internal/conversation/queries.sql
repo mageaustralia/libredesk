@@ -298,7 +298,7 @@ END
 SELECT users.id as id, first_name, last_name, avatar_url 
 FROM conversation_participants
 INNER JOIN users ON users.id = conversation_participants.user_id
-WHERE conversation_id =
+WHERE users.type = 'agent' AND conversation_id =
 (
     SELECT id FROM conversations WHERE uuid = $1
 );
@@ -748,3 +748,16 @@ FROM conversation_messages
 WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: get-conversation-inbox-id
+SELECT inbox_id FROM conversations WHERE id = $1;
+
+-- name: delete-conversation-participant
+DELETE FROM conversation_participants
+WHERE user_id = $1 AND conversation_id = (SELECT id FROM conversations WHERE uuid = $2);
+
+-- name: update-conversation-subject
+UPDATE conversations SET subject = $2, updated_at = NOW() WHERE uuid = $1;
+
+-- name: update-conversation-contact
+UPDATE conversations SET contact_id = $2, updated_at = NOW() WHERE uuid = $1;

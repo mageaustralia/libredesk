@@ -27,6 +27,22 @@ func (u *Manager) CreateContact(user *models.User) error {
 	return nil
 }
 
+// CreateContactSimple creates a contact user without requiring an inbox/channel.
+// Used when manually creating contacts from the conversation UI.
+func (u *Manager) CreateContactSimple(email, firstName, lastName string) (int, error) {
+	password, err := u.generatePassword()
+	if err != nil {
+		return 0, fmt.Errorf("generating password: %w", err)
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	var id int
+	if err := u.q.InsertContactSimple.QueryRow(email, firstName, lastName, password).Scan(&id); err != nil {
+		u.lo.Error("error inserting contact", "error", err)
+		return 0, fmt.Errorf("insert contact: %w", err)
+	}
+	return id, nil
+}
+
 // UpdateContact updates a contact in the database.
 func (u *Manager) UpdateContact(id int, user models.User) error {
 	if _, err := u.q.UpdateContact.Exec(id, user.FirstName, user.LastName, user.Email, user.AvatarURL, user.PhoneNumber, user.PhoneNumberCountryCode); err != nil {
