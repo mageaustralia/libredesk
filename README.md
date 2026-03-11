@@ -242,7 +242,7 @@ Google Workspace rewrites the `From:` header on forwarded emails for DMARC compl
 
 - **X-Google-Original-From** header (priority 1): The original sender before Google rewrote the header
 - **Reply-To** header (priority 2): Used when From and To domains match (forwarding indicator)
-- **Smart name derivation**: When no display name is available, derives a name from the email local part (e.g., `sharyn.blakemore@gmail.com` → "Sharyn Blakemore")
+- **Smart name derivation**: When no display name is available, derives a name from the email local part (e.g., `jane.smith@gmail.com` → "Jane Smith")
 
 ### Email Rendering Fixes
 
