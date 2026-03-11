@@ -176,8 +176,8 @@ const sanitizedContent = computed(() => {
       content
     )
     content = content.replace(/src="\/uploads\//g, `src="${baseUrl}/uploads/`)
-    // Strip empty paragraphs containing only whitespace or non-breaking spaces
-    content = content.replace(/<p[^>]*>\s*(&nbsp;|\u00a0|\s|<br\s*\/?>)*\s*<\/p>/gi, "")
+    // Strip runs of 3+ consecutive empty paragraphs down to one (preserve intentional spacing)
+    content = content.replace(/(<p[^>]*>\s*(&nbsp;|\u00a0|\s|<br\s*\/?>)*\s*<\/p>\s*){3,}/gi, '<p>&nbsp;</p>')
     return content
   }
 })

@@ -44,7 +44,7 @@
           />
         </th>
         <th class="px-2 py-2 font-medium relative select-none group/th">
-          Group
+          Team
           <div
             class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'group')"
@@ -97,10 +97,11 @@
         @click="navigateToConversation(conversation)"
       >
         <!-- Checkbox -->
-        <td class="px-2 py-2" @click.stop>
+        <td class="px-2 py-2" @click.stop="(e) => { conversationStore.toggleSelect(conversation.uuid, e.shiftKey); }">
           <Checkbox
             :checked="conversationStore.isSelected(conversation.uuid)"
-            @update:checked="() => conversationStore.toggleSelect(conversation.uuid)"
+            tabindex="-1"
+            class="pointer-events-none"
           />
         </td>
 

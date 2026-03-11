@@ -110,24 +110,16 @@
                 />
               </div>
 
-              <!-- Tag input -->
+              <!-- Contains input (comma-separated values) -->
               <div v-if="inputType(index) === 'tag'">
-                <TagsInput
-                  :modelValue="fieldValueAsArray(rule.value)"
+                <Input
+                  type="text"
+                  placeholder="Enter values separated by commas"
+                  :modelValue="Array.isArray(rule.value) ? rule.value.join(', ') : rule.value"
                   @update:modelValue="(value) => handleValueChange(value, index)"
-                >
-                  <TagsInputItem
-                    v-for="item in fieldValueAsArray(rule.value)"
-                    :key="item"
-                    :value="item"
-                  >
-                    <TagsInputItemText />
-                    <TagsInputItemDelete />
-                  </TagsInputItem>
-                  <TagsInputInput :placeholder="t('globals.messages.select', { name: t('globals.terms.value').toLowerCase() })" />
-                </TagsInput>
+                />
                 <p class="text-xs text-gray-500 mt-1">
-                  {{ $t('globals.messages.pressEnterToSelectAValue') }}
+                  Separate multiple values with commas
                 </p>
               </div>
 
@@ -203,13 +195,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import {
-  TagsInput,
-  TagsInputInput,
-  TagsInputItem,
-  TagsInputItemDelete,
-  TagsInputItemText
-} from '@/components/ui/tags-input'
+
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { useI18n } from 'vue-i18n'
@@ -280,11 +266,7 @@ const handleFieldChange = (value, ruleIndex) => {
 }
 
 const handleOperatorChange = (value, ruleIndex) => {
-  if (['contains', 'not contains'].includes(value)) {
-    ruleGroup.value.rules[ruleIndex].value = []
-  } else {
-    ruleGroup.value.rules[ruleIndex].value = ''
-  }
+  ruleGroup.value.rules[ruleIndex].value = ''
   ruleGroup.value.rules[ruleIndex].operator = value
   emitUpdate()
 }
@@ -293,22 +275,12 @@ const handleValueChange = (value, ruleIndex) => {
   // Get value from object if it's an object.
   const val = typeof value === 'object' && !Array.isArray(value) ? value.value : value
 
-  // Fetch the rule.
-  const rule = ruleGroup.value.rules[ruleIndex]
-
-  // Array values are stored as comma separated string.
-  rule.value = ['contains', 'not contains'].includes(rule.operator)
-    ? Array.isArray(val)
-      ? val.join(',')
-      : val
-    : String(val)
-
+  // Store as string.
+  ruleGroup.value.rules[ruleIndex].value = String(val)
   emitUpdate()
 }
 
-const fieldValueAsArray = (value) => {
-  return Array.isArray(value) ? value : value ? value.split(',') : []
-}
+
 
 const handleCaseSensitiveCheck = (value, ruleIndex) => {
   ruleGroup.value.rules[ruleIndex].case_sensitive_match = value

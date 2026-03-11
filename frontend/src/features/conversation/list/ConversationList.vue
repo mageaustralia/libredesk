@@ -26,7 +26,7 @@
             <ChevronDown class="w-3 h-3 ml-1 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent class="max-h-60 overflow-y-auto">
+        <DropdownMenuContent class="max-h-[80vh] overflow-y-auto">
           <DropdownMenuLabel class="text-xs text-muted-foreground">Agents</DropdownMenuLabel>
           <DropdownMenuItem
             v-for="agent in usersStore.options"
@@ -84,6 +84,18 @@
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <!-- Close -->
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        :disabled="bulkLoading"
+        @click="bulkUpdateStatus('Closed')"
+      >
+        <CheckCircle2 class="w-3 h-3 mr-1" />
+        Close
+      </Button>
 
       <!-- Trash -->
       <Button
@@ -334,7 +346,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, Trash2, GitMerge, RefreshCw } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, CheckCircle2, Trash2, GitMerge, RefreshCw } from 'lucide-vue-next'
 import MergeDialog from '@/features/conversation/MergeDialog.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'

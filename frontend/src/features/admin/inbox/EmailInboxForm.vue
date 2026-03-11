@@ -86,6 +86,32 @@
         </FormControl>
       </FormItem>
     </FormField>
+    <!-- Email Aliases -->
+    <div v-if="showFormFields" class="box p-4 space-y-2">
+      <label class="text-base font-medium">Email Aliases</label>
+      <p class="text-sm text-muted-foreground">Additional email addresses that forward to this inbox. These will be filtered from CC when replying.</p>
+      <div class="flex flex-wrap gap-1.5 min-h-[36px] border rounded-md px-2 py-1.5 items-center">
+        <span
+          v-for="(alias, idx) in (form.values.email_aliases || [])"
+          :key="idx"
+          class="inline-flex items-center gap-1 bg-muted text-sm px-2 py-0.5 rounded-full"
+        >
+          {{ alias }}
+          <button type="button" class="hover:text-destructive" @click="removeAlias(idx)">
+            <X :size="12" />
+          </button>
+        </span>
+        <input
+          v-model="newAlias"
+          @keydown.enter.prevent="addAlias"
+          @keydown.tab.prevent="addAlias"
+          @blur="addAlias"
+          placeholder="Type email and press Enter"
+          class="flex-1 min-w-[180px] bg-transparent text-sm outline-none"
+        />
+      </div>
+    </div>
+
     <FormField v-if="showFormFields" v-slot="{ componentField }" name="signature">
       <FormItem class="box p-4">
         <div class="space-y-2">
@@ -784,7 +810,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { CheckCircle2, RefreshCw, Mail, Loader2 } from 'lucide-vue-next'
+import { CheckCircle2, RefreshCw, Mail, Loader2, X } from 'lucide-vue-next'
 import { Label } from '@/components/ui/label'
 import MenuCard from '@/components/layout/MenuCard.vue'
 import { useI18n } from 'vue-i18n'
@@ -834,6 +860,23 @@ const showOAuthModal = ref(false)
 const selectedProvider = ref('')
 const flowType = ref('new_inbox')
 const signatureTextarea = ref(null)
+const newAlias = ref('')
+
+const addAlias = () => {
+  const val = newAlias.value.trim().toLowerCase()
+  if (!val || !val.includes('@')) return
+  const current = form.values.email_aliases || []
+  if (!current.includes(val)) {
+    form.setFieldValue('email_aliases', [...current, val])
+  }
+  newAlias.value = ''
+}
+
+const removeAlias = (idx) => {
+  const current = [...(form.values.email_aliases || [])]
+  current.splice(idx, 1)
+  form.setFieldValue('email_aliases', current)
+}
 
 // Insert placeholder into signature field
 const insertPlaceholder = (placeholder) => {
@@ -880,6 +923,7 @@ const form = useForm({
     enable_plus_addressing: true,
     auto_assign_on_reply: false,
     signature: '',
+    email_aliases: [],
     auth_type: AUTH_TYPE_PASSWORD,
     imap: {
       host: 'imap.gmail.com',

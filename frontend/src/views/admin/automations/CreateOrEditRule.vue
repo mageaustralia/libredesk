@@ -461,6 +461,20 @@ onMounted(async () => {
       isLoading.value = true
       let resp = await api.getAutomationRule(props.id)
       rule.value = resp.data.data
+      // Ensure there are always 2 groups (some rules were saved with only 1).
+      if (rule.value.rules?.[0]?.groups?.length === 1) {
+        rule.value.rules[0].groups.push({ rules: [], logical_op: 'OR' })
+      }
+      // Fix any array values in contains rules (legacy) — convert to comma strings.
+      if (rule.value.rules?.[0]?.groups) {
+        for (const group of rule.value.rules[0].groups) {
+          for (const r of (group.rules || [])) {
+            if (Array.isArray(r.value)) {
+              r.value = r.value.join(',')
+            }
+          }
+        }
+      }
       if (resp.data.data.type === 'conversation_update') {
         rule.value.rules.events = []
       }

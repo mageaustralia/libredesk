@@ -42,10 +42,11 @@ type ExternalSearchHit struct {
 	BrandID         string                 `json:"brand_id"`
 	InStock         int                    `json:"in_stock"`
 	ProductCount    int                    `json:"product_count"`
-	BulkyGoods         string                 `json:"bulky_goods"`
-	DisableFreeShip    string                 `json:"disable_free_shipping"`
-	Price           map[string]interface{} `json:"price"`
-	Categories      map[string]interface{} `json:"categories"`
+	BulkyGoods         string                            `json:"bulky_goods"`
+	DisableFreeShip    string                            `json:"disable_free_shipping"`
+	Price              map[string]interface{}             `json:"price"`
+	Categories         map[string]interface{}             `json:"categories"`
+	SkuStockData       map[string]map[string]interface{} `json:"sku_stock_data"`
 }
 
 // ExternalSearchResponse is the response from an external search API.
@@ -221,6 +222,7 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		ConversationID   int    `json:"conversation_id"`
 		CustomerMessage  string `json:"customer_message"`
 		IncludeEcommerce bool   `json:"include_ecommerce"`
+		InboxID          int    `json:"inbox_id"`
 	}
 
 	if err := r.Decode(&req, "json"); err != nil {
@@ -240,11 +242,21 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 
 	timerStart := time.Now()
 
-	// Get AI settings
-	aiSettings, err := app.setting.GetAISettings()
+	// Resolve inbox_id: use request value, or look it up from the conversation.
+	inboxID := req.InboxID
+	if inboxID == 0 && req.ConversationID > 0 {
+		if convInboxID, err := app.conversation.GetConversationInboxID(req.ConversationID); err == nil {
+			inboxID = convInboxID
+		}
+	}
+
+	// Get effective AI settings (inbox-specific if available, else global).
+	aiSettings, err := app.setting.GetEffectiveAISettings(inboxID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+
+	app.lo.Info("RAG using AI settings", "inbox_id", inboxID, "has_system_prompt", aiSettings.SystemPrompt != "")
 
 	// Use sensible defaults for RAG search
 	threshold := aiSettings.SimilarityThreshold
@@ -256,8 +268,16 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		maxChunks = 5
 	}
 
-	// Search knowledge base
-	results, err := app.rag.Search(req.CustomerMessage, maxChunks, threshold)
+	// Parse knowledge source IDs for filtering (inbox-specific sources).
+	var sourceIDs []int
+	if aiSettings.KnowledgeSourceIDs != nil && string(aiSettings.KnowledgeSourceIDs) != "[]" {
+		if err := json.Unmarshal(aiSettings.KnowledgeSourceIDs, &sourceIDs); err != nil {
+			app.lo.Warn("failed to parse knowledge source IDs", "error", err)
+		}
+	}
+
+	// Search knowledge base (with optional source filtering)
+	results, err := app.rag.Search(req.CustomerMessage, maxChunks, threshold, sourceIDs...)
 	if err != nil {
 		app.lo.Warn("RAG search failed, continuing without context", "error", err)
 		results = []models.SearchResult{}
@@ -305,9 +325,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 			app.lo.Warn("External search classification failed, continuing without", "error", err)
 		} else {
 			app.lo.Info("External search classification", "intents", intents)
-			externalSearchContext = app.performExternalSearch(intents, maxSearchResults)
+			externalSearchContext = app.performExternalSearch(intents, maxSearchResults, aiSettings.ExternalSearchURL, aiSettings.ExternalSearchEndpoints, aiSettings.ExternalSearchHeaders)
 			if externalSearchContext != "" {
 				app.lo.Info("External search results added to context", "length", len(externalSearchContext))
+				app.lo.Info("External search context content", "content", externalSearchContext)
 			}
 		}
 	}
@@ -515,6 +536,11 @@ Rules:
 	return classification.Intents, nil
 }
 
+// MultiSearchResponse is the response from Meilisearch multi-search API.
+type MultiSearchResponse struct {
+	Results []ExternalSearchResponse `json:"results"`
+}
+
 // queryExternalSearch queries an external search API endpoint via HTTP POST.
 func queryExternalSearch(searchURL, query string, limit int, headers map[string]string) (*ExternalSearchResponse, error) {
 	// SSRF protection: block internal/private network URLs.
@@ -563,22 +589,81 @@ func queryExternalSearch(searchURL, query string, limit int, headers map[string]
 	return &result, nil
 }
 
-// performExternalSearch searches configured external endpoints based on classified intents.
-func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) string {
-	var sections []string
-
-	aiSettings, err := app.setting.GetAISettings()
-	if err != nil {
-		app.lo.Warn("Failed to get AI settings for external search", "error", err)
-		return ""
+// queryExternalMultiSearch queries a Meilisearch multi-search endpoint.
+// indexUid is the index to search, filter is an optional Meilisearch filter expression.
+func queryExternalMultiSearch(searchURL, indexUid, query string, limit int, filter string, headers map[string]string) (*ExternalSearchResponse, error) {
+	if err := urlutil.ValidateExternalURL(searchURL); err != nil {
+		return nil, fmt.Errorf("search URL blocked: %w", err)
 	}
+
+	// Build the query object for multi-search.
+	qObj := map[string]interface{}{
+		"indexUid": indexUid,
+		"q":        query,
+		"limit":    limit,
+	}
+	if filter != "" {
+		qObj["filter"] = []string{filter}
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"queries": []interface{}{qObj},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", searchURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "LibreDesk/1.0")
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("multi-search returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var multiResult MultiSearchResponse
+	if err := json.Unmarshal(body, &multiResult); err != nil {
+		return nil, fmt.Errorf("failed to parse multi-search response: %w", err)
+	}
+
+	if len(multiResult.Results) == 0 {
+		return &ExternalSearchResponse{}, nil
+	}
+
+	return &multiResult.Results[0], nil
+}
+
+// performExternalSearch searches configured external endpoints based on classified intents.
+func (app *App) performExternalSearch(intents []SearchIntent, maxResults int, searchURL, endpointsJSON, headersJSON string) string {
+	var sections []string
 
 	// Parse configured endpoints from settings.
 	// Format: JSON object mapping intent type to URL path suffix.
 	// e.g. {"product": "/indexes/my_products/search", "category": "/indexes/my_categories/search", "faq": "/indexes/my_faqs/search"}
 	endpoints := make(map[string]string)
-	if aiSettings.ExternalSearchEndpoints != "" {
-		if err := json.Unmarshal([]byte(aiSettings.ExternalSearchEndpoints), &endpoints); err != nil {
+	if endpointsJSON != "" {
+		if err := json.Unmarshal([]byte(endpointsJSON), &endpoints); err != nil {
 			app.lo.Warn("Failed to parse external search endpoints config", "error", err)
 			return ""
 		}
@@ -593,13 +678,13 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 	// Format: JSON object of header key-value pairs.
 	// e.g. {"User-Agent": "Mozilla/5.0...", "Referer": "https://example.com/"}
 	headers := make(map[string]string)
-	if aiSettings.ExternalSearchHeaders != "" {
-		if err := json.Unmarshal([]byte(aiSettings.ExternalSearchHeaders), &headers); err != nil {
+	if headersJSON != "" {
+		if err := json.Unmarshal([]byte(headersJSON), &headers); err != nil {
 			app.lo.Warn("Failed to parse external search headers config", "error", err)
 		}
 	}
 
-	baseURL := strings.TrimRight(aiSettings.ExternalSearchURL, "/")
+	baseURL := strings.TrimRight(searchURL, "/")
 
 	for _, intent := range intents {
 		endpointPath, ok := endpoints[intent.Type]
@@ -607,8 +692,24 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 			continue
 		}
 
-		searchURL := baseURL + endpointPath
-		results, err := queryExternalSearch(searchURL, intent.Query, maxResults, headers)
+		var results *ExternalSearchResponse
+		var err error
+
+		// Multi-search format: "multi-search:indexUid" or "multi-search:indexUid:filter_expression"
+		if strings.HasPrefix(endpointPath, "multi-search:") {
+			parts := strings.SplitN(endpointPath, ":", 3)
+			indexUid := parts[1]
+			filter := ""
+			if len(parts) == 3 {
+				filter = parts[2]
+			}
+			fullURL := baseURL + "/multi-search"
+			results, err = queryExternalMultiSearch(fullURL, indexUid, intent.Query, maxResults, filter, headers)
+		} else {
+			fullURL := baseURL + endpointPath
+			results, err = queryExternalSearch(fullURL, intent.Query, maxResults, headers)
+		}
+
 		if err != nil {
 			app.lo.Warn("External search query failed", "type", intent.Type, "query", intent.Query, "error", err)
 			continue
@@ -645,6 +746,27 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 					line += " - " + price
 				}
 				line += " - " + stock
+				// Build per-SKU stock details if available.
+				skuStock := ""
+				if len(hit.SkuStockData) > 0 {
+					var skuParts []string
+					for sku, data := range hit.SkuStockData {
+						qty := 0
+						if q, ok := data["qty"].(float64); ok {
+							qty = int(q)
+						}
+						inStk := false
+						if s, ok := data["in_stock"].(float64); ok && s > 0 {
+							inStk = true
+						}
+						status := "out of stock"
+						if inStk {
+							status = fmt.Sprintf("%d in stock", qty)
+						}
+						skuParts = append(skuParts, fmt.Sprintf("%s: %s", sku, status))
+					}
+					skuStock = strings.Join(skuParts, ", ")
+				}
 				if strings.EqualFold(hit.DisableFreeShip, "Yes") {
 					line += " - CUSTOM FREIGHT QUOTE REQUIRED"
 				} else {
@@ -660,6 +782,9 @@ func (app *App) performExternalSearch(intents []SearchIntent, maxResults int) st
 					}
 				}
 				line += "\n   URL: " + hit.URL
+				if skuStock != "" {
+					line += "\n   Stock by size/option: " + skuStock
+				}
 				desc := stripHTML(hit.Description)
 				if len(desc) > 200 {
 					desc = desc[:200] + "..."

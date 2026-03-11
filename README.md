@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Agent collision detection, ticket merging, contact email filter, multi-status filtering, and smart team reassignment.
+**Latest** — Per-inbox AI settings, email alias filtering, inbox-scoped knowledge sources, SKU stock data in AI context, and automation rule fixes.
 
 ### Spam & Trash
 
@@ -121,6 +121,42 @@ Each conversation row shows the assigned agent and team with inline dropdown men
 - Compact 2x2 grid layout alongside timestamp and unread badge
 - Dropdown menus with full agent/team lists for quick reassignment
 
+### Per-Inbox AI Settings
+
+Each inbox can have its own AI assistant configuration, overriding global defaults.
+
+- **Inbox scope selector** in AI Settings — choose "Global" or a specific inbox
+- **Per-inbox system prompt** — different tone/instructions per brand or inbox
+- **Per-inbox knowledge sources** — restrict which knowledge bases the AI searches for each inbox
+- **Per-inbox external search** — different product catalogues or search endpoints per inbox
+- **Reset to Global** button removes inbox-specific settings to fall back to defaults
+- Backend resolves effective settings: inbox-specific if available, otherwise global
+
+### Email Alias Filtering
+
+Configure additional email addresses that forward to an inbox, preventing them from appearing in CC when replying.
+
+- **Email aliases field** in Inbox Settings — pill-style input for adding multiple forwarding addresses
+- Aliases are excluded from CC alongside the primary inbox email
+- Handles common setups like `orders@` and `info@` forwarding to a shared inbox
+- **Smart contact detection**: When the conversation contact is an inbox email (e.g., Magento order notifications), scans message history to find the real customer email
+
+### SKU-Level Stock Data in AI Context
+
+Product search results now include per-SKU stock availability for AI responses.
+
+- `sku_stock_data` field parsed from Meilisearch product documents
+- Per-SKU stock details (quantity, in/out of stock) formatted in AI context
+- AI can answer "is size X in stock?" with specific SKU-level information
+
+### Meilisearch Multi-Search Support
+
+External search now supports Meilisearch multi-search API for more flexible product/content queries.
+
+- **Multi-search endpoint format**: `multi-search:indexUid` or `multi-search:indexUid:filter_expression`
+- Single API call searches multiple indexes with optional filters
+- Falls back to standard single-index search for non-multi-search endpoints
+
 ### OpenRouter AI Provider
 
 Support for [OpenRouter](https://openrouter.ai/) as an AI provider, giving access to 100+ models (GPT-4o, Claude, Llama, Mistral, etc.) through a single API key.
@@ -133,6 +169,8 @@ Improvements to the built-in RAG AI assistant:
 - **Context limiting**: Conversations trimmed to last 10 messages / 6000 chars to prevent timeouts on long threads
 - **Ecommerce context injection**: Order and customer data included in AI prompts alongside knowledge base results
 - **Extended timeouts**: AI provider HTTP timeouts increased to 60s for large prompts
+- **Per-inbox knowledge source filtering**: RAG search can be scoped to specific knowledge sources per inbox
+- **Inbox-aware settings resolution**: AI generates responses using inbox-specific or global settings automatically
 
 ### Ecommerce Integration (Maho Commerce)
 
@@ -236,6 +274,17 @@ The unread message count badge now excludes activity messages (assignment change
 - **Image resize handles**: Drag to resize inline images in the editor
 - **Macro import support**: Bulk import canned responses from Freshdesk (82 macros with folder prefixes)
 - **Macro append mode**: Applying a macro appends to existing editor content instead of replacing it
+- **Reply/Private Note button routing**: Clicking Reply opens reply mode, clicking Private Note opens note mode (instead of both opening the last-used mode)
+- **Discard draft confirmation**: Discarding a draft now shows a confirmation dialog and collapses the reply box
+- **Bulk Close button**: Quick-close selected conversations from the bulk actions bar
+- **Full-height assign dropdown**: Assign dropdown uses viewport height instead of fixed scroll area
+- **Shift+click range select in table view**: Hold shift to select a range of conversations in table view
+- **"Group" renamed to "Team"**: Table view column header now says "Team" instead of "Group"
+- **Automation "contains" fix**: Contains/not-contains operator now uses a simple comma-separated text input instead of the broken TagsInput component
+- **Automation single-group fix**: Rules saved with only one condition group no longer crash on edit
+- **Contact notes notifications**: Option to notify agents when adding contact notes
+- **Relaxed HTML sanitisation**: Preserves intentional paragraph spacing in emails instead of stripping all empty elements
+- **Empty paragraph handling**: Only collapses 3+ consecutive empty paragraphs (preserves intentional vertical spacing)
 - **Fresh theme as default**: New users get the Fresh theme by default
 - **Improved message typography**: Larger, more readable font in Fresh theme matching Freshdesk's style
 

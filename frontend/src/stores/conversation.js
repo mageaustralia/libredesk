@@ -2,13 +2,14 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref, watchEffect } from 'vue'
 import { CONVERSATION_LIST_TYPE, CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { handleHTTPError } from '@/utils/http'
-import { computeRecipientsFromMessage } from '@/utils/email-recipients'
+import { computeRecipientsFromMessage, findRealCustomerEmail } from '@/utils/email-recipients'
 import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents'
 import MessageCache from '@/utils/conversation-message-cache'
 import api from '@/api'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
+import { useInboxStore } from '@/stores/inbox'
 
 export const useConversationStore = defineStore('conversation', () => {
   const CONV_LIST_PAGE_SIZE = 50
@@ -407,10 +408,24 @@ export const useConversationStore = defineStore('conversation', () => {
       return
     }
 
+    const inboxStore = useInboxStore()
+    const allInboxEmails = [
+      ...inboxStore.inboxes.map(i => i.from).filter(Boolean),
+      ...inboxStore.inboxes.flatMap(i => i.config?.email_aliases || []).filter(Boolean)
+    ]
+    // If contact email is an inbox email, find the real customer from message history
+    let effectiveContactEmail = conv.contact?.email || ''
+    const allInboxLower = new Set(allInboxEmails.map(e => e.toLowerCase()))
+    if (effectiveContactEmail && allInboxLower.has(effectiveContactEmail.toLowerCase())) {
+      const allMessages = msgData.getAllPagesMessages(conv.uuid) || []
+      const realCustomer = findRealCustomerEmail(allMessages, allInboxEmails)
+      if (realCustomer) effectiveContactEmail = realCustomer
+    }
     const { to, cc, bcc } = computeRecipientsFromMessage(
       latestMessage,
-      conv.contact?.email || '',
-      inboxEmail
+      effectiveContactEmail,
+      inboxEmail,
+      allInboxEmails
     )
     currentTo.value = to
     currentCC.value = cc

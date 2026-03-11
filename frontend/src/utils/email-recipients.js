@@ -6,10 +6,37 @@ export function stripConvUUID (email) {
     return email.replace(/\+conv-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}@/i, '@')
 }
 
-export function computeRecipientsFromMessage (message, contactEmail, inboxEmail) {
+// Find the real customer email from message history when contact email is an inbox email.
+// Scans from newest to oldest for a non-inbox from (incoming) or to (outgoing) address.
+export function findRealCustomerEmail (messages, allInboxEmails) {
+    const inboxSet = new Set((allInboxEmails || []).map(e => e.toLowerCase()))
+    // Search newest first
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]
+        const meta = m?.meta || {}
+        if (m.type === 'incoming' && meta.from?.length) {
+            for (const email of meta.from) {
+                if (email && !inboxSet.has(stripConvUUID(email.toLowerCase()))) return email
+            }
+        }
+        if (m.type === 'outgoing' && meta.to?.length) {
+            for (const email of meta.to) {
+                if (email && !inboxSet.has(stripConvUUID(email.toLowerCase()))) return email
+            }
+        }
+    }
+    return null
+}
+
+export function computeRecipientsFromMessage (message, contactEmail, inboxEmail, allInboxEmails = []) {
     const meta = message?.meta || {}
     const isIncoming = message.type === 'incoming'
     const contactLower = (contactEmail || '').toLowerCase()
+    // Build set of all inbox emails to exclude from CC (handles forwarding between inboxes)
+    const inboxEmailsLower = new Set(
+        (allInboxEmails.length ? allInboxEmails : (inboxEmail ? [inboxEmail] : []))
+            .map(e => e.toLowerCase())
+    )
 
     // Build TO field — the conversation contact is always the primary recipient.
     let toList
@@ -50,13 +77,14 @@ export function computeRecipientsFromMessage (message, contactEmail, inboxEmail)
             ccList = ccList.concat(meta.to)
     }
 
-    // Dedup + remove inbox email (including +conv-uuid variants) + remove contact email from CC
+    // Dedup + remove all inbox emails (including +conv-uuid variants) + remove contact email from CC
     const clean = (list, excludeExtra) => {
         const excludeLower = (excludeExtra || []).map(e => e.toLowerCase())
         return Array.from(new Set(list.filter(email => {
             if (!email) return false
             const lower = email.toLowerCase()
-            if (stripConvUUID(lower) === inboxEmail?.toLowerCase()) return false
+            const stripped = stripConvUUID(lower)
+            if (inboxEmailsLower.has(stripped)) return false
             if (excludeLower.includes(lower)) return false
             return true
         })))

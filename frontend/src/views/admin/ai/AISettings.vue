@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import api from '@/api'
 import AdminPageWithHelp from '@/layouts/admin/AdminPageWithHelp.vue'
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import Spinner from '@/components/ui/spinner/Spinner.vue'
-import { Bot, CheckCircle, AlertCircle, RefreshCw } from 'lucide-vue-next'
+import { Bot, CheckCircle, AlertCircle, RefreshCw, Inbox } from 'lucide-vue-next'
 
 const providers = ref([])
 const availableModels = ref([])
@@ -38,6 +38,14 @@ const externalSearchURL = ref('')
 const externalSearchMaxResults = ref(3)
 const externalSearchEndpoints = ref('')
 const externalSearchHeaders = ref('')
+
+// Inbox scope
+const inboxes = ref([])
+const selectedInboxId = ref('global')
+const knowledgeSources = ref([])
+const selectedKnowledgeSourceIds = ref([])
+const isInboxScope = computed(() => selectedInboxId.value !== 'global')
+const hasInboxOverride = ref(false)
 
 const hasOpenAIKey = computed(() => {
   const p = providers.value.find(p => p.provider === 'openai')
@@ -82,6 +90,24 @@ async function fetchModels() {
     availableModels.value = res.data.data || []
   } catch (err) {
     console.error('Error fetching models:', err)
+  }
+}
+
+async function fetchInboxes() {
+  try {
+    const res = await api.getInboxes()
+    inboxes.value = res.data.data || []
+  } catch (err) {
+    console.error('Error fetching inboxes:', err)
+  }
+}
+
+async function fetchKnowledgeSources() {
+  try {
+    const res = await api.getRAGSources()
+    knowledgeSources.value = res.data.data || []
+  } catch (err) {
+    console.error('Error fetching knowledge sources:', err)
   }
 }
 
@@ -159,10 +185,8 @@ async function testProvider(provider) {
   }
 }
 
-async function fetchAISettings() {
-  try {
-    const res = await api.getAISettings()
-    const data = res.data.data || {}
+function applySettingsToForm(data, isGlobal = true) {
+  if (isGlobal) {
     systemPrompt.value = data['ai.system_prompt'] || ''
     maxContextChunks.value = data['ai.max_context_chunks'] || 5
     similarityThreshold.value = data['ai.similarity_threshold'] || 0.7
@@ -171,25 +195,83 @@ async function fetchAISettings() {
     externalSearchMaxResults.value = data['ai.external_search_max_results'] || 3
     externalSearchEndpoints.value = data['ai.external_search_endpoints'] || ''
     externalSearchHeaders.value = data['ai.external_search_headers'] || ''
+    selectedKnowledgeSourceIds.value = []
+  } else {
+    systemPrompt.value = data.system_prompt || ''
+    maxContextChunks.value = data.max_context_chunks || 5
+    similarityThreshold.value = data.similarity_threshold || 0.7
+    externalSearchEnabled.value = data.external_search_enabled || false
+    externalSearchURL.value = data.external_search_url || ''
+    externalSearchMaxResults.value = data.external_search_max_results || 3
+    externalSearchEndpoints.value = data.external_search_endpoints || ''
+    externalSearchHeaders.value = data.external_search_headers || ''
+    const ksIds = data.knowledge_source_ids || []
+    selectedKnowledgeSourceIds.value = Array.isArray(ksIds) ? ksIds.map(String) : []
+  }
+}
+
+async function fetchAISettings() {
+  try {
+    const res = await api.getAISettings()
+    const data = res.data.data || {}
+    applySettingsToForm(data, true)
+    hasInboxOverride.value = false
   } catch (err) {
     console.error('Error fetching AI settings:', err)
+  }
+}
+
+async function fetchInboxAISettings(inboxId) {
+  try {
+    const res = await api.getInboxAISettings(inboxId)
+    const data = res.data.data || {}
+    // If id > 0, inbox has its own override
+    if (data.id > 0) {
+      hasInboxOverride.value = true
+      applySettingsToForm(data, false)
+    } else {
+      // No override — load global settings as starting point
+      hasInboxOverride.value = false
+      await fetchAISettings()
+    }
+  } catch (err) {
+    console.error('Error fetching inbox AI settings:', err)
+    hasInboxOverride.value = false
+    await fetchAISettings()
   }
 }
 
 async function saveAISettings() {
   savingRAG.value = true
   try {
-    await api.updateAISettings({
-      'ai.system_prompt': systemPrompt.value,
-      'ai.max_context_chunks': parseInt(maxContextChunks.value) || 5,
-      'ai.similarity_threshold': parseFloat(similarityThreshold.value) || 0.7,
-      'ai.external_search_enabled': externalSearchEnabled.value,
-      'ai.external_search_url': externalSearchURL.value,
-      'ai.external_search_max_results': parseInt(externalSearchMaxResults.value) || 3,
-      'ai.external_search_endpoints': externalSearchEndpoints.value,
-      'ai.external_search_headers': externalSearchHeaders.value
-    })
-    toast.success('AI settings saved')
+    if (isInboxScope.value) {
+      await api.updateInboxAISettings(selectedInboxId.value, {
+        system_prompt: systemPrompt.value,
+        max_context_chunks: parseInt(maxContextChunks.value) || 5,
+        similarity_threshold: parseFloat(similarityThreshold.value) || 0.7,
+        external_search_enabled: externalSearchEnabled.value,
+        external_search_url: externalSearchURL.value,
+        external_search_max_results: parseInt(externalSearchMaxResults.value) || 3,
+        external_search_endpoints: externalSearchEndpoints.value,
+        external_search_headers: externalSearchHeaders.value,
+        knowledge_source_ids: selectedKnowledgeSourceIds.value.map(Number)
+      })
+      hasInboxOverride.value = true
+      const inboxName = inboxes.value.find(i => i.id == selectedInboxId.value)?.name || ''
+      toast.success(`AI settings saved for ${inboxName}`)
+    } else {
+      await api.updateAISettings({
+        'ai.system_prompt': systemPrompt.value,
+        'ai.max_context_chunks': parseInt(maxContextChunks.value) || 5,
+        'ai.similarity_threshold': parseFloat(similarityThreshold.value) || 0.7,
+        'ai.external_search_enabled': externalSearchEnabled.value,
+        'ai.external_search_url': externalSearchURL.value,
+        'ai.external_search_max_results': parseInt(externalSearchMaxResults.value) || 3,
+        'ai.external_search_endpoints': externalSearchEndpoints.value,
+        'ai.external_search_headers': externalSearchHeaders.value
+      })
+      toast.success('Global AI settings saved')
+    }
   } catch (err) {
     toast.error(err.response?.data?.message || 'Failed to save AI settings')
   } finally {
@@ -197,9 +279,30 @@ async function saveAISettings() {
   }
 }
 
+async function resetToGlobal() {
+  if (!confirm('Remove inbox-specific settings and fall back to global defaults?')) return
+  try {
+    await api.deleteInboxAISettings(selectedInboxId.value)
+    hasInboxOverride.value = false
+    await fetchAISettings()
+    toast.success('Inbox settings removed, now using global defaults')
+  } catch (err) {
+    toast.error('Failed to reset settings')
+  }
+}
+
+// Watch for inbox scope changes
+watch(selectedInboxId, async (newVal) => {
+  if (newVal === 'global') {
+    await fetchAISettings()
+  } else {
+    await fetchInboxAISettings(newVal)
+  }
+})
+
 onMounted(async () => {
   loading.value = true
-  await Promise.all([fetchProviders(), fetchModels(), fetchAISettings()])
+  await Promise.all([fetchProviders(), fetchModels(), fetchAISettings(), fetchInboxes(), fetchKnowledgeSources()])
   loading.value = false
 })
 </script>
@@ -353,12 +456,43 @@ onMounted(async () => {
         <!-- RAG AI Assistant Settings -->
         <Card>
           <CardHeader>
-            <div class="flex items-center gap-2">
-              <Bot class="h-5 w-5" />
-              <CardTitle>AI Assistant Settings</CardTitle>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <Bot class="h-5 w-5" />
+                <CardTitle>AI Assistant Settings</CardTitle>
+              </div>
+              <!-- Inbox scope selector -->
+              <div class="flex items-center gap-2">
+                <Inbox class="h-4 w-4 text-muted-foreground" />
+                <Select v-model="selectedInboxId">
+                  <SelectTrigger class="w-[220px]">
+                    <SelectValue placeholder="Global (all inboxes)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global (all inboxes)</SelectItem>
+                    <SelectItem
+                      v-for="inbox in inboxes"
+                      :key="inbox.id"
+                      :value="String(inbox.id)"
+                    >
+                      {{ inbox.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <CardDescription>
-              Configure the system prompt and RAG settings for the AI response generator.
+              <template v-if="isInboxScope">
+                <span class="text-amber-600 font-medium" v-if="hasInboxOverride">
+                  Custom settings for this inbox.
+                </span>
+                <span v-else>
+                  Using global defaults. Save to create inbox-specific settings.
+                </span>
+              </template>
+              <template v-else>
+                Configure the default system prompt and RAG settings. These apply to all inboxes unless overridden.
+              </template>
             </CardDescription>
           </CardHeader>
           <CardContent class="space-y-4">
@@ -372,7 +506,7 @@ onMounted(async () => {
                 class="font-mono text-sm"
               />
               <p class="text-xs text-muted-foreground">
-                The system prompt sent to the AI when generating responses. Use <code>{{site_name}}</code>, <code>{{context}}</code>, <code>{{macros}}</code>, <code>{{enquiry}}</code>, and <code>{{external_search_results}}</code> as placeholders.
+                The system prompt sent to the AI when generating responses. Use <code v-pre>{{site_name}}</code>, <code v-pre>{{context}}</code>, <code v-pre>{{macros}}</code>, <code v-pre>{{enquiry}}</code>, and <code v-pre>{{external_search_results}}</code> as placeholders.
               </p>
             </div>
 
@@ -404,6 +538,35 @@ onMounted(async () => {
                 <p class="text-xs text-muted-foreground">
                   Minimum similarity score for knowledge base matches (0-1, default: 0.7).
                 </p>
+              </div>
+            </div>
+
+            <!-- Knowledge Sources (inbox scope only) -->
+            <div v-if="isInboxScope" class="border-t pt-4 mt-4 space-y-4">
+              <div>
+                <Label>Knowledge Sources</Label>
+                <p class="text-xs text-muted-foreground mb-2">
+                  Select which knowledge sources this inbox should use. If none selected, all sources are searched.
+                </p>
+                <div class="space-y-2">
+                  <label
+                    v-for="source in knowledgeSources"
+                    :key="source.id"
+                    class="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="String(source.id)"
+                      v-model="selectedKnowledgeSourceIds"
+                      class="rounded border-gray-300"
+                    />
+                    <span class="text-sm">{{ source.name }}</span>
+                    <Badge variant="secondary" class="text-xs">{{ source.source_type }}</Badge>
+                  </label>
+                  <p v-if="knowledgeSources.length === 0" class="text-sm text-muted-foreground italic">
+                    No knowledge sources configured. Add them in Knowledge Sources settings.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -478,9 +641,18 @@ onMounted(async () => {
               </div>
             </div>
 
-            <Button @click="saveAISettings" :disabled="savingRAG">
-              {{ savingRAG ? 'Saving...' : 'Save AI Settings' }}
-            </Button>
+            <div class="flex gap-2">
+              <Button @click="saveAISettings" :disabled="savingRAG">
+                {{ savingRAG ? 'Saving...' : (isInboxScope ? 'Save Inbox Settings' : 'Save Global Settings') }}
+              </Button>
+              <Button
+                v-if="isInboxScope && hasInboxOverride"
+                variant="outline"
+                @click="resetToGlobal"
+              >
+                Reset to Global
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -489,6 +661,10 @@ onMounted(async () => {
       <h4 class="font-medium mb-2">AI Settings</h4>
       <p class="text-sm text-muted-foreground mb-4">
         Configure AI providers for response assistance. You can use OpenAI directly or OpenRouter for access to multiple models.
+      </p>
+      <h4 class="font-medium mb-2">Per-Inbox Settings</h4>
+      <p class="text-sm text-muted-foreground mb-4">
+        Use the inbox dropdown to configure different AI settings per inbox. Each inbox can have its own system prompt, knowledge sources, and external search configuration.
       </p>
       <h4 class="font-medium mb-2">How AI Assist Works</h4>
       <p class="text-sm text-muted-foreground">

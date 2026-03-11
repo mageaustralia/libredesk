@@ -39,6 +39,7 @@ type Config struct {
 	EnablePlusAddressing bool         `json:"enable_plus_addressing"` // Enable plus-addressing in Reply-To header for conversation matching
 	AutoAssignOnReply    bool         `json:"auto_assign_on_reply"`   // Auto-assign conversation to agent when they reply to unassigned ticket
 	Signature            string       `json:"signature"`              // HTML signature template with placeholders like {{agent.first_name}}
+	EmailAliases         []string     `json:"email_aliases"`          // Additional email addresses that forward to this inbox (filtered from CC)
 }
 
 // OAuthConfig holds OAuth 2.0 authentication details.
