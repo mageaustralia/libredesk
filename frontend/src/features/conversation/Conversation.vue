@@ -133,11 +133,11 @@
         v-if="!replyExpanded"
         class="flex-shrink-0 bg-background border-t px-4 py-2.5 mb-4 flex gap-2"
       >
-        <Button size="sm" variant="outline" @click="expandReply">
+        <Button size="sm" variant="outline" @click="expandReply('reply')">
           <Reply class="h-4 w-4 mr-1.5" />
           Reply
         </Button>
-        <Button size="sm" variant="outline" @click="expandReply">
+        <Button size="sm" variant="outline" @click="expandReply('private_note')">
           <StickyNote class="h-4 w-4 mr-1.5" />
           Private note
         </Button>
@@ -257,7 +257,13 @@ const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)
 const scrollContainer = ref(null)
 
-const expandReply = async () => {
+// Listen for collapse-reply from ReplyBox (e.g. after discarding draft)
+emitter.on('collapse-reply', () => {
+  replyExpanded.value = false
+})
+
+const expandReply = async (type) => {
+  if (type) emitter.emit('set-reply-type', type)
   replyExpanded.value = true
   await nextTick()
   // Scroll to bottom so the full reply editor (including action icons) is visible

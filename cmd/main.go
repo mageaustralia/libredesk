@@ -110,6 +110,7 @@ type App struct {
 	customAttribute  *customAttribute.Manager
 	report           *report.Manager
 	webhook          *webhook.Manager
+	notifDispatcher  *notifier.Dispatcher
 	importer         *importer.Importer
 
 	// Global state that stores data on an available app update.
@@ -288,6 +289,7 @@ func main() {
 		rag:              ragMgr,
 		ragSync:          ragSyncMgr,
 		webhook:          webhook,
+		notifDispatcher:  notifDispatcher,
 	}
 	app.consts.Store(constants)
 	// Initialize ecommerce manager from stored settings

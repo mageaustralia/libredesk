@@ -53,6 +53,22 @@
     </AlertDialogContent>
   </AlertDialog>
 
+  <!-- Discard draft confirmation -->
+  <AlertDialog :open="showDiscardDraft" @update:open="showDiscardDraft = false">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Discard draft</AlertDialogTitle>
+        <AlertDialogDescription>
+          Your draft will be discarded. Are you sure?
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>No</AlertDialogCancel>
+        <AlertDialogAction @click="confirmDeleteDraft">Yes</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
   <div class="text-foreground bg-background">
     <!-- Collision warning banner -->
     <div
@@ -389,6 +405,7 @@ onMounted(() => {
 
   // Listen for new messages to detect other agent replies while composing
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+  emitter.on('set-reply-type', (type) => { messageType.value = type })
 })
 
 // Clean up listener
@@ -737,17 +754,29 @@ const doSendWithStatus = async (status) => {
   }
 }
 
+const showDiscardDraft = ref(false)
+
 /**
- * Delete the current draft and clear the editor.
+ * Show confirmation before deleting draft.
  */
-const handleDeleteDraft = async () => {
+const handleDeleteDraft = () => {
+  showDiscardDraft.value = true
+}
+
+/**
+ * Actually delete the draft after confirmation, then collapse the reply box.
+ */
+const confirmDeleteDraft = () => {
   clearDraft(currentDraftKey.value)
   clearMediaFiles()
   emailErrors.value = []
   mentions.value = []
+  showDiscardDraft.value = false
   emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-    description: 'Draft deleted'
+    description: 'Draft discarded'
   })
+  // Collapse the reply box (Fresh theme)
+  emitter.emit('collapse-reply')
 }
 
 /**

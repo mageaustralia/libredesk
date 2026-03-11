@@ -15,6 +15,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/image"
 	"github.com/abhinavxd/libredesk/internal/rag/models"
+	"github.com/lib/pq"
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/go-i18n"
 	"github.com/zerodha/logf"
@@ -228,13 +229,13 @@ func (m *Manager) AddDocument(sourceID int, sourceRef, title, content string, me
 }
 
 // Search finds documents similar to the query.
-func (m *Manager) Search(query string, limit int, threshold float64) ([]models.SearchResult, error) {
+func (m *Manager) Search(query string, limit int, threshold float64, sourceIDs ...int) ([]models.SearchResult, error) {
 	if m.embeddingFunc == nil {
 		m.lo.Error("embedding function not configured")
 		return nil, fmt.Errorf("embedding function not configured")
 	}
 
-	m.lo.Info("RAG search started", "query", query, "limit", limit, "threshold", threshold)
+	m.lo.Info("RAG search started", "query", query, "limit", limit, "threshold", threshold, "source_ids", sourceIDs)
 
 	// Generate query embedding
 	embedding, err := m.embeddingFunc(query)
@@ -248,16 +249,35 @@ func (m *Manager) Search(query string, limit int, threshold float64) ([]models.S
 	embeddingStr := Float32SliceToVector(embedding)
 
 	results := make([]models.SearchResult, 0)
-	err = m.db.Select(&results, `
-		SELECT
-			id, created_at, updated_at, source_id, source_ref, title, content, content_hash, metadata,
-			1 - (embedding <=> $1::vector) as similarity
-		FROM rag_documents
-		WHERE embedding IS NOT NULL
-			AND 1 - (embedding <=> $1::vector) >= $3
-		ORDER BY embedding <=> $1::vector
-		LIMIT $2
-	`, embeddingStr, limit, threshold)
+
+	// Build query with optional source ID filtering.
+	if len(sourceIDs) > 0 {
+		// Filter by specific source IDs.
+		q := `
+			SELECT
+				id, created_at, updated_at, source_id, source_ref, title, content, content_hash, metadata,
+				1 - (embedding <=> $1::vector) as similarity
+			FROM rag_documents
+			WHERE embedding IS NOT NULL
+				AND 1 - (embedding <=> $1::vector) >= $3
+				AND source_id = ANY($4)
+			ORDER BY embedding <=> $1::vector
+			LIMIT $2
+		`
+		err = m.db.Select(&results, q, embeddingStr, limit, threshold, pq.Array(sourceIDs))
+	} else {
+		q := `
+			SELECT
+				id, created_at, updated_at, source_id, source_ref, title, content, content_hash, metadata,
+				1 - (embedding <=> $1::vector) as similarity
+			FROM rag_documents
+			WHERE embedding IS NOT NULL
+				AND 1 - (embedding <=> $1::vector) >= $3
+			ORDER BY embedding <=> $1::vector
+			LIMIT $2
+		`
+		err = m.db.Select(&results, q, embeddingStr, limit, threshold)
+	}
 
 	if err != nil {
 		m.lo.Error("error searching documents", "error", err)

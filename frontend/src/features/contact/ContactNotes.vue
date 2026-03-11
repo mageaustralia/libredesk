@@ -150,7 +150,8 @@ import {
   MoreVerticalIcon,
   TrashIcon,
   ClockIcon,
-  MessageSquareIcon
+  MessageSquareIcon,
+  BellIcon
 } from 'lucide-vue-next'
 import Editor from '@/components/editor/TextEditor.vue'
 import { useI18n } from 'vue-i18n'
@@ -159,6 +160,7 @@ import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { handleHTTPError } from '@/utils/http'
 import { getInitials } from '@/utils/strings'
 import { useUserStore } from '@/stores/user'
+import { useUsersStore } from '@/stores/users'
 import { Letter } from 'vue-letter'
 import api from '@/api'
 
@@ -166,11 +168,14 @@ const props = defineProps({ contactId: Number })
 const { t } = useI18n()
 const emitter = useEmitter()
 const userStore = useUserStore()
+const usersStore = useUsersStore()
 
 const notes = ref([])
 const isAddingNote = ref(false)
 const newNote = ref('')
 const isLoading = ref(false)
+const notifyUserIds = ref([])
+const showNotifyPicker = ref(false)
 
 const fetchNotes = async () => {
   try {
@@ -187,7 +192,10 @@ const fetchNotes = async () => {
   }
 }
 
-onMounted(fetchNotes)
+onMounted(() => {
+  fetchNotes()
+  usersStore.fetchUsers()
+})
 
 const formatDate = (date) => format(new Date(date), 'PPP p')
 
@@ -198,11 +206,13 @@ const startAddingNote = () => {
 const cancelAddNote = () => {
   isAddingNote.value = false
   newNote.value = ''
+  notifyUserIds.value = []
+  showNotifyPicker.value = false
 }
 
 const addOrUpdateNote = async () => {
   try {
-    await api.createContactNote(props.contactId, { note: newNote.value })
+    await api.createContactNote(props.contactId, { note: newNote.value, notify_user_ids: notifyUserIds.value.map(Number) })
     await fetchNotes()
     cancelAddNote()
   } catch (error) {
