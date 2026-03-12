@@ -477,11 +477,35 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
     const strippedContent = htmlContent.value
       ? htmlContent.value.replace(/<[^>]*>/g, '').trim()
       : ''
-    if (!strippedContent && inboxSignature.value) {
+    if (!strippedContent && inboxSignature.value && messageType.value !== 'private_note') {
       insertSignature()
     }
   }, 200)
 }, { immediate: true })
+
+// Toggle signature when switching between reply and private note
+watch(messageType, (newType, oldType) => {
+  const sigMarker = '<!-- sig -->'
+  if (newType === 'private_note') {
+    // Remove signature
+    if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
+      htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker))
+    }
+  } else if (oldType === 'private_note' && inboxSignature.value) {
+    // Re-add signature when switching back to reply
+    if (!htmlContent.value || !htmlContent.value.includes(sigMarker)) {
+      const sigBlock = sigMarker + inboxSignature.value
+      const strippedContent = htmlContent.value
+        ? htmlContent.value.replace(/<[^>]*>/g, '').trim()
+        : ''
+      if (!strippedContent) {
+        htmlContent.value = '<p><br></p><p>' + sigBlock + '</p>'
+      } else {
+        htmlContent.value = htmlContent.value + '<p><br></p><p>' + sigBlock + '</p>'
+      }
+    }
+  }
+})
 
 /**
  * Handles the AI prompt selection event.
