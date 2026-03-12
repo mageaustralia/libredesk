@@ -57,6 +57,12 @@ const routes = [
             name: 'overview',
             component: () => import('@/views/reports/OverviewView.vue'),
             meta: { title: 'Overview' }
+          },
+          {
+            path: 'activities',
+            name: 'recent-activities',
+            component: () => import('@/views/reports/RecentActivities.vue'),
+            meta: { title: 'Recent Activities' }
           }
         ]
       },

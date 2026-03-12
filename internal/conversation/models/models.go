@@ -334,3 +334,19 @@ type MentionInput struct {
 	Type string `json:"type"` // "agent" or "team"
 	ID   int    `json:"id"`
 }
+
+// RecentActivity represents an activity entry for the global activity feed.
+type RecentActivity struct {
+	Total            int         `db:"total" json:"-"`
+	ID               int         `db:"id" json:"id"`
+	CreatedAt        time.Time   `db:"created_at" json:"created_at"`
+	Type             string      `db:"type" json:"type"`
+	Content          string      `db:"content" json:"content"`
+	SenderType       string      `db:"sender_type" json:"sender_type"`
+	ConversationUUID string      `db:"conversation_uuid" json:"conversation_uuid"`
+	ReferenceNumber  string      `db:"reference_number" json:"reference_number"`
+	Subject          null.String `db:"subject" json:"subject"`
+	ActorFirstName   string      `db:"actor_first_name" json:"actor_first_name"`
+	ActorLastName    string      `db:"actor_last_name" json:"actor_last_name"`
+	ActorAvatarURL   null.String `db:"actor_avatar_url" json:"actor_avatar_url"`
+}

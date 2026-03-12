@@ -776,3 +776,21 @@ UPDATE conversations SET subject = $2, updated_at = NOW() WHERE uuid = $1;
 
 -- name: update-conversation-contact
 UPDATE conversations SET contact_id = $2, updated_at = NOW() WHERE uuid = $1;
+
+-- name: get-recent-activities
+SELECT COUNT(*) OVER() as total,
+    cm.id, cm.created_at, cm.type, cm.content, cm.sender_type,
+    c.uuid as conversation_uuid, c.reference_number, c.subject,
+    u.first_name as actor_first_name, u.last_name as actor_last_name,
+    u.avatar_url as actor_avatar_url
+FROM conversation_messages cm
+JOIN conversations c ON c.id = cm.conversation_id
+JOIN users u ON u.id = cm.sender_id
+WHERE cm.type IN ('activity', 'outgoing')
+ORDER BY cm.created_at DESC
+LIMIT $1 OFFSET $2;
+
+-- name: purge-old-activities
+DELETE FROM conversation_messages
+WHERE type = 'activity'
+AND created_at < NOW() - INTERVAL '1 day' * $1;

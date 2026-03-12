@@ -15,7 +15,20 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Per-inbox AI settings, email alias filtering, inbox-scoped knowledge sources, SKU stock data in AI context, and automation rule fixes.
+**Latest** — Recent Activities feed, session timeout improvements, Ctrl+K macro shortcut guard for IME/Grammarly, default sort order, signature consistency fixes.
+
+### Recent Activities
+
+A global activity feed under Reports showing all ticket activities across the helpdesk — similar to Freshdesk's "Recent Activities" panel but as a dedicated page with pagination.
+
+- **Timeline view**: Shows status changes, assignments, priority changes, agent replies — all in a scrollable feed
+- **Agent avatars**: Colour-coded initials with consistent hashing
+- **Ticket links**: Click any reference number to jump to the conversation
+- **Relative timestamps**: "5 minutes ago", "2 hours ago", etc.
+- **"Load more" pagination**: Appends next page to the existing list
+- **Auto-purge setting**: Configurable at Admin > Trash & Cleanup — purge activity messages older than N days (default 7, set to 0 to disable)
+- **No new database tables**: Queries existing `conversation_messages` data directly
+- Navigate to: Reports > Recent Activities
 
 ### Spam & Trash
 
@@ -287,6 +300,12 @@ The unread message count badge now excludes activity messages (assignment change
 - **Empty paragraph handling**: Only collapses 3+ consecutive empty paragraphs (preserves intentional vertical spacing)
 - **Fresh theme as default**: New users get the Fresh theme by default
 - **Improved message typography**: Larger, more readable font in Fresh theme matching Freshdesk's style
+- **Extended session timeout**: 96-hour sliding TTL so agents stay logged in over weekends (Friday to Monday)
+- **Ctrl+K macro shortcut guard**: Prevents false triggers during Chinese IME composition and Grammarly synthetic key events
+- **"Started last" default sort**: New users see conversations sorted by most recently started by default
+- **Signature spacing consistency**: Uses HTML comment markers (`<!-- sig -->`) so signatures survive TipTap's DOM manipulation
+- **Email table layout fix**: Removed `table-layout: fixed` from message bubbles so HTML table column widths render correctly
+- **Contact form name parsing**: Enhanced parser handles HTML table forms (e.g., Spinfire contact forms) in addition to colon-separated fields
 
 ---
 

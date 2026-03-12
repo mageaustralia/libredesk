@@ -271,6 +271,10 @@ type queries struct {
 	GetPreviousEmailMessages        *sqlx.Stmt `query:"get-previous-email-messages"`
 	GetConversationInboxID           *sqlx.Stmt `query:"get-conversation-inbox-id"`
 	DeleteConversationParticipant    *sqlx.Stmt `query:"delete-conversation-participant"`
+
+	// Recent activities queries.
+	GetRecentActivities       *sqlx.Stmt `query:"get-recent-activities"`
+	PurgeOldActivities        *sqlx.Stmt `query:"purge-old-activities"`
 }
 
 // CreateConversation creates a new conversation and returns its ID and UUID.
@@ -1686,4 +1690,18 @@ func (m *Manager) GetMergedIntoConversation(mergedIntoID int) (string, string, e
 		return "", "", err
 	}
 	return uuid, refNum, nil
+}
+
+// GetRecentActivities returns paginated recent activities across all conversations.
+func (c *Manager) GetRecentActivities(page, pageSize int) ([]models.RecentActivity, int, error) {
+	offset := (page - 1) * pageSize
+	var activities []models.RecentActivity
+	if err := c.q.GetRecentActivities.Select(&activities, pageSize, offset); err != nil {
+		return nil, 0, envelope.NewError(envelope.GeneralError, "Error fetching activities", nil)
+	}
+	total := 0
+	if len(activities) > 0 {
+		total = activities[0].Total
+	}
+	return activities, total, nil
 }

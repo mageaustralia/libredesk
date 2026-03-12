@@ -3,6 +3,11 @@ export const reportsNavItems = [
     titleKey: 'globals.terms.overview',
     href: '/reports/overview',
     permission: 'reports:manage'
+  },
+  {
+    titleKey: 'Recent Activities',
+    href: '/reports/activities',
+    permission: 'reports:manage'
   }
 ]
 

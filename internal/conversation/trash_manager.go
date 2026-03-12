@@ -7,8 +7,8 @@ import (
 )
 
 // TrashSettingsFunc is a function that returns trash cleanup settings.
-// Returns (autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays).
-type TrashSettingsFunc func() (int, int, int)
+// Returns (autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays, activityPurgeDays).
+type TrashSettingsFunc func() (int, int, int, int)
 
 // RunTrashManager runs the trash management routine every hour.
 // It reads settings each cycle via the provided function so changes take effect without restart.
@@ -20,13 +20,13 @@ func (c *Manager) RunTrashManager(ctx context.Context, getSettings TrashSettings
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays := getSettings()
-			c.runTrashCycle(ctx, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays)
+			autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays, activityPurgeDays := getSettings()
+			c.runTrashCycle(ctx, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays, activityPurgeDays)
 		}
 	}
 }
 
-func (c *Manager) runTrashCycle(ctx context.Context, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays int) {
+func (c *Manager) runTrashCycle(ctx context.Context, autoTrashResolvedDays, autoTrashSpamDays, purgeTrashDays, activityPurgeDays int) {
 	// Auto-trash old resolved/closed conversations
 	if autoTrashResolvedDays > 0 {
 		res, err := c.q.AutoTrashResolved.ExecContext(ctx, autoTrashResolvedDays)
@@ -59,6 +59,16 @@ func (c *Manager) runTrashCycle(ctx context.Context, autoTrashResolvedDays, auto
 			c.lo.Error("error purging old trash", "error", err)
 		} else if rows, _ := res.RowsAffected(); rows > 0 {
 			c.lo.Info(fmt.Sprintf("permanently deleted %d trashed conversations", rows))
+		}
+	}
+
+	// Purge old activity messages
+	if activityPurgeDays > 0 {
+		res, err := c.q.PurgeOldActivities.ExecContext(ctx, activityPurgeDays)
+		if err != nil {
+			c.lo.Error("error purging old activities", "error", err)
+		} else if rows, _ := res.RowsAffected(); rows > 0 {
+			c.lo.Info(fmt.Sprintf("purged %d old activity messages", rows))
 		}
 	}
 }

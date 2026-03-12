@@ -357,19 +357,20 @@ func main() {
 // makeTrashSettingsFunc returns a function that reads trash settings from the DB.
 // Falls back to sensible defaults if settings are missing or unreadable.
 func makeTrashSettingsFunc(s *setting.Manager) conversation.TrashSettingsFunc {
-	return func() (int, int, int) {
+	return func() (int, int, int, int) {
 		var (
 			autoTrashResolvedDays = 90
 			autoTrashSpamDays     = 30
 			autoDeleteDays        = 30
+			activityPurgeDays     = 7
 		)
 		out, err := s.GetByPrefix("trash.")
 		if err != nil {
-			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays, activityPurgeDays
 		}
 		var vals map[string]int
 		if err := json.Unmarshal(out, &vals); err != nil {
-			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays, activityPurgeDays
 		}
 		if v, ok := vals["trash.auto_trash_resolved_days"]; ok {
 			autoTrashResolvedDays = v
@@ -380,6 +381,9 @@ func makeTrashSettingsFunc(s *setting.Manager) conversation.TrashSettingsFunc {
 		if v, ok := vals["trash.auto_delete_days"]; ok {
 			autoDeleteDays = v
 		}
-		return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+		if v, ok := vals["trash.activity_purge_days"]; ok {
+			activityPurgeDays = v
+		}
+		return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays, activityPurgeDays
 	}
 }
