@@ -389,6 +389,7 @@ const getOverviewSLA = (params) => http.get('/api/v1/reports/overview/sla', { pa
 const getOverviewCSAT = (params) => http.get('/api/v1/reports/overview/csat', { params })
 const getOverviewMessageVolume = (params) => http.get('/api/v1/reports/overview/messages', { params })
 const getOverviewTagDistribution = (params) => http.get('/api/v1/reports/overview/tags', { params })
+const getRecentActivities = (params) => http.get('/api/v1/reports/activities', { params })
 const getLanguage = (lang) => http.get(`/api/v1/lang/${lang}`)
 const createInbox = (data) =>
   http.post('/api/v1/inboxes', data, {
@@ -614,6 +615,7 @@ export default {
   getOverviewCSAT,
   getOverviewMessageVolume,
   getOverviewTagDistribution,
+  getRecentActivities,
   getConversationParticipants,
   followConversation,
   unfollowConversation,

@@ -16,6 +16,7 @@ const saving = ref(false)
 const autoTrashResolvedDays = ref(90)
 const autoTrashSpamDays = ref(30)
 const autoDeleteDays = ref(30)
+const activityPurgeDays = ref(7)
 
 onMounted(async () => {
   await fetchSettings()
@@ -35,6 +36,9 @@ async function fetchSettings() {
     if (data['trash.auto_delete_days'] !== undefined) {
       autoDeleteDays.value = data['trash.auto_delete_days']
     }
+    if (data['trash.activity_purge_days'] !== undefined) {
+      activityPurgeDays.value = data['trash.activity_purge_days']
+    }
   } catch (err) {
     console.error('Failed to load trash settings', err)
   } finally {
@@ -48,7 +52,8 @@ async function saveSettings() {
     await api.updateSettings('trash', {
       'trash.auto_trash_resolved_days': parseInt(autoTrashResolvedDays.value) || 0,
       'trash.auto_trash_spam_days': parseInt(autoTrashSpamDays.value) || 0,
-      'trash.auto_delete_days': parseInt(autoDeleteDays.value) || 0
+      'trash.auto_delete_days': parseInt(autoDeleteDays.value) || 0,
+      'trash.activity_purge_days': parseInt(activityPurgeDays.value) || 0
     })
     toast.success('Trash settings saved')
   } catch (err) {
@@ -127,6 +132,22 @@ async function saveSettings() {
               </p>
             </div>
 
+            <div class="space-y-2">
+              <Label for="activity-purge">Auto-purge activity messages after (days)</Label>
+              <Input
+                id="activity-purge"
+                v-model="activityPurgeDays"
+                type="number"
+                min="0"
+                placeholder="7"
+                class="max-w-xs"
+              />
+              <p class="text-xs text-muted-foreground">
+                Activity messages (status changes, assignments, etc.) older than this many days will be deleted.
+                Set to 0 to disable.
+              </p>
+            </div>
+
             <div class="pt-4">
               <Button @click="saveSettings" :disabled="saving">
                 {{ saving ? 'Saving...' : 'Save' }}
@@ -146,6 +167,7 @@ async function saveSettings() {
         <li><strong>Resolved/Closed</strong> conversations are moved to trash after the configured number of days</li>
         <li><strong>Spam</strong> conversations are moved to trash after the configured number of days</li>
         <li><strong>Trashed</strong> items are permanently deleted after the configured number of days</li>
+        <li><strong>Activity messages</strong> (status changes, assignments) are purged after the configured number of days</li>
       </ul>
       <h4 class="font-medium mt-4 mb-2">Tips</h4>
       <ul class="text-sm text-muted-foreground list-disc list-inside space-y-1">
