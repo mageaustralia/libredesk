@@ -223,7 +223,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send', 'aiPromptSelected', 'mentionsChanged'])
+const emit = defineEmits(['send', 'aiPromptSelected', 'mentionsChanged', 'filesDropped'])
 
 const emitPrompt = (key) => emit('aiPromptSelected', key)
 
@@ -355,16 +355,32 @@ const handleDrop = (view, event) => {
   const files = event.dataTransfer?.files
   if (!files || files.length === 0) return false
 
+  const imageFiles = []
+  const otherFiles = []
   for (const file of files) {
     if (file.type.startsWith('image/')) {
-      event.preventDefault()
-      uploadImage(file).then((url) => {
-        if (url) insertImage(url)
-      })
-      return true
+      imageFiles.push(file)
+    } else {
+      otherFiles.push(file)
     }
   }
-  return false
+
+  if (imageFiles.length === 0 && otherFiles.length === 0) return false
+  event.preventDefault()
+
+  // Insert images inline
+  for (const file of imageFiles) {
+    uploadImage(file).then((url) => {
+      if (url) insertImage(url)
+    })
+  }
+
+  // Emit non-image files for attachment upload
+  if (otherFiles.length > 0) {
+    emit('filesDropped', otherFiles)
+  }
+
+  return true
 }
 
 /**

@@ -110,6 +110,7 @@
         @aiPromptSelected="handleAiPromptSelected"
         @send="handleSend"
         @mentionsChanged="handleMentionsChanged"
+        @filesDropped="handleDroppedFiles"
       />
     </div>
 
@@ -139,6 +140,7 @@
       :isGenerating="isGenerating"
       :enableSend="enableSend"
       :handleSend="handleSend"
+      :messageType="messageType"
       :showGenerateButton="messageType === 'reply'"
       :showOrdersButton="ecommerceConfigured"
       :hasDraft="hasDraft"
@@ -286,7 +288,8 @@ const emit = defineEmits([
   'aiPromptSelected',
   'generateResponse',
   'generateWithOrders',
-  'inboxChange'
+  'inboxChange',
+  'filesDropped'
 ])
 
 const conversationStore = useConversationStore()
@@ -377,6 +380,10 @@ const handleDeleteDraft = () => {
 
 const handleFileUpload = (event) => {
   emit('fileUpload', event)
+}
+
+const handleDroppedFiles = (files) => {
+  emit('filesDropped', files)
 }
 
 const handleOnFileDelete = (uuid) => {

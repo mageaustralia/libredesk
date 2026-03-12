@@ -26,8 +26,8 @@
               class="accent-primary"
             />
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-1.5">
-                <span class="text-xs font-medium text-muted-foreground">#{{ conv.reference_number }}</span>
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ conv.reference_number }}</span>
                 <span class="text-sm font-medium truncate">{{ conv.subject || 'No subject' }}</span>
               </div>
               <span class="text-xs text-muted-foreground">

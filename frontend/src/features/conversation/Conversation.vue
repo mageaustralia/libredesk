@@ -263,9 +263,9 @@ emitter.on('collapse-reply', () => {
 })
 
 const expandReply = async (type) => {
-  if (type) emitter.emit('set-reply-type', type)
   replyExpanded.value = true
   await nextTick()
+  if (type) emitter.emit('set-reply-type', type)
   // Scroll to bottom so the full reply editor (including action icons) is visible
   if (scrollContainer.value) {
     // Use setTimeout to allow ReplyBox to fully render before scrolling

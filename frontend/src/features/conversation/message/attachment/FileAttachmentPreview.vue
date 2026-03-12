@@ -1,6 +1,9 @@
 <template>
-  <div class="flex items-center group text-left cursor-pointer" @click="downloadAttachment">
-    <div class="relative w-36 h-28 flex flex-col items-center justify-between rounded-lg border bg-gray-50 dark:bg-gray-800 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+  <div class="flex items-center group text-left">
+    <div
+      class="relative w-36 h-28 flex flex-col items-center justify-between rounded-lg border bg-gray-50 dark:bg-gray-800 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+      @click="handleClick"
+    >
       <div class="flex-1 flex items-center justify-center">
         <component :is="fileIcon" class="w-10 h-10" :class="iconColor" />
       </div>
@@ -10,17 +13,50 @@
         </p>
         <p class="text-[10px] text-gray-400">{{ formatBytes(attachment.size) }}</p>
       </div>
-      <div class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Download class="w-4 h-4 text-gray-500" />
+      <div class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <button v-if="canPreview" @click.stop="openPreview" class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="Preview">
+          <Eye class="w-4 h-4 text-gray-500" />
+        </button>
+        <a :href="attachment.url" download @click.stop class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="Download">
+          <Download class="w-4 h-4 text-gray-500" />
+        </a>
       </div>
     </div>
+
+    <!-- PDF preview overlay -->
+    <Teleport to="body">
+      <div
+        v-if="showPdfPreview"
+        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
+        @click.self="showPdfPreview = false"
+      >
+        <button
+          class="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          @click="showPdfPreview = false"
+        >
+          <X :size="28" />
+        </button>
+        <a
+          :href="attachment.url"
+          download
+          class="absolute top-4 right-14 text-white hover:text-gray-300 z-10"
+          title="Download"
+        >
+          <Download :size="24" />
+        </a>
+        <iframe
+          :src="attachment.url"
+          class="w-[90vw] h-[90vh] rounded shadow-2xl bg-white"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { formatBytes } from '@/utils/file.js'
-import { Download, FileText, FileSpreadsheet, File, FileImage, FileArchive, FileCode } from 'lucide-vue-next'
+import { Download, Eye, X, FileText, FileSpreadsheet, File, FileImage, FileArchive, FileCode } from 'lucide-vue-next'
 
 const props = defineProps({
   attachment: {
@@ -28,6 +64,8 @@ const props = defineProps({
     required: true
   }
 })
+
+const showPdfPreview = ref(false)
 
 const getAttachmentName = (name) => {
   return name.substring(0, 30)
@@ -37,6 +75,10 @@ const ext = computed(() => {
   const name = props.attachment.name || ''
   const parts = name.split('.')
   return parts.length > 1 ? parts.pop().toLowerCase() : ''
+})
+
+const canPreview = computed(() => {
+  return ['pdf'].includes(ext.value)
 })
 
 const fileIcon = computed(() => {
@@ -59,7 +101,15 @@ const iconColor = computed(() => {
   return 'text-gray-500'
 })
 
-const downloadAttachment = () => {
-  window.open(props.attachment.url, '_blank')
+const openPreview = () => {
+  showPdfPreview.value = true
+}
+
+const handleClick = () => {
+  if (canPreview.value) {
+    openPreview()
+  } else {
+    window.open(props.attachment.url, '_blank')
+  }
 }
 </script>

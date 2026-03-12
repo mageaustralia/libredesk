@@ -78,7 +78,7 @@
       <!-- Split send button with status dropdown -->
       <div class="flex">
         <Button class="h-8 px-8 rounded-r-none" @click="handleSend" :disabled="!enableSend" :isLoading="isSending">
-          {{ $t('globals.messages.send') }}
+          {{ messageType === 'private_note' ? 'Add note' : $t('globals.messages.send') }}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -92,7 +92,7 @@
               :key="status"
               @click="$emit('sendWithStatus', status)" class="text-xs whitespace-nowrap py-1.5"
             >
-              Send and set as {{ status }}
+              {{ messageType === 'private_note' ? 'Add note' : 'Send' }} and set as {{ status }}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -148,6 +148,10 @@ defineProps({
   },
   handleFileUpload: Function,
   handleInlineImageUpload: Function,
+  messageType: {
+    type: String,
+    default: 'reply'
+  },
   hasDraft: {
     type: Boolean,
     default: false

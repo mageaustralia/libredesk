@@ -115,6 +115,7 @@
           @send="processSend"
           @fileUpload="handleFileUpload"
           @fileDelete="handleFileDelete"
+          @filesDropped="(files) => uploadFiles(files)"
           @aiPromptSelected="handleAiPromptSelected"
           @generateResponse="handleGenerateResponse"
           @generateWithOrders="handleGenerateWithOrders"
@@ -159,6 +160,7 @@
         @send="processSend"
         @fileUpload="handleFileUpload"
         @fileDelete="handleFileDelete"
+        @filesDropped="(files) => uploadFiles(files)"
         @aiPromptSelected="handleAiPromptSelected"
         @generateResponse="handleGenerateResponse"
         @generateWithOrders="handleGenerateWithOrders"
@@ -237,6 +239,7 @@ const {
   uploadingFiles,
   handleFileUpload,
   handleFileDelete,
+  uploadFiles,
   mediaFiles,
   clearMediaFiles,
   setMediaFiles
