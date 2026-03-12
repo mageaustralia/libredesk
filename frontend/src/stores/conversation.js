@@ -173,7 +173,7 @@ export const useConversationStore = defineStore('conversation', () => {
       const saved = all[key]
       if (saved) {
         conversations.status = saved.status || ['Open']
-        conversations.sortField = saved.sortField || 'newest'
+        conversations.sortField = saved.sortField || 'started_last'
         conversations.adHocFilters = saved.adHocFilters || []
         return true
       }
@@ -185,7 +185,7 @@ export const useConversationStore = defineStore('conversation', () => {
     data: [],
     listType: null,
     status: ['Open'],
-    sortField: 'newest',
+    sortField: 'started_last',
     listFilters: [],
     viewID: 0,
     teamID: 0,

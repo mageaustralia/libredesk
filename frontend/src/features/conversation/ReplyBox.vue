@@ -344,15 +344,15 @@ const fetchInboxSignature = async (inboxId) => {
 const insertSignature = () => {
   if (!inboxSignature.value) return
 
-  const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
-  const newContent = '<p><br></p>' + sigBlock
+  // Use a marker comment so we can find and replace the signature later.
+  // TipTap strips div wrappers, so we use an HTML comment as a boundary.
+  const sigMarker = '<!-- sig -->'
+  const sigBlock = sigMarker + inboxSignature.value
 
   // If editor has existing signature, replace it
-  if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
-    htmlContent.value = htmlContent.value.replace(
-      /<div class="email-signature">[\s\S]*?<\/div>/,
-      sigBlock
-    )
+  if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
+    // Replace everything from marker to end
+    htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker)) + sigBlock
     return
   }
 
@@ -362,10 +362,10 @@ const insertSignature = () => {
     : ''
 
   if (!strippedContent) {
-    htmlContent.value = newContent
+    htmlContent.value = '<p><br></p><p>' + sigBlock + '</p>'
   } else {
-    // Append signature to existing content
-    htmlContent.value = htmlContent.value + '<p><br></p>' + sigBlock
+    // Append signature with a blank line separator
+    htmlContent.value = htmlContent.value + '<p><br></p><p>' + sigBlock + '</p>'
   }
 }
 
@@ -376,23 +376,18 @@ const handleInboxChange = async (newInboxId) => {
   selectedInboxId.value = newInboxId
   await fetchInboxSignature(newInboxId)
   // Replace signature in editor
+  const sigMarker = '<!-- sig -->'
   if (inboxSignature.value) {
-    const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
-    if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
-      htmlContent.value = htmlContent.value.replace(
-        /<div class="email-signature">[\s\S]*?<\/div>/,
-        sigBlock
-      )
+    const sigBlock = sigMarker + inboxSignature.value
+    if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
+      htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker)) + sigBlock
     } else {
-      htmlContent.value = (htmlContent.value || '') + '<p><br></p>' + sigBlock
+      htmlContent.value = (htmlContent.value || '') + '<p><br></p><p>' + sigBlock + '</p>'
     }
   } else {
     // Remove existing signature if new inbox has none
-    if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
-      htmlContent.value = htmlContent.value.replace(
-        /<p><br><\/p><div class="email-signature">[\s\S]*?<\/div>/,
-        ''
-      )
+    if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
+      htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker))
     }
   }
 }
@@ -564,17 +559,13 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       generatedHtml = generatedHtml.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
 
       // Preserve signature if present
-      if (htmlContent.value && htmlContent.value.includes('class="email-signature"')) {
-        const sigMatch = htmlContent.value.match(/<div class="email-signature">[\s\S]*?<\/div>/)
-        if (sigMatch) {
-          htmlContent.value = generatedHtml + '<p><br></p>' + sigMatch[0]
-        } else {
-          htmlContent.value = generatedHtml
-        }
+      const sigMarker = '<!-- sig -->'
+      if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
+        const sigContent = htmlContent.value.substring(htmlContent.value.indexOf(sigMarker))
+        htmlContent.value = generatedHtml + '<p><br></p><p>' + sigContent + '</p>'
       } else if (inboxSignature.value) {
         // Add signature after generated content
-        const sigBlock = '<div class="email-signature">' + inboxSignature.value + '</div>'
-        htmlContent.value = generatedHtml + '<p><br></p>' + sigBlock
+        htmlContent.value = generatedHtml + '<p><br></p><p>' + sigMarker + inboxSignature.value + '</p>'
       } else {
         htmlContent.value = generatedHtml
       }

@@ -96,12 +96,12 @@ func New(cfg Config, i18n *i18n.I18n, rd *redis.Client, logger *logf.Logger) (*A
 			Name:       "libredesk_session",
 			IsHTTPOnly: true,
 			IsSecure:   cfg.SecureCookies,
-			MaxAge:     time.Hour * 9,
+			MaxAge:     time.Hour * 96, // 4 days — survive Friday to Monday
 		},
 	})
 
 	st := sessredisstore.New(context.TODO(), rd)
-	st.SetTTL(time.Hour*9, true)
+	st.SetTTL(time.Hour*96, true) // 4 days sliding TTL
 	sess.UseStore(st)
 	sess.SetCookieHooks(simpleSessGetCookieCB, simpleSessSetCookieCB)
 
