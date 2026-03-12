@@ -35,6 +35,7 @@ const submitForm = (values) => {
     enable_plus_addressing: values.enable_plus_addressing,
     auto_assign_on_reply: values.auto_assign_on_reply,
     signature: values.signature,
+    email_aliases: values.email_aliases || [],
     imap: [{ ...values.imap }],
     smtp: [{ ...values.smtp }]
   }
@@ -112,6 +113,7 @@ onMounted(async () => {
     inboxData.enable_plus_addressing = inboxData?.config?.enable_plus_addressing || false
     inboxData.auto_assign_on_reply = inboxData?.config?.auto_assign_on_reply || false
     inboxData.signature = inboxData?.config?.signature || ''
+    inboxData.email_aliases = inboxData?.config?.email_aliases || []
     inbox.value = inboxData
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {

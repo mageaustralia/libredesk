@@ -92,7 +92,7 @@
       <p class="text-sm text-muted-foreground">Additional email addresses that forward to this inbox. These will be filtered from CC when replying.</p>
       <div class="flex flex-wrap gap-1.5 min-h-[36px] border rounded-md px-2 py-1.5 items-center">
         <span
-          v-for="(alias, idx) in (form.values.email_aliases || [])"
+          v-for="(alias, idx) in emailAliases"
           :key="idx"
           class="inline-flex items-center gap-1 bg-muted text-sm px-2 py-0.5 rounded-full"
         >
@@ -861,21 +861,19 @@ const selectedProvider = ref('')
 const flowType = ref('new_inbox')
 const signatureTextarea = ref(null)
 const newAlias = ref('')
+const emailAliases = ref([])
 
 const addAlias = () => {
   const val = newAlias.value.trim().toLowerCase()
   if (!val || !val.includes('@')) return
-  const current = form.values.email_aliases || []
-  if (!current.includes(val)) {
-    form.setFieldValue('email_aliases', [...current, val])
+  if (!emailAliases.value.includes(val)) {
+    emailAliases.value = [...emailAliases.value, val]
   }
   newAlias.value = ''
 }
 
 const removeAlias = (idx) => {
-  const current = [...(form.values.email_aliases || [])]
-  current.splice(idx, 1)
-  form.setFieldValue('email_aliases', current)
+  emailAliases.value = emailAliases.value.filter((_, i) => i !== idx)
 }
 
 // Insert placeholder into signature field
@@ -972,6 +970,8 @@ const submitLabel = computed(() => {
 })
 
 const onSubmit = form.handleSubmit(async (values) => {
+  // email_aliases is managed via standalone ref (not vee-validate FormField)
+  values.email_aliases = emailAliases.value || []
   await props.submitForm(values)
 })
 
@@ -1112,6 +1112,10 @@ watch(
       setupMethod.value = 'manual'
     }
     form.setValues(newValues)
+    // Populate standalone email_aliases ref from loaded data
+    if (newValues.email_aliases) {
+      emailAliases.value = [...newValues.email_aliases]
+    }
   },
   { deep: true, immediate: true }
 )
