@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Recent Activities feed, session timeout improvements, Ctrl+K macro shortcut guard for IME/Grammarly, default sort order, signature consistency fixes.
+**Latest** — Drag-and-drop any file type, attachment preview lightbox, private note button fix, merge dialog layout fix.
 
 ### Recent Activities
 
@@ -306,6 +306,11 @@ The unread message count badge now excludes activity messages (assignment change
 - **Signature spacing consistency**: Uses HTML comment markers (`<!-- sig -->`) so signatures survive TipTap's DOM manipulation
 - **Email table layout fix**: Removed `table-layout: fixed` from message bubbles so HTML table column widths render correctly
 - **Contact form name parsing**: Enhanced parser handles HTML table forms (e.g., Spinfire contact forms) in addition to colon-separated fields
+- **Drag-and-drop any file type**: Non-image files (PDFs, spreadsheets, docs) dragged into the editor are uploaded as attachments instead of being silently ignored
+- **Attachment preview lightbox**: Clicking an image attachment opens a full-screen lightbox overlay; PDFs open in an inline iframe preview. Download button available separately
+- **Private Note button fix**: Clicking "Private note" now correctly opens in note mode instead of defaulting to the last-used mode
+- **"Add note" button text**: Send button shows "Add note" / "Add note and set as..." when composing a private note
+- **Merge dialog layout fix**: Long ticket subjects no longer overflow the merge dialog — subjects truncate with ellipsis
 
 ---
 
