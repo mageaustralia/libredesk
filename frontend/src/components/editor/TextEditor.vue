@@ -677,7 +677,7 @@ watch(
     if (!isInternalUpdate.value && editor.value && newContent !== editor.value.getHTML()) {
       editor.value.commands.setContent(newContent || '', false)
       textContent.value = editor.value.getText()
-      editor.value.commands.focus('start')
+      editor.value.commands.focus('end')
     }
   },
   { immediate: true }
@@ -687,9 +687,11 @@ watch(
   () => props.insertContent,
   (val) => {
     if (val && editor.value) {
-      // Focus editor if not already focused, placing cursor at start
+      // Focus editor, restoring last cursor position so macros insert where the user left off.
+      // If editor had no prior selection (fresh), TipTap defaults to start so we fall back to end.
       if (!editor.value.isFocused) {
-        editor.value.commands.focus('start')
+        const hadSelection = editor.value.state.selection && editor.value.state.selection.anchor > 0
+        editor.value.commands.focus(hadSelection ? null : 'end')
       }
       editor.value.commands.insertContent(val)
     }

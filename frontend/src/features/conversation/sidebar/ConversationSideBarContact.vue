@@ -112,7 +112,7 @@
         </div>
       </div>
     </div>
-    <div class="text-sm text-muted-foreground flex gap-2 items-center">
+    <div class="text-sm text-muted-foreground flex gap-2 items-center group/email">
       <Mail size="16" class="flex-shrink-0" />
       <span v-if="conversationStore.conversation.loading">
         <Skeleton class="w-32 h-4" />
@@ -120,6 +120,15 @@
       <span v-else class="break-all">
         {{ conversation?.contact?.email }}
       </span>
+      <button
+        v-if="!conversationStore.conversation.loading && conversation?.contact?.email"
+        class="flex-shrink-0 opacity-0 group-hover/email:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        @click="copyEmail"
+        :title="emailCopied ? 'Copied!' : 'Copy email'"
+      >
+        <ClipboardCheck v-if="emailCopied" :size="14" class="text-green-500" />
+        <Copy v-else :size="14" />
+      </button>
     </div>
     <div class="text-sm text-muted-foreground flex gap-2 items-center">
       <Phone size="16" class="flex-shrink-0" />
@@ -138,7 +147,7 @@ import { computed, ref, nextTick, watch } from 'vue'
 import { ViewVerticalIcon } from '@radix-icons/vue'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Mail, Phone, ExternalLink, ArrowRightLeft, X, Plus } from 'lucide-vue-next'
+import { Mail, Phone, ExternalLink, ArrowRightLeft, X, Plus, Copy, ClipboardCheck } from 'lucide-vue-next'
 import countries from '@/constants/countries.js'
 import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
@@ -154,6 +163,19 @@ const emitter = useEmitter()
 const conversation = computed(() => conversationStore.current)
 const { t } = useI18n()
 const userStore = useUserStore()
+
+const emailCopied = ref(false)
+const copyEmail = async () => {
+  const email = conversation.value?.contact?.email
+  if (!email) return
+  try {
+    await navigator.clipboard.writeText(email)
+    emailCopied.value = true
+    setTimeout(() => { emailCopied.value = false }, 2000)
+  } catch {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { variant: 'destructive', description: 'Failed to copy' })
+  }
+}
 
 const showContactSearch = ref(false)
 const contactQuery = ref('')

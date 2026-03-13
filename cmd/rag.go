@@ -371,6 +371,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 - For quote requests: provide the information and encourage the customer to add items to their cart and select the "Quote Only" option at checkout. This generates a formal quote without requiring payment.
 - Keep responses warm, professional, and concise. Use the customer's name if available.
 - Format responses in clean HTML suitable for email (use <p>, <ul>, <li>, <a>, <strong> tags). Do not use markdown.
+- When listing products, format each as its own paragraph with the product name as a link, followed by price/stock on the same line, then a line break and description. Separate products with blank lines. Example:
+  <p><a href="URL">Product Name</a> - $XX.XX - In Stock - FREE SHIPPING<br>Description of the product and why it suits the customer.</p>
+- Use <strong> for section headers like "Top recommendation:" or "Other options:"
+- Do NOT use bullet lists (<ul><li>) for product listings — use paragraphs instead for cleaner email formatting.
 
 ## Knowledge Base Context
 {{context}}

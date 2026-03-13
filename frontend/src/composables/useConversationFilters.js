@@ -104,7 +104,12 @@ export function useConversationFilters () {
             operators: FIELD_OPERATORS.TEXT
         },
         inbox_email: {
-            label: 'To email',
+            label: 'Inbox email',
+            type: FIELD_TYPE.TEXT,
+            operators: FIELD_OPERATORS.TEXT
+        },
+        message_to_email: {
+            label: 'To email (actual)',
             type: FIELD_TYPE.TEXT,
             operators: FIELD_OPERATORS.TEXT
         },

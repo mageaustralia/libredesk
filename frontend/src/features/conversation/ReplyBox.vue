@@ -82,6 +82,18 @@
       </button>
     </div>
 
+    <!-- Customer reply warning banner -->
+    <div
+      v-if="customerReplyWarning"
+      class="flex items-center gap-2 px-3 py-2 mx-2 mt-2 rounded-md text-sm border" style="background-color: #eff6ff; border-color: #93c5fd; color: #1e40af;"
+    >
+      <AlertTriangle class="w-4 h-4 shrink-0" />
+      <span class="flex-1">The customer sent a new message while you were composing. Scroll down to review before sending.</span>
+      <button @click="dismissCustomerReplyWarning" style="color: #1e40af;" class="hover:opacity-70">
+        <X class="w-3.5 h-3.5" />
+      </button>
+    </div>
+
     <!-- Fullscreen editor -->
     <Dialog :open="isEditorFullscreen" @update:open="isEditorFullscreen = false">
       <DialogContent
@@ -279,6 +291,7 @@ const ecommerceConfigured = ref(false)
 const composingStartedAt = ref(null)
 const collisionWarning = ref(false)
 const collisionAgentName = ref('')
+const customerReplyWarning = ref(false)
 const showCollisionConfirm = ref(false)
 let pendingSendAction = null
 
@@ -404,12 +417,29 @@ onMounted(() => {
   // Listen for new messages to detect other agent replies while composing
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.on('set-reply-type', (type) => { messageType.value = type })
+  emitter.on('shortcut-discard-or-collapse', handleEscapeShortcut)
 })
 
 // Clean up listener
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+  emitter.off('shortcut-discard-or-collapse', handleEscapeShortcut)
 })
+
+function handleEscapeShortcut() {
+  // If fullscreen editor is open, close it first
+  if (isEditorFullscreen.value) {
+    isEditorFullscreen.value = false
+    return
+  }
+  // If there's draft content, show discard confirmation
+  if (hasDraftContent.value) {
+    showDiscardDraft.value = true
+  } else {
+    // No content, just collapse
+    emitter.emit('collapse-reply')
+  }
+}
 
 /**
  * Handles collision detection when a new message arrives while composing.
@@ -417,17 +447,26 @@ onBeforeUnmount(() => {
 function handleNewMessageCollision({ conversation_uuid, message }) {
   if (!composingStartedAt.value) return
   if (conversation_uuid !== conversationStore.current?.uuid) return
-  // Only care about outgoing (agent) replies, not private notes or customer messages
-  if (message?.type !== 'outgoing' || message?.private) return
-  // Ignore messages from the current user
-  if (message?.sender_id === userStore.userID) return
+  // Ignore private notes
+  if (message?.private) return
 
-  collisionWarning.value = true
-  collisionAgentName.value = message?.sender?.first_name || 'Another agent'
+  if (message?.type === 'incoming') {
+    // Customer sent a new message while agent is composing
+    customerReplyWarning.value = true
+  } else if (message?.type === 'outgoing') {
+    // Another agent replied while composing
+    if (message?.sender_id === userStore.userID) return
+    collisionWarning.value = true
+    collisionAgentName.value = message?.sender?.first_name || 'Another agent'
+  }
 }
 
 function dismissCollisionWarning() {
   collisionWarning.value = false
+}
+
+function dismissCustomerReplyWarning() {
+  customerReplyWarning.value = false
 }
 
 function confirmSend() {
@@ -577,9 +616,19 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       const response = resp.data.data.response
       let generatedHtml
       if (/<[a-z][\s\S]*>/i.test(response)) {
-        generatedHtml = response.replace(/\n+/g, '')
+        // HTML response: strip newlines between/around tags (source formatting),
+        // convert remaining newlines (within text) to <br>, then clean up empties.
+        generatedHtml = response
+          .replace(/>\s*\n\s*/g, '>')   // strip newlines after closing >
+          .replace(/\s*\n\s*</g, '<')   // strip newlines before opening <
+          .replace(/\n/g, '<br>')         // remaining newlines are within text
+        // Clean up empty elements that TipTap would render as blank bullets/lines
+        generatedHtml = generatedHtml
+          .replace(/<li>\s*(<br\s*\/?>\s*)*<\/li>/gi, '')
+          .replace(/<p>\s*(<br\s*\/?>\s*)*<\/p>/gi, '')
       } else {
-        generatedHtml = response.replace(/\n/g, '<br>')
+        // Plain text: convert double newlines to paragraphs, single to line breaks
+        generatedHtml = '<p>' + response.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>') + '</p>'
       }
       // Sanitize AI response: strip script tags and event handlers
       generatedHtml = generatedHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -740,6 +789,7 @@ const doSend = async () => {
       composingStartedAt.value = null
       collisionWarning.value = false
       collisionAgentName.value = ''
+      customerReplyWarning.value = false
     }
     isSending.value = false
   }
@@ -882,6 +932,7 @@ watch(
     composingStartedAt.value = null
     collisionWarning.value = false
     collisionAgentName.value = ''
+    customerReplyWarning.value = false
     setTimeout(() => {
       replyBoxContentRef.value?.focus()
     }, 100)
