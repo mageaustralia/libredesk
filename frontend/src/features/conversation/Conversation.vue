@@ -262,6 +262,32 @@ emitter.on('collapse-reply', () => {
   replyExpanded.value = false
 })
 
+// Escape key: collapse reply box (with discard confirmation if draft exists)
+emitter.on('shortcut-escape', () => {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value && replyExpanded.value) {
+    emitter.emit('shortcut-discard-or-collapse')
+  }
+})
+
+// Global keyboard shortcuts for reply/note
+emitter.on('shortcut-reply', () => {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    expandReply('reply')
+  } else {
+    emitter.emit('set-reply-type', 'reply')
+  }
+})
+emitter.on('shortcut-note', () => {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    expandReply('private_note')
+  } else {
+    emitter.emit('set-reply-type', 'private_note')
+  }
+})
+
 const expandReply = async (type) => {
   replyExpanded.value = true
   await nextTick()

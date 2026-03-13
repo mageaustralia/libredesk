@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col text-left" :class="isOutgoing ? 'items-end' : 'items-start'">
-    <!-- Sender Name -->
-    <div class="mb-1" :class="isOutgoing ? 'pr-[47px]' : 'pl-[47px]'">
+    <!-- Sender Name + Timestamp -->
+    <div class="mb-1 flex items-baseline gap-2" :class="isOutgoing ? 'pr-[47px] justify-end' : 'pl-[47px]'">
       <router-link
         v-if="!isOutgoing"
         :to="{ name: 'contact-detail', params: { id: message.author?.id } }"
@@ -12,6 +12,16 @@
       <p v-else class="text-muted-foreground text-sm font-medium">
         {{ getFullName }}
       </p>
+      <Tooltip>
+        <TooltipTrigger>
+          <span class="text-muted-foreground/60 text-xs">
+            {{ formatMessageTimestamp(message.created_at) }}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{{ formatFullTimestamp(message.created_at) }}</p>
+        </TooltipContent>
+      </Tooltip>
     </div>
 
     <!-- Message Bubble -->
@@ -99,19 +109,7 @@
       </Avatar>
     </div>
 
-    <!-- Timestamp tooltip -->
-    <div :class="isOutgoing ? 'pr-[47px]' : 'pl-[47px]'">
-      <Tooltip>
-        <TooltipTrigger>
-          <span class="text-muted-foreground text-xs mt-1">
-            {{ formatMessageTimestamp(message.created_at) }}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{{ formatFullTimestamp(message.created_at) }}</p>
-        </TooltipContent>
-      </Tooltip>
-    </div>
+
   </div>
 </template>
 

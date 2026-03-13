@@ -126,6 +126,8 @@ func (e *Engine) evaluateRule(rule models.RuleDetail, conversation cmodels.Conve
 			valueToCompare = conversation.Contact.Email.String
 		case models.InboxEmail:
 			valueToCompare = conversation.InboxMail
+		case models.MessageToEmail:
+			valueToCompare = conversation.MessageToEmail
 		case models.ConversationSubject:
 			valueToCompare = conversation.Subject.String
 		case models.ConversationContent:

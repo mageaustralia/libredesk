@@ -132,10 +132,13 @@
 
   <!-- Create conversation dialog -->
   <CreateConversation v-model="openCreateConversationDialog" v-if="openCreateConversationDialog" />
+
+  <!-- Keyboard shortcuts dialog -->
+  <KeyboardShortcutsDialog v-model:open="showShortcutsDialog" />
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { RouterView } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { initWS } from '@/websocket.js'
@@ -162,7 +165,7 @@ import Command from '@/features/command/CommandBox.vue'
 import CreateConversation from '@/features/conversation/CreateConversation.vue'
 import { Inbox, Shield, FileLineChart, BookUser } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -179,8 +182,10 @@ import SidebarNavUser from '@/components/sidebar/SidebarNavUser.vue'
 import { useTheme } from '@/composables/useTheme'
 import NotificationBell from '@/components/sidebar/NotificationBell.vue'
 import ThemeSwitcher from '@/components/sidebar/ThemeSwitcher.vue'
+import KeyboardShortcutsDialog from '@/components/KeyboardShortcutsDialog.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { themeClass } = useTheme()
 const emitter = useEmitter()
 const userStore = useUserStore()
@@ -197,15 +202,75 @@ const userViews = ref([])
 const view = ref({})
 const openCreateViewForm = ref(false)
 const openCreateConversationDialog = ref(false)
+const showShortcutsDialog = ref(false)
 const { t } = useI18n()
 
 initWS()
 useIdleDetection()
 
+// Global keyboard shortcuts — only fire when no input/editor/textarea is focused
+const isInputFocused = () => {
+  const el = document.activeElement
+  if (!el) return false
+  const tag = el.tagName.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  if (el.getAttribute('contenteditable') === 'true') return true
+  if (el.closest('.tiptap') || el.closest('.ProseMirror')) return true
+  return false
+}
+
+const handleGlobalKeydown = (event) => {
+  // Escape works regardless of focus (but not when a dialog is open — radix handles its own Esc)
+  if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) {
+    emitter.emit('shortcut-escape')
+    return
+  }
+
+  // Skip if modifier keys are held (except shift for ?)
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  // Skip if inside an input/editor
+  if (isInputFocused()) return
+  // Skip if a dialog/modal is open (radix dialogs have [role=dialog])
+  if (document.querySelector('[role="dialog"]')) return
+
+  switch (event.key) {
+    case '?':
+      event.preventDefault()
+      showShortcutsDialog.value = true
+      break
+    case 'r':
+      event.preventDefault()
+      emitter.emit('shortcut-reply')
+      break
+    case 'n':
+      event.preventDefault()
+      emitter.emit('shortcut-note')
+      break
+    case '/':
+      event.preventDefault()
+      sessionStorage.removeItem('searchQuery')
+      sessionStorage.removeItem('searchResults')
+      sessionStorage.removeItem('searchTotal')
+      if (route.name === 'search') {
+        // Already on search page — clear and focus the input
+        const input = document.querySelector('[data-search-input] input, [data-search-input]')
+        if (input) { input.value = ''; input.dispatchEvent(new Event('input')); input.focus() }
+      } else {
+        router.push({ name: 'search' })
+      }
+      break
+  }
+}
+
 onMounted(() => {
   initToaster()
   listenViewRefresh()
   initStores()
+  document.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 
 // Initialize data stores

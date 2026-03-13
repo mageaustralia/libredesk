@@ -216,6 +216,7 @@ import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
 
 const isLoading = ref(false)
+const validationError = ref('')
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -369,7 +370,7 @@ const handleSave = async (values) => {
   if (!areRulesValid()) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
-      description: t('admin.automation.invalid')
+      description: validationError.value || t('admin.automation.invalid')
     })
     return
   }
@@ -405,6 +406,7 @@ const handleSave = async (values) => {
 const areRulesValid = () => {
   // Must have groups.
   if (rule.value.rules[0].groups.length == 0) {
+    validationError.value = 'No condition groups defined.'
     return false
   }
 
@@ -412,17 +414,22 @@ const areRulesValid = () => {
   const group1HasRules = rule.value.rules[0].groups[0].rules.length > 0
   const group2HasRules = rule.value.rules[0].groups[1].rules.length > 0
   if (!group1HasRules && !group2HasRules) {
+    validationError.value = 'At least one condition group must have rules.'
     return false
   }
 
   // For both groups, each rule should have value, operator and field.
-  for (const group of rule.value.rules[0].groups) {
-    for (const rule of group.rules) {
-      if (!rule.field || !rule.operator) {
+  for (let gi = 0; gi < rule.value.rules[0].groups.length; gi++) {
+    const group = rule.value.rules[0].groups[gi]
+    for (let ri = 0; ri < group.rules.length; ri++) {
+      const r = group.rules[ri]
+      if (!r.field || !r.operator) {
+        validationError.value = `Group ${gi + 1}, condition ${ri + 1}: missing ${!r.field ? 'field' : 'operator'}.`
         return false
       }
       // For 'set' and `not set` operator, value is not required.
-      if (rule.operator !== OPERATOR.SET && rule.operator !== OPERATOR.NOT_SET && !rule.value) {
+      if (r.operator !== OPERATOR.SET && r.operator !== OPERATOR.NOT_SET && !r.value) {
+        validationError.value = `Group ${gi + 1}, condition ${ri + 1}: "${r.field}" (${r.operator}) has no value.`
         return false
       }
     }
@@ -430,11 +437,13 @@ const areRulesValid = () => {
 
   // Must have atleast one action.
   if (rule.value.rules[0].actions.length == 0) {
+    validationError.value = 'No actions defined.'
     return false
   }
 
   // Make sure each action has value.
-  for (const action of rule.value.rules[0].actions) {
+  for (let ai = 0; ai < rule.value.rules[0].actions.length; ai++) {
+    const action = rule.value.rules[0].actions[ai]
     // CSAT action does not require value, set dummy value.
     if (action.type === 'send_csat') {
       action.value = ['0']
@@ -442,16 +451,19 @@ const areRulesValid = () => {
 
     // Empty array, no value selected.
     if (action.value.length === 0) {
+      validationError.value = `Action ${ai + 1}: no value selected.`
       return false
     }
 
     // Check if all values are present.
     for (const key in action.value) {
       if (!action.value[key]) {
+        validationError.value = `Action ${ai + 1}: empty value at position ${parseInt(key) + 1}.`
         return false
       }
     }
   }
+  validationError.value = ''
   return true
 }
 
