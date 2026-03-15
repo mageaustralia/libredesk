@@ -20,6 +20,8 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/logout", auth(handleLogout))
 	g.GET("/api/v1/oidc/{id}/login", handleOIDCLogin)
 	g.GET("/api/v1/oidc/{id}/finish", handleOIDCCallback)
+	// Mobile Google Sign-In
+	g.POST("/api/v1/auth/google-mobile", handleGoogleMobileAuth)
 
 	// i18n.
 	g.GET("/api/v1/lang/{lang}", handleGetI18nLang)
@@ -172,6 +174,10 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/agents/import/status", perm(handleGetAgentImportStatus, "users:manage"))
 	g.POST("/api/v1/agents/{id}/api-key", perm(handleGenerateAPIKey, "users:manage"))
 	g.DELETE("/api/v1/agents/{id}/api-key", perm(handleRevokeAPIKey, "users:manage"))
+
+	// Mobile push tokens
+	g.POST("/api/v1/agents/me/push-token", auth(handleRegisterPushToken))
+	g.DELETE("/api/v1/agents/me/push-token", auth(handleUnregisterPushToken))
 	g.POST("/api/v1/agents/reset-password", tryAuth(handleResetPassword))
 	g.POST("/api/v1/agents/set-password", tryAuth(handleSetPassword))
 

@@ -221,7 +221,13 @@
       color: hsl(220 14% 15%);
 
       p {
-        margin-bottom: 0.65rem;
+        margin-bottom: 0;
+      }
+
+      // Empty paragraphs from TipTap represent single line breaks (Enter key).
+      // Give them just enough height for one blank line without extra margin.
+      p:empty {
+        min-height: 0.85em;
       }
     }
   }

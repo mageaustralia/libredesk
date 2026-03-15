@@ -44,6 +44,7 @@ type EmailNotification struct {
 
 // Dispatcher coordinates sending notifications through multiple channels: WS, DB, email.
 type Dispatcher struct {
+	fcm      *FCMSender
 	inApp    *UserNotificationManager
 	outbound *Service
 	wsHub    WSHub
@@ -52,6 +53,7 @@ type Dispatcher struct {
 
 // DispatcherOpts contains options for creating a new Dispatcher.
 type DispatcherOpts struct {
+	FCM      *FCMSender
 	InApp    *UserNotificationManager
 	Outbound *Service
 	WSHub    WSHub
@@ -65,6 +67,7 @@ func NewDispatcher(opts DispatcherOpts) *Dispatcher {
 		outbound: opts.Outbound,
 		wsHub:    opts.WSHub,
 		lo:       opts.Lo,
+		fcm:      opts.FCM,
 	}
 }
 
@@ -126,6 +129,11 @@ func (d *Dispatcher) sendToRecipient(recipientID int, n Notification) *models.Us
 	notification.ActorFirstName = null.StringFrom(n.ActorFirstName)
 	notification.ActorLastName = null.StringFrom(n.ActorLastName)
 	d.broadcastNotification([]int{recipientID}, notification)
+
+	// Send push notification via FCM.
+	if d.fcm != nil {
+		go d.fcm.SendToUser(recipientID, n.Title, n.Body.String, n.ConversationUUID)
+	}
 	return &notification
 }
 

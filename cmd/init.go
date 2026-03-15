@@ -987,12 +987,26 @@ func initImporter(i18n *i18n.I18n) *importer.Importer {
 }
 
 // initNotifDispatcher initializes the notification dispatcher.
-func initNotifDispatcher(userNotification *notifier.UserNotificationManager, outbound *notifier.Service, wsHub *ws.Hub) *notifier.Dispatcher {
+func initNotifDispatcher(userNotification *notifier.UserNotificationManager, outbound *notifier.Service, wsHub *ws.Hub, db *sqlx.DB) *notifier.Dispatcher {
+	// Initialize FCM sender if service account key exists.
+	var fcm *notifier.FCMSender
+	fcmKeyPath := "/libredesk/firebase-service-account.json"
+	if _, err := os.Stat(fcmKeyPath); err == nil {
+		var fcmErr error
+		fcm, fcmErr = notifier.NewFCMSender(fcmKeyPath, db, initLogger("fcm"))
+		if fcmErr != nil {
+			log.Printf("WARNING: FCM initialization failed: %v (push notifications disabled)", fcmErr)
+		}
+	} else {
+		log.Printf("INFO: No Firebase service account key at %s (push notifications disabled)", fcmKeyPath)
+	}
+
 	return notifier.NewDispatcher(notifier.DispatcherOpts{
 		InApp:    userNotification,
 		Outbound: outbound,
 		WSHub:    wsHub,
 		Lo:       initLogger("notification-dispatcher"),
+		FCM:      fcm,
 	})
 }
 

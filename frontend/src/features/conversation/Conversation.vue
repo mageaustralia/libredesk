@@ -96,10 +96,24 @@
               <Eye v-else class="w-4 h-4 mr-2" />
               {{ isFollowing ? 'Unfollow' : 'Follow' }}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              v-if="!conversationStore.current?.merged_into_id"
+              @click="showMergeDialog = true"
+            >
+              <GitMerge class="w-4 h-4 mr-2" />
+              Merge
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </div>
+
+    <!-- Merge dialog -->
+    <MergeDialog
+      v-model:open="showMergeDialog"
+      :initialConversation="conversationStore.conversation.data"
+    />
 
     <!-- Merge banner -->
     <div
@@ -170,7 +184,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
-import ReplyBox from './ReplyBox.vue'
+import ReplyBox from "./ReplyBox.vue"
+import MergeDialog from "./MergeDialog.vue"
 import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -252,6 +267,8 @@ onBeforeUnmount(() => {
   // Clear presence when leaving
   sendViewingPresence('')
 })
+
+const showMergeDialog = ref(false)
 
 const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)
