@@ -117,6 +117,7 @@ type mediaStore interface {
 	ContentIDExists(contentID string) (bool, string, error)
 	Upload(fileName, contentType string, content io.ReadSeeker) (string, string, error)
 	UploadAndInsert(fileName, contentType, contentID string, modelType null.String, modelID null.Int, content io.ReadSeeker, fileSize int, disposition null.String, meta []byte) (mmodels.Media, error)
+	GetURL(uuid, contentType, fileName string) string
 }
 
 type inboxStore interface {
@@ -1625,6 +1626,29 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 		}
 
 		// Move messages from secondary to primary.
+		// First, shift timestamps of secondary messages that are older than the primary's
+		// earliest message so they appear after it (preserving relative order within secondary).
+		_, _ = tx.Exec(`
+			WITH primary_first AS (
+				SELECT COALESCE(MIN(created_at), NOW()) AS ts
+				FROM conversation_messages
+				WHERE conversation_id = $1 AND type != 'activity'
+			),
+			secondary_msgs AS (
+				SELECT id, created_at,
+					ROW_NUMBER() OVER (ORDER BY created_at ASC) AS rn
+				FROM conversation_messages
+				WHERE conversation_id = $2 AND type != 'activity'
+					AND created_at < (SELECT ts FROM primary_first)
+			)
+			UPDATE conversation_messages cm
+			SET created_at = (SELECT ts FROM primary_first) - INTERVAL '1 second' * (
+				(SELECT COUNT(*) FROM secondary_msgs) - sm.rn
+			)
+			FROM secondary_msgs sm
+			WHERE cm.id = sm.id
+		`, primary.ID, sec.ID)
+
 		if _, err := tx.Exec("UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2", primary.ID, sec.ID); err != nil {
 			m.lo.Error("error moving messages", "from", sec.ID, "to", primary.ID, "error", err)
 			return envelope.NewError(envelope.GeneralError, "Error moving messages during merge", nil)

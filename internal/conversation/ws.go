@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"encoding/json"
+	"regexp"
 	"fmt"
 	"time"
 
@@ -163,7 +164,7 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 				},
 				"Message": map[string]any{
 					"UUID":    message.UUID,
-					"Content": message.Content,
+					"Content": m.makeAbsoluteURLs(message.Content),
 				},
 			})
 		if err != nil {
@@ -191,4 +192,64 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 		ActorFirstName:   senderFirstName,
 		ActorLastName:    "",
 	}, emails)
+}
+
+// makeAbsoluteURLs rewrites relative /uploads/ URLs in HTML content to signed absolute URLs
+// so that images display correctly in notification emails without requiring authentication.
+func (m *Manager) makeAbsoluteURLs(content string) string {
+	re := regexp.MustCompile(`/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		uuid := re.FindStringSubmatch(match)[1]
+		// GetURL returns a signed URL with expiry (e.g. https://domain/uploads/uuid?sig=...&exp=...)
+		return m.mediaStore.GetURL(uuid, "", "")
+	})
+}
+
+// pushNotifyAssignedAgent sends an FCM push notification to the assigned agent
+// when a customer replies to a conversation. This is called directly from the
+// incoming message path to ensure push notifications are always sent.
+func (m *Manager) pushNotifyAssignedAgent(message *cmodels.Message) {
+	if m.dispatcher == nil {
+		return
+	}
+
+	conv, err := m.GetConversation(message.ConversationID, message.ConversationUUID, "")
+	if err != nil {
+		m.lo.Warn("pushNotifyAssignedAgent: failed to get conversation", "error", err)
+		return
+	}
+
+	if conv.AssignedUserID.Int == 0 {
+		return
+	}
+
+	// Determine sender name.
+	senderName := "Customer"
+	if conv.Contact.FirstName != "" {
+		senderName = conv.Contact.FirstName
+		if conv.Contact.LastName != "" {
+			senderName += " " + conv.Contact.LastName
+		}
+	}
+
+	title := fmt.Sprintf("%s replied in #%s", senderName, conv.ReferenceNumber)
+	body := conv.Subject.String
+
+	// Create in-app notification + FCM push via dispatcher.
+	m.dispatcher.Send(notifier.Notification{
+		Type:             nmodels.NotificationTypeNewReply,
+		RecipientIDs:     []int{conv.AssignedUserID.Int},
+		Title:            title,
+		Body:             null.StringFrom(body),
+		ConversationID:   null.IntFrom(message.ConversationID),
+		MessageID:        null.IntFrom(message.ID),
+		ActorID:          null.IntFrom(message.SenderID),
+		ConversationUUID: message.ConversationUUID,
+		ActorFirstName:   senderName,
+	})
+
+	m.lo.Info("push notification sent for incoming reply",
+		"conversation_id", message.ConversationID,
+		"assigned_user_id", conv.AssignedUserID.Int,
+		"sender", senderName)
 }

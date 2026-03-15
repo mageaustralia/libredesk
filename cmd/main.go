@@ -39,6 +39,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/conversation/priority"
 	"github.com/abhinavxd/libredesk/internal/conversation/status"
 	"github.com/abhinavxd/libredesk/internal/importer"
+	"github.com/jmoiron/sqlx"
 	"github.com/abhinavxd/libredesk/internal/inbox"
 	"github.com/abhinavxd/libredesk/internal/media"
 	"github.com/abhinavxd/libredesk/internal/oidc"
@@ -74,6 +75,7 @@ const (
 
 // App is the global app context which is passed and injected in the http handlers.
 type App struct {
+	db               *sqlx.DB
 	redis            *redis.Client
 	fs               stuffbin.FileSystem
 	consts           atomic.Value
@@ -222,7 +224,7 @@ func main() {
 		wsHub                       = initWS(user)
 		notifier                    = initNotifier()
 		userNotification            = initUserNotification(db, i18n)
-		notifDispatcher             = initNotifDispatcher(userNotification, notifier, wsHub)
+		notifDispatcher             = initNotifDispatcher(userNotification, notifier, wsHub, db)
 		automation                  = initAutomationEngine(db, i18n)
 		sla                         = initSLA(db, team, settings, businessHours, template, user, i18n, notifDispatcher)
 		conversation                = initConversations(i18n, sla, status, priority, wsHub, db, inbox, user, team, media, settings, csat, automation, template, webhook, notifDispatcher)
@@ -253,6 +255,7 @@ func main() {
 	ragSyncMgr.Start()
 
 	var app = &App{
+		db:               db,
 		lo:               lo,
 		redis:            rdb,
 		fs:               fs,

@@ -807,6 +807,11 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 		return err
 	}
 
+	// Send push notification to assigned agent for incoming customer messages.
+	if !isNewConversation && in.Message.SenderType == models.SenderTypeContact {
+		go m.pushNotifyAssignedAgent(&in.Message)
+	}
+
 	// Check if message came from a spam/junk IMAP folder and mark conversation accordingly.
 	if isSpamMailbox(in.MailboxName) {
 		if err := m.MarkAsSpam(in.Message.ConversationUUID); err != nil {
