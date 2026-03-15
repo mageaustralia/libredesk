@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Drag-and-drop any file type, attachment preview lightbox, private note button fix, merge dialog layout fix.
+**Latest** — FCM push notifications for mobile, merge tickets by reference number, customer reply notifications, signed image URLs in notification emails.
 
 ### Recent Activities
 
@@ -87,11 +87,31 @@ Real-time awareness of other agents working on the same conversation, preventing
 - Presence automatically clears when an agent navigates away or disconnects
 - WebSocket-based with no polling overhead
 
+### FCM Push Notifications (Mobile)
+
+Firebase Cloud Messaging integration for the Flutter mobile app.
+
+- **Push notifications** when tickets are assigned, customers reply, agents are mentioned, etc.
+- **Firebase Admin SDK** for Go — sends notifications server-side
+- **Auto-cleanup**: Invalid/expired device tokens are automatically removed
+- **Push token API**: Register/unregister endpoints for mobile devices
+- **Google mobile auth**: OIDC endpoint for Flutter app Google Sign-In
+- **Docker volume mount**: Firebase service account key mounted read-only into container
+
+### Customer Reply Notifications
+
+Agents now receive in-app and push notifications when a customer replies to their assigned ticket.
+
+- Fires on incoming customer messages (not agent replies or new conversations)
+- Creates in-app notification + FCM push to the assigned agent
+- **Signed image URLs** in notification emails — images render without requiring authentication
+
 ### Ticket Merging
 
 Merge duplicate or related conversations into a single ticket, consolidating all messages and tags.
 
-- Select 2+ conversations from the list using bulk checkboxes
+- **Merge by ticket number**: From any ticket's `...` menu, click Merge and enter the other ticket's reference number — no need to find both tickets on the same page
+- Select 2+ conversations from the list using bulk checkboxes, or merge from a single ticket view
 - **Merge button** appears in the bulk action toolbar
 - **Primary ticket picker**: Choose which conversation keeps its identity (others merge into it)
 - Messages from secondary tickets are moved to the primary, preserving chronological order
