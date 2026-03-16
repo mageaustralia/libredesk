@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
 	authzModels "github.com/abhinavxd/libredesk/internal/authz/models"
@@ -12,6 +16,28 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
+
+// messageDedupMap prevents duplicate message submissions within a short window.
+var messageDedupMap sync.Map
+
+const messageDedupTTL = 10 * time.Second
+
+// checkMessageDedup returns true if this message was already sent recently (duplicate).
+func checkMessageDedup(userID int, convUUID, content string) bool {
+	h := sha256.Sum256([]byte(content))
+	key := fmt.Sprintf("%d:%s:%x", userID, convUUID, h[:8])
+
+	if _, loaded := messageDedupMap.LoadOrStore(key, time.Now()); loaded {
+		return true // duplicate
+	}
+
+	// Clean up after TTL
+	go func() {
+		time.Sleep(messageDedupTTL)
+		messageDedupMap.Delete(key)
+	}()
+	return false
+}
 
 type messageReq struct {
 	Attachments []int                  `json:"attachments"`
@@ -172,6 +198,12 @@ func handleSendMessage(r *fastglue.Request) error {
 
 	if req.SenderType != umodels.UserTypeAgent && req.SenderType != umodels.UserTypeContact {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.invalid", "name", "`sender_type`"), nil, envelope.InputError)
+	}
+
+	// Prevent duplicate message submissions (same user, same conversation, same content within 10s).
+	if checkMessageDedup(user.ID, cuuid, req.Message) {
+		app.lo.Warn("duplicate message rejected", "user_id", user.ID, "conversation_uuid", cuuid)
+		return r.SendErrorEnvelope(fasthttp.StatusConflict, "Duplicate message", nil, envelope.InputError)
 	}
 
 	// Contacts cannot send private messages

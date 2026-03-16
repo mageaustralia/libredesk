@@ -102,6 +102,7 @@
 
   // ─── Message area improvements ────────────────────────
   .message-bubble {
+    min-width: 90%;
     border-radius: 0.75rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
@@ -221,13 +222,20 @@
       color: hsl(220 14% 15%);
 
       p {
-        margin-bottom: 0;
+        margin-bottom: 0.75em;
       }
 
-      // Empty paragraphs from TipTap represent single line breaks (Enter key).
-      // Give them just enough height for one blank line without extra margin.
-      p:empty {
-        min-height: 0.85em;
+      // Empty paragraphs (blank lines from Enter key) — collapse them.
+      // The previous paragraph's margin already provides the gap.
+      p:empty,
+      p:has(br:only-child) {
+        margin-bottom: 0;
+        min-height: 0;
+      }
+
+      // Last paragraph shouldn't add trailing space
+      p:last-child {
+        margin-bottom: 0;
       }
     }
   }
