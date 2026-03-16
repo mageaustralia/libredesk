@@ -236,6 +236,15 @@ func main() {
 	)
 	automation.SetConversationStore(conversation)
 
+	// Set up API transcription function using the AI manager's OpenAI client.
+	conversation.TranscribeFunc = func(audioData []byte, filename string) (string, error) {
+		client := aiMgr.GetOpenAIClient()
+		if client == nil {
+			return "", fmt.Errorf("OpenAI client not configured")
+		}
+		return client.TranscribeAudio(audioData, filename)
+	}
+
 	startInboxes(ctx, inbox, conversation, user)
 	go automation.Run(ctx, automationWorkers)
 	go autoassigner.Run(ctx, autoAssignInterval)

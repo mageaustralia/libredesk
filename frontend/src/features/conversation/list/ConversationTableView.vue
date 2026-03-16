@@ -224,7 +224,7 @@
         <td class="px-2 py-2" @click.stop>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer whitespace-nowrap">
+              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer truncate max-w-full">
                 <span
                   class="w-2 h-2 rounded-full shrink-0"
                   :class="getPriorityDotClass(conversation)"
@@ -248,7 +248,7 @@
         <td class="px-2 py-2" @click.stop>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer text-muted-foreground whitespace-nowrap">
+              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer text-muted-foreground truncate max-w-full">
                 {{ conversation.status }}
                 <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
               </button>
@@ -331,8 +331,8 @@ const defaultWidths = {
   state: 80,
   group: 120,
   agent: 120,
-  priority: 80,
-  status: 80,
+  priority: 100,
+  status: 140,
   updated: 90,
 }
 

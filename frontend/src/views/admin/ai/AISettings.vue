@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import Spinner from '@/components/ui/spinner/Spinner.vue'
-import { Bot, CheckCircle, AlertCircle, RefreshCw, Inbox } from 'lucide-vue-next'
+import { Bot, CheckCircle, AlertCircle, RefreshCw, Inbox, Mic } from 'lucide-vue-next'
 
 const providers = ref([])
 const availableModels = ref([])
@@ -38,6 +38,11 @@ const externalSearchURL = ref('')
 const externalSearchMaxResults = ref(3)
 const externalSearchEndpoints = ref('')
 const externalSearchHeaders = ref('')
+
+// Voice Transcription settings
+const transcriptionEnabled = ref(false)
+const transcriptionProvider = ref('local')
+const savingTranscription = ref(false)
 
 // Inbox scope
 const inboxes = ref([])
@@ -196,6 +201,8 @@ function applySettingsToForm(data, isGlobal = true) {
     externalSearchEndpoints.value = data['ai.external_search_endpoints'] || ''
     externalSearchHeaders.value = data['ai.external_search_headers'] || ''
     selectedKnowledgeSourceIds.value = []
+    transcriptionEnabled.value = data['ai.transcription_enabled'] || false
+    transcriptionProvider.value = data['ai.transcription_provider'] || 'local'
   } else {
     systemPrompt.value = data.system_prompt || ''
     maxContextChunks.value = data.max_context_chunks || 5
@@ -268,7 +275,9 @@ async function saveAISettings() {
         'ai.external_search_url': externalSearchURL.value,
         'ai.external_search_max_results': parseInt(externalSearchMaxResults.value) || 3,
         'ai.external_search_endpoints': externalSearchEndpoints.value,
-        'ai.external_search_headers': externalSearchHeaders.value
+        'ai.external_search_headers': externalSearchHeaders.value,
+        'ai.transcription_enabled': transcriptionEnabled.value,
+        'ai.transcription_provider': transcriptionProvider.value
       })
       toast.success('Global AI settings saved')
     }
@@ -276,6 +285,22 @@ async function saveAISettings() {
     toast.error(err.response?.data?.message || 'Failed to save AI settings')
   } finally {
     savingRAG.value = false
+  }
+}
+
+
+async function saveTranscriptionSettings() {
+  savingTranscription.value = true
+  try {
+    await api.updateAISettings({
+      'ai.transcription_enabled': transcriptionEnabled.value,
+      'ai.transcription_provider': transcriptionProvider.value
+    })
+    toast.success('Transcription settings saved')
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Failed to save transcription settings')
+  } finally {
+    savingTranscription.value = false
   }
 }
 
@@ -655,6 +680,74 @@ onMounted(async () => {
             </div>
           </CardContent>
         </Card>
+
+        <!-- Voice Transcription -->
+        <Card>
+          <CardHeader>
+            <div class="flex items-center gap-2">
+              <Mic class="h-5 w-5" />
+              <CardTitle>Voice Transcription</CardTitle>
+            </div>
+            <CardDescription>
+              Automatically transcribe audio attachments (voicemails) into text notes on the conversation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <Label>Enable Transcription</Label>
+                <p class="text-xs text-muted-foreground">
+                  When enabled, audio files attached to incoming messages will be automatically transcribed.
+                </p>
+              </div>
+              <Switch v-model:checked="transcriptionEnabled" />
+            </div>
+
+            <div v-if="transcriptionEnabled" class="space-y-4">
+              <div class="space-y-2">
+                <Label>Transcription Provider</Label>
+                <Select v-model="transcriptionProvider">
+                  <SelectTrigger class="w-[300px]">
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai">OpenAI Whisper API (cloud)</SelectItem>
+                    <SelectItem value="local">Local whisper.cpp (self-hosted)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div v-if="transcriptionProvider === 'openai'" class="rounded-md border p-3 bg-muted/50">
+                <p class="text-sm text-muted-foreground">
+                  Uses your configured OpenAI API key to transcribe audio via the Whisper API.
+                  Cost: ~$0.006/minute of audio.
+                </p>
+                <p v-if="!hasOpenAIKey" class="text-sm text-amber-600 mt-2">
+                  OpenAI API key required. Configure it in the OpenAI section above.
+                </p>
+              </div>
+
+              <div v-if="transcriptionProvider === 'local'" class="rounded-md border p-3 bg-muted/50">
+                <p class="text-sm text-muted-foreground">
+                  Uses a local whisper.cpp installation on your server. Free, private, and works offline.
+                  Requires setup on the host machine.
+                </p>
+                <p class="text-sm mt-2">
+                  <a href="https://github.com/mageaustralia/libredesk/blob/main/docs/voice-transcription.md"
+                     target="_blank" class="text-primary underline">
+                    Setup guide for local whisper.cpp
+                  </a>
+                </p>
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <Button @click="saveTranscriptionSettings" :disabled="savingTranscription">
+                {{ savingTranscription ? 'Saving...' : 'Save' }}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </template>
     <template #help>
@@ -665,6 +758,10 @@ onMounted(async () => {
       <h4 class="font-medium mb-2">Per-Inbox Settings</h4>
       <p class="text-sm text-muted-foreground mb-4">
         Use the inbox dropdown to configure different AI settings per inbox. Each inbox can have its own system prompt, knowledge sources, and external search configuration.
+      </p>
+      <h4 class="font-medium mb-2">Voice Transcription</h4>
+      <p class="text-sm text-muted-foreground mb-4">
+        Automatically converts voicemail and audio attachments into text. Choose between OpenAI's Whisper API (cloud, paid) or a self-hosted whisper.cpp installation (free, private).
       </p>
       <h4 class="font-medium mb-2">How AI Assist Works</h4>
       <p class="text-sm text-muted-foreground">

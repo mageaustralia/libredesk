@@ -807,6 +807,11 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 		return err
 	}
 
+	// Transcribe audio attachments (voicemail) async.
+	if len(in.Message.Media) > 0 {
+		m.transcribeAudioAttachments(in.Message.ConversationUUID, in.Message.Media)
+	}
+
 	// Send push notification to assigned agent for incoming customer messages.
 	if !isNewConversation && in.Message.SenderType == models.SenderTypeContact {
 		go m.pushNotifyAssignedAgent(&in.Message)
@@ -1051,6 +1056,17 @@ func (m *Manager) findOrCreateConversation(in *models.Message, inboxID, contactC
 	conversationID, err = m.messageExistsBySourceID(sourceIDs)
 	if err != nil && err != errConversationNotFound {
 		return new, err
+	}
+
+	// Fallback: match by subject + contact (handles Message-ID rewriting by mail relays like Google)
+	if conversationID == 0 && in.Subject != "" {
+		err = m.q.FindConversationBySubjectContact.QueryRow(contactID, inboxID, in.Subject).Scan(&conversationID)
+		if err != nil && err != sql.ErrNoRows {
+			m.lo.Error("error in fallback subject+contact threading", "error", err)
+		}
+		if conversationID > 0 {
+			m.lo.Debug("found conversation via subject+contact fallback", "conversation_id", conversationID, "subject", in.Subject)
+		}
 	}
 
 	// Conversation not found, create one.

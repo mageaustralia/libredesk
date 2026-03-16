@@ -136,46 +136,42 @@
       <Loader2 v-if="bulkLoading" class="w-4 h-4 animate-spin text-muted-foreground" />
     </div>
 
-    <!-- Filters (hidden when bulk selecting) -->
-    <div v-else class="p-2 flex flex-wrap items-center gap-1.5">
-      <!-- Status multi-select dropdown, hidden when a view is selected as views are pre-filtered -->
-      <DropdownMenu v-if="!route.params.viewID">
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" class="shrink-0">
-            <span class="mr-1">{{ conversationStore.conversations.total }}</span>
-            <span>{{ conversationStore.getListStatus }}</span>
-            <ChevronDown class="w-4 h-4 ml-1 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <label
-            v-for="status in conversationStore.statusOptions"
-            :key="status.value"
-            class="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded-sm"
-          >
-            <Checkbox
-              :checked="conversationStore.conversations.status.includes(status.label)"
-              @update:checked="conversationStore.toggleListStatus(status.label)"
-            />
-            {{ status.label }}
-          </label>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <div v-else>
-        <Button variant="ghost" size="sm" class="shrink-0">
-          <span>{{ conversationStore.conversations.total }}</span>
-        </Button>
-      </div>
+    <!-- Filter bar (hidden when bulk selecting) -->
+    <div v-else class="px-2 py-1.5 flex items-center gap-1.5 border-b">
+      <!-- Total + status summary -->
+      <span class="text-sm font-medium text-muted-foreground whitespace-nowrap">
+        {{ conversationStore.conversations.total }}
+        <span class="ml-0.5">{{ conversationStore.getListStatus }}</span>
+      </span>
 
-      <!-- Filter pills + add filter button (inline) -->
-      <FilterBar
-        :fields="pillBarFields"
-        :modelValue="adHocFilters"
-        @update:modelValue="handleFiltersChange"
-      />
+      <!-- Active filter badges -->
+      <div v-if="activeFilterSummary.length > 0" class="flex items-center gap-1 overflow-hidden">
+        <span
+          v-for="badge in activeFilterSummary"
+          :key="badge"
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary whitespace-nowrap"
+        >
+          {{ badge }}
+        </span>
+      </div>
 
       <!-- Right-side controls -->
       <div class="flex items-center gap-1 ml-auto shrink-0">
+        <!-- Filters button -->
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          :class="{ 'text-primary': hasActiveFilters }"
+          @click="filterPanelOpen = true"
+        >
+          <SlidersHorizontal class="w-3.5 h-3.5 mr-1" />
+          Filters
+          <span v-if="hasActiveFilters" class="ml-1 bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+            {{ activeFilterCount }}
+          </span>
+        </Button>
+
         <!-- Layout switcher -->
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -232,6 +228,9 @@
         </DropdownMenu>
       </div>
     </div>
+
+    <!-- Filter Panel (slide-out from right) -->
+    <ConversationFilterPanel v-model:open="filterPanelOpen" :viewType="currentViewType" />
 
     <!-- Pending updates pill -->
     <div
@@ -346,8 +345,9 @@ import { computed, ref, onMounted } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, CheckCircle2, Trash2, GitMerge, RefreshCw } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutGrid, LayoutList, Check, CheckCircle2, Trash2, GitMerge, RefreshCw, SlidersHorizontal } from 'lucide-vue-next'
 import MergeDialog from '@/features/conversation/MergeDialog.vue'
+import ConversationFilterPanel from '@/features/conversation/list/ConversationFilterPanel.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -359,8 +359,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import FilterBar from '@/components/filter/FilterBar.vue'
-import { useConversationFilters } from '@/composables/useConversationFilters'
 import EmptyList from '@/features/conversation/list/ConversationEmptyList.vue'
 import ConversationListItem from '@/features/conversation/list/ConversationListItem.vue'
 import ConversationTableView from '@/features/conversation/list/ConversationTableView.vue'
@@ -382,22 +380,63 @@ const emitter = useEmitter()
 const { viewMode, setViewMode } = useTheme()
 const bulkLoading = ref(false)
 const showMergeDialog = ref(false)
-const { conversationsPillBarFields } = useConversationFilters()
-const pillBarFields = conversationsPillBarFields
-const adHocFilters = ref([])
+const filterPanelOpen = ref(false)
 
-function handleFiltersChange(filters) {
-  // Deduplicate by field key (keep last per field)
-  const seen = new Map()
-  for (const f of filters) {
-    seen.set(f.field, f)
+// Views where status is server-controlled (not a user filter)
+const NO_STATUS_VIEWS = ['spam', 'trash']
+const currentViewType = computed(() => route.params.type || '')
+
+// Active filter tracking for the header badge
+const hasActiveFilters = computed(() => activeFilterCount.value > 0)
+const activeFilterCount = computed(() => {
+  let count = 0
+  const adHoc = conversationStore.conversations.adHocFilters || []
+  if (adHoc.some(f => f.field === 'assigned_user_id')) count++
+  if (adHoc.some(f => f.field === 'assigned_team_id')) count++
+  if (adHoc.some(f => f.field === 'priority_id')) count++
+  if (adHoc.some(f => f.field === 'email')) count++
+  if (adHoc.some(f => f.field === 'tags')) count++
+  if (adHoc.some(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field))) count += adHoc.filter(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field)).length
+  // Only count status as a filter if this isn't a server-filtered view (spam/trash)
+  if (!NO_STATUS_VIEWS.includes(currentViewType.value)) {
+    const s = conversationStore.conversations.status
+    if (s.length !== 1 || s[0] !== 'Open') count++
   }
-  const deduped = Array.from(seen.values())
-  adHocFilters.value = deduped
-  // Only send filters with actual values to the API
-  const meaningful = deduped.filter(f => f.value && f.value !== "[]" && f.value !== "")
-  conversationStore.setAdHocFilters(meaningful)
-}
+  return count
+})
+
+const activeFilterSummary = computed(() => {
+  const badges = []
+  const adHoc = conversationStore.conversations.adHocFilters || []
+
+  const agentFilter = adHoc.find(f => f.field === 'assigned_user_id')
+  if (agentFilter) {
+    const mode = agentFilter.operator === 'not_in' ? 'excl' : ''
+    try {
+      const ids = JSON.parse(agentFilter.value)
+      const names = ids.map(id => {
+        const opt = (usersStore.options || []).find(o => String(o.value) === String(id))
+        return opt ? opt.label : id
+      })
+      badges.push(`Agent${mode ? ' ≠' : ':'} ${names.length > 1 ? names.length + ' selected' : names[0]}`)
+    } catch { /* ignore */ }
+  }
+
+  const teamFilter = adHoc.find(f => f.field === 'assigned_team_id')
+  if (teamFilter) {
+    const mode = teamFilter.operator === 'not_in' ? 'excl' : ''
+    try {
+      const ids = JSON.parse(teamFilter.value)
+      const names = ids.map(id => {
+        const opt = (teamsStore.options || []).find(o => String(o.value) === String(id))
+        return opt ? opt.label : id
+      })
+      badges.push(`Team${mode ? ' ≠' : ':'} ${names.length > 1 ? names.length + ' selected' : names[0]}`)
+    } catch { /* ignore */ }
+  }
+
+  return badges
+})
 
 onMounted(() => {
   usersStore.fetchUsers()

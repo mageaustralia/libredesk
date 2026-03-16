@@ -353,6 +353,26 @@ func (m *Manager) getDefaultProviderClient() (ProviderClient, error) {
 	}
 }
 
+
+// GetOpenAIClient returns an OpenAI client if configured, or nil.
+func (m *Manager) GetOpenAIClient() *OpenAIClient {
+	var p models.Provider
+	if err := m.q.GetProvider.Get(&p, string(ProviderOpenAI)); err != nil {
+		return nil
+	}
+	var config struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.Unmarshal([]byte(p.Config), &config); err != nil || config.APIKey == "" {
+		return nil
+	}
+	decryptedKey, err := crypto.Decrypt(config.APIKey, m.encryptionKey)
+	if err != nil {
+		return nil
+	}
+	return NewOpenAIClient(decryptedKey, m.lo)
+}
+
 // GenerateEmbedding generates an embedding for the given text.
 // This always uses OpenAI since OpenRouter doesn't support embeddings.
 func (m *Manager) GenerateEmbedding(text string) ([]float32, error) {
