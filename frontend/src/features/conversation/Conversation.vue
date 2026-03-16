@@ -135,6 +135,16 @@
     <template v-if="isFresh">
       <!-- Scrollable area: messages + expanded reply -->
       <div class="flex-1 overflow-y-auto fresh-unified-scroll" ref="scrollContainer">
+        <!-- Sticky subject bar -->
+        <div
+          v-if="conversationStore.current?.subject && !conversationStore.conversation.loading"
+          class="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-2"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ conversationStore.current?.reference_number }}</span>
+            <h2 class="text-sm font-semibold truncate">{{ conversationStore.current?.subject }}</h2>
+          </div>
+        </div>
         <MessageList />
         <!-- Expanded reply box flows inline with messages -->
         <div v-if="replyExpanded" class="border-t">
@@ -142,9 +152,28 @@
         </div>
       </div>
 
+      <!-- Undo send banner -->
+      <div
+        v-if="!replyExpanded && pendingSend"
+        class="flex-shrink-0 border-t"
+      >
+        <div class="flex items-center justify-between px-4 py-2.5" style="background-color: #fdf0d5; border-bottom: 2px solid #f0c36d;">
+          <div class="flex items-center gap-2">
+            <CheckCircle2 class="w-4 h-4" style="color: #6f8b2e;" />
+            <span class="text-sm font-semibold" style="color: #6f4400;">{{ pendingSend.isPrivateNote ? 'Note added' : 'Reply sent' }}</span>
+          </div>
+          <Button size="sm" variant="ghost" class="font-bold uppercase tracking-wide" style="color: #1979c3;" @click="undoSend">
+            Undo
+          </Button>
+        </div>
+        <div class="h-1" style="background-color: #f0c36d;">
+          <div class="h-full transition-all ease-linear" style="background-color: #e07000;" :style="{ width: undoProgress + '%' }" />
+        </div>
+      </div>
+
       <!-- Collapsed reply bar: fixed at bottom, outside scroll -->
       <div
-        v-if="!replyExpanded"
+        v-if="!replyExpanded && !pendingSend"
         class="flex-shrink-0 bg-background border-t px-4 py-2.5 mb-4 flex gap-2"
       >
         <Button size="sm" variant="outline" @click="expandReply('reply')">
@@ -186,7 +215,7 @@ import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from "./ReplyBox.vue"
 import MergeDialog from "./MergeDialog.vue"
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2 } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -254,7 +283,11 @@ function sendViewingPresence(uuid) {
 // Watch for conversation changes and send presence
 watch(
   () => conversationStore.current?.uuid,
-  (newUUID) => {
+  (newUUID, oldUUID) => {
+    // Execute pending send if switching conversations
+    if (oldUUID && pendingSend.value) {
+      executePendingSend()
+    }
     if (newUUID) {
       sendViewingPresence(newUUID)
       checkFollowStatus()
@@ -266,9 +299,95 @@ watch(
 onBeforeUnmount(() => {
   // Clear presence when leaving
   sendViewingPresence('')
+  // Execute pending send if navigating away
+  if (pendingSend.value) {
+    executePendingSend()
+  }
 })
 
 const showMergeDialog = ref(false)
+
+// Undo send state
+const pendingSend = ref(null)
+const undoProgress = ref(100)
+let undoTimer = null
+let undoProgressInterval = null
+const UNDO_DELAY_MS = 5000
+
+emitter.on('send-queued', (data) => {
+  // Cancel any previous pending send
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+
+  pendingSend.value = data
+  undoProgress.value = 100
+
+  // Animate progress bar
+  const startTime = Date.now()
+  undoProgressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime
+    undoProgress.value = Math.max(0, 100 - (elapsed / UNDO_DELAY_MS) * 100)
+  }, 50)
+
+  // Execute send after delay
+  undoTimer = setTimeout(() => {
+    executePendingSend()
+  }, UNDO_DELAY_MS)
+})
+
+async function executePendingSend() {
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  const send = pendingSend.value
+  if (!send) return
+  pendingSend.value = null
+
+  try {
+    await api.sendMessage(send.uuid, send.payload)
+
+    // Apply macro if any
+    if (send.macroID && send.macroActions.length > 0) {
+      try {
+        await api.applyMacro(send.uuid, send.macroID, send.macroActions)
+      } catch (_) { /* macro errors are non-fatal */ }
+    }
+
+    // Update status if "Send and Close" etc.
+    if (send.statusAfterSend) {
+      try {
+        await api.updateConversationStatus(send.uuid, { status: send.statusAfterSend })
+      } catch (_) { /* status update errors shown by WS */ }
+    }
+  } catch (error) {
+    // 409 = duplicate rejected by server dedup — first send succeeded, ignore
+    if (error?.response?.status === 409) return
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
+
+function undoSend() {
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  const send = pendingSend.value
+  pendingSend.value = null
+
+  if (send) {
+    // Re-expand editor and restore content
+    replyExpanded.value = true
+    nextTick(() => {
+      emitter.emit('restore-send', send.restoreData)
+      if (send.isPrivateNote) {
+        emitter.emit('set-reply-type', 'private_note')
+      } else {
+        emitter.emit('set-reply-type', 'reply')
+      }
+    })
+  }
+}
 
 const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)

@@ -1,6 +1,6 @@
 <template>
   <Dialog :open="open" @update:open="$emit('update:open', $event)">
-    <DialogContent class="sm:max-w-md">
+    <DialogContent class="w-[80vw] max-w-4xl">
       <DialogHeader>
         <DialogTitle>Merge Conversations</DialogTitle>
         <DialogDescription>
@@ -82,7 +82,7 @@
 
       <DialogFooter>
         <Button variant="outline" @click="$emit('update:open', false)">Cancel</Button>
-        <Button @click="handleMerge" :disabled="mergeTickets.length < 2 || !primaryUUID || merging">
+        <Button variant="destructive" @click="handleMerge" :disabled="mergeTickets.length < 2 || !primaryUUID || merging">
           <Loader2 v-if="merging" class="w-4 h-4 mr-1 animate-spin" />
           Merge {{ mergeTickets.length }} tickets
         </Button>

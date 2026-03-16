@@ -294,6 +294,7 @@ const collisionAgentName = ref('')
 const customerReplyWarning = ref(false)
 const showCollisionConfirm = ref(false)
 let pendingSendAction = null
+let pendingStatusAfterSend = null
 
 // Inbox switcher state
 const inboxes = ref([])
@@ -418,13 +419,23 @@ onMounted(() => {
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.on('set-reply-type', (type) => { messageType.value = type })
   emitter.on('shortcut-discard-or-collapse', handleEscapeShortcut)
+  emitter.on('restore-send', handleRestoreSend)
 })
 
 // Clean up listener
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.off('shortcut-discard-or-collapse', handleEscapeShortcut)
+  emitter.off('restore-send', handleRestoreSend)
 })
+
+function handleRestoreSend(data) {
+  if (data.htmlContent) htmlContent.value = data.htmlContent
+  if (data.messageType) messageType.value = data.messageType
+  if (data.to) to.value = data.to
+  if (data.cc) cc.value = data.cc
+  if (data.bcc) bcc.value = data.bcc
+}
 
 function handleEscapeShortcut() {
   // If fullscreen editor is open, close it first
@@ -467,6 +478,7 @@ function dismissCollisionWarning() {
 
 function dismissCustomerReplyWarning() {
   customerReplyWarning.value = false
+      emitter.emit("collapse-reply")
 }
 
 function confirmSend() {
@@ -721,77 +733,91 @@ const processSend = async () => {
  * Actually sends the message.
  */
 const doSend = async () => {
-  let hasMessageSendingErrored = false
   isEditorFullscreen.value = false
-  try {
-    isSending.value = true
-    if (hasTextContent.value > 0 || mediaFiles.value.length > 0) {
-      const message = htmlContent.value
-      const payload = {
-        sender_type: UserTypeAgent,
-        private: messageType.value === 'private_note',
-        message: message,
-        attachments: mediaFiles.value.map((file) => file.id),
-        mentions: messageType.value === 'private_note' ? mentions.value : [],
-        cc: cc.value
-          .split(',')
-          .map((email) => email.trim())
-          .filter((email) => email),
-        bcc: bcc.value
-          ? bcc.value
-              .split(',')
-              .map((email) => email.trim())
-              .filter((email) => email)
-          : [],
-        to: to.value
-          ? to.value
-              .split(',')
-              .map((email) => email.trim())
-              .filter((email) => email)
-          : []
-      }
 
-      // Include inbox_id if agent selected a different inbox
-      if (selectedInboxId.value && selectedInboxId.value !== conversationStore.current?.inbox_id) {
-        payload.inbox_id = selectedInboxId.value
-      }
-
-      await api.sendMessage(conversationStore.current.uuid, payload)
+  if (hasTextContent.value > 0 || mediaFiles.value.length > 0) {
+    const message = htmlContent.value
+    const payload = {
+      sender_type: UserTypeAgent,
+      private: messageType.value === 'private_note',
+      message: message,
+      attachments: mediaFiles.value.map((file) => file.id),
+      mentions: messageType.value === 'private_note' ? mentions.value : [],
+      cc: cc.value
+        .split(',')
+        .map((email) => email.trim())
+        .filter((email) => email),
+      bcc: bcc.value
+        ? bcc.value
+            .split(',')
+            .map((email) => email.trim())
+            .filter((email) => email)
+        : [],
+      to: to.value
+        ? to.value
+            .split(',')
+            .map((email) => email.trim())
+            .filter((email) => email)
+        : []
     }
 
-    // Apply macro actions if any
+    // Include inbox_id if agent selected a different inbox
+    if (selectedInboxId.value && selectedInboxId.value !== conversationStore.current?.inbox_id) {
+      payload.inbox_id = selectedInboxId.value
+    }
+
+    // Collect macro info
     const macroID = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.id
     const macroActions = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.actions || []
-    if (macroID > 0 && macroActions.length > 0) {
-      try {
-        await api.applyMacro(conversationStore.current.uuid, macroID, macroActions)
-      } catch (error) {
-        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-          variant: 'destructive',
-          description: handleHTTPError(error).message
-        })
-      }
+
+    // Save restore data for undo
+    const restoreData = {
+      htmlContent: message,
+      messageType: messageType.value,
+      to: to.value,
+      cc: cc.value,
+      bcc: bcc.value
     }
-  } catch (error) {
-    hasMessageSendingErrored = true
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
+
+    // Queue the send (Conversation.vue handles the delayed send + undo)
+    emitter.emit('send-queued', {
+      uuid: conversationStore.current.uuid,
+      payload,
+      macroID: macroID > 0 ? macroID : null,
+      macroActions: macroID > 0 ? macroActions : [],
+      statusAfterSend: pendingStatusAfterSend || null,
+      restoreData,
+      isPrivateNote: messageType.value === 'private_note'
     })
-  } finally {
-    if (hasMessageSendingErrored === false) {
-      clearDraft(currentDraftKey.value)
-      conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
-      clearMediaFiles()
-      emailErrors.value = []
-      mentions.value = []
-      // Reset collision state
-      composingStartedAt.value = null
-      collisionWarning.value = false
-      collisionAgentName.value = ''
-      customerReplyWarning.value = false
+
+    // Clear editor state immediately — must happen synchronously before collapse
+    // so remounting the editor doesn't reload stale draft content
+    const draftKey = currentDraftKey.value
+    if (draftKey) {
+      conversationStore.removeDraft(draftKey)
+      // Also clear raw localStorage directly — useStorage reactive proxy may not
+      // sync before component unmounts and a new instance reads from storage
+      try {
+        const rawDrafts = JSON.parse(localStorage.getItem('libredesk_drafts') || '{}')
+        delete rawDrafts[draftKey]
+        localStorage.setItem('libredesk_drafts', JSON.stringify(rawDrafts))
+      } catch (e) { /* ignore */ }
     }
-    isSending.value = false
+    clearDraft(draftKey)
+    conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
+    clearMediaFiles()
+    htmlContent.value = ''
+    textContent.value = ''
+    to.value = ''
+    cc.value = ''
+    bcc.value = ''
+    emailErrors.value = []
+    mentions.value = []
+    composingStartedAt.value = null
+    collisionWarning.value = false
+    collisionAgentName.value = ''
+    customerReplyWarning.value = false
+    emitter.emit('collapse-reply')
   }
 }
 
@@ -808,18 +834,9 @@ const processSendWithStatus = async (status) => {
 }
 
 const doSendWithStatus = async (status) => {
+  pendingStatusAfterSend = status
   await doSend()
-  // After successful send, update the conversation status
-  if (!isSending.value) {
-    try {
-      await api.updateConversationStatus(conversationStore.current.uuid, { status })
-    } catch (error) {
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: handleHTTPError(error).message
-      })
-    }
-  }
+  pendingStatusAfterSend = null
 }
 
 const showDiscardDraft = ref(false)
@@ -933,6 +950,7 @@ watch(
     collisionWarning.value = false
     collisionAgentName.value = ''
     customerReplyWarning.value = false
+      emitter.emit("collapse-reply")
     setTimeout(() => {
       replyBoxContentRef.value?.focus()
     }, 100)
