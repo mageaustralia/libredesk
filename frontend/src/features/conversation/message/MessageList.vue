@@ -152,6 +152,34 @@ const scrollToMessage = (messageUUID) => {
   }, 150)
 }
 
+const scrollToLastMessage = () => {
+  setTimeout(() => {
+    const thread = threadEl.value
+    if (!thread) return
+    const messages = conversationStore.conversationMessages
+    // Find last non-activity message
+    let lastMsg = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type !== 'activity') {
+        lastMsg = messages[i]
+        break
+      }
+    }
+    if (!lastMsg) {
+      scrollToBottom()
+      return
+    }
+    const messageEl = thread.querySelector(`[data-message-uuid="${lastMsg.uuid}"]`)
+    if (messageEl) {
+      // Scroll so the top of the last message is near the top of the viewport
+      // with a small offset for breathing room
+      thread.scrollTop = Math.max(0, messageEl.offsetTop - 12)
+    } else {
+      scrollToBottom()
+    }
+  }, 150)
+}
+
 onMounted(() => {
   checkIfAtBottom()
   handleNewMessage()
@@ -195,8 +223,8 @@ watch(
         // Mentioned conversation - only scroll to message, NOT to bottom
         scrollToMessage(scrollToUUID)
       } else {
-        // Normal conversation - scroll to bottom
-        scrollToBottom()
+        // Normal conversation - scroll to top of last message
+        scrollToLastMessage()
       }
     }
   }

@@ -53,6 +53,8 @@ type AISettings struct {
 	ExternalSearchMaxResults int    `json:"ai.external_search_max_results" db:"ai.external_search_max_results"`
 	ExternalSearchEndpoints string  `json:"ai.external_search_endpoints" db:"ai.external_search_endpoints"`
 	ExternalSearchHeaders   string  `json:"ai.external_search_headers" db:"ai.external_search_headers"`
+	TranscriptionEnabled    bool    `json:"ai.transcription_enabled" db:"ai.transcription_enabled"`
+	TranscriptionProvider   string  `json:"ai.transcription_provider" db:"ai.transcription_provider"`
 }
 
 // InboxAISettings holds per-inbox AI/RAG configuration.

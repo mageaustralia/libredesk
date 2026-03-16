@@ -795,3 +795,13 @@ LIMIT $1 OFFSET $2;
 DELETE FROM conversation_messages
 WHERE type = 'activity'
 AND created_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: find-conversation-by-subject-and-contact
+SELECT c.id
+FROM conversations c
+WHERE c.contact_id = $1
+  AND c.inbox_id = $2
+  AND LOWER(REGEXP_REPLACE(c.subject, '^(re|fw|fwd):\s*', '', 'gi')) = LOWER(REGEXP_REPLACE($3, '^(re|fw|fwd):\s*', '', 'gi'))
+  AND c.status_id NOT IN (4, 5, 6)
+ORDER BY c.created_at DESC
+LIMIT 1;

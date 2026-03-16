@@ -222,6 +222,7 @@ func serveMediaFile(r *fastglue.Request, app *App, uuid string, media *mmodels.M
 		// Keep certain content types inline.
 		if strings.HasPrefix(media.ContentType, "image/") ||
 			strings.HasPrefix(media.ContentType, "video/") ||
+			strings.HasPrefix(media.ContentType, "audio/") ||
 			media.ContentType == "application/pdf" {
 			disposition = "inline"
 		}

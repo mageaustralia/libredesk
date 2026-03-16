@@ -735,7 +735,7 @@ const processSend = async () => {
 const doSend = async () => {
   isEditorFullscreen.value = false
 
-  if (hasTextContent.value > 0 || mediaFiles.value.length > 0) {
+  if (hasTextContent.value > 0 || mediaFiles.value.length > 0 || mentions.value.length > 0) {
     const message = htmlContent.value
     const payload = {
       sender_type: UserTypeAgent,
@@ -868,7 +868,7 @@ const confirmDeleteDraft = () => {
  * Whether the editor has draft content.
  */
 const hasDraftContent = computed(() => {
-  return hasTextContent.value > 0 || mediaFiles.value.length > 0
+  return hasTextContent.value > 0 || mediaFiles.value.length > 0 || mentions.value.length > 0
 })
 
 /**

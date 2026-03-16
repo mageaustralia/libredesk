@@ -33,6 +33,7 @@ import (
 	tmodels "github.com/abhinavxd/libredesk/internal/team/models"
 	"github.com/abhinavxd/libredesk/internal/template"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
+	settingmodels "github.com/abhinavxd/libredesk/internal/setting/models"
 	wmodels "github.com/abhinavxd/libredesk/internal/webhook/models"
 	"github.com/abhinavxd/libredesk/internal/ws"
 	"github.com/jmoiron/sqlx"
@@ -78,6 +79,7 @@ type Manager struct {
 	template                   *template.Manager
 	incomingMessageQueue       chan models.IncomingMessage
 	outgoingMessageQueue       chan models.Message
+	TranscribeFunc             func(audioData []byte, filename string) (string, error)
 	outgoingProcessingMessages sync.Map
 	closed                     bool
 	closedMu                   sync.RWMutex
@@ -127,6 +129,7 @@ type inboxStore interface {
 
 type settingsStore interface {
 	GetAppRootURL() (string, error)
+	GetAISettings() (settingmodels.AISettings, error)
 }
 
 type csatStore interface {
@@ -272,6 +275,7 @@ type queries struct {
 	GetPreviousEmailMessages        *sqlx.Stmt `query:"get-previous-email-messages"`
 	GetConversationInboxID           *sqlx.Stmt `query:"get-conversation-inbox-id"`
 	DeleteConversationParticipant    *sqlx.Stmt `query:"delete-conversation-participant"`
+	FindConversationBySubjectContact *sqlx.Stmt `query:"find-conversation-by-subject-and-contact"`
 
 	// Recent activities queries.
 	GetRecentActivities       *sqlx.Stmt `query:"get-recent-activities"`
@@ -1063,6 +1067,12 @@ func (m *Manager) NotifyMention(conversationUUID string, message models.Message,
 						"Subject":         conversation.Subject.String,
 						"Priority":        conversation.Priority.String,
 						"UUID":            conversation.UUID,
+					},
+					"Contact": map[string]any{
+						"FirstName": conversation.Contact.FirstName,
+						"LastName":  conversation.Contact.LastName,
+						"FullName":  conversation.Contact.FullName(),
+						"Email":     conversation.Contact.Email.String,
 					},
 					"Recipient": map[string]any{
 						"FirstName": recipient.FirstName,
