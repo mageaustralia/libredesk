@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import MessageBubble from './MessageBubble.vue'
 import ActivityMessageBubble from './ActivityMessageBubble.vue'
@@ -91,13 +91,14 @@ const route = useRoute()
 const conversationStore = useConversationStore()
 const userStore = useUserStore()
 const threadEl = ref(null)
+const parentScrollContainer = inject('scrollContainer', null)
 const emitter = useEmitter()
 const isAtBottom = ref(true)
 const unReadMessages = ref(0)
 const currentConversationUUID = ref('')
 
 const checkIfAtBottom = () => {
-  const thread = threadEl.value
+  const thread = parentScrollContainer?.value || threadEl.value
   if (thread) {
     const tolerance = 100
     const isBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight <= tolerance
@@ -116,7 +117,7 @@ const handleScrollToBottom = () => {
 
 const scrollToBottom = () => {
   setTimeout(() => {
-    const thread = threadEl.value
+    const thread = parentScrollContainer?.value || threadEl.value
     if (thread) {
       thread.scrollTop = thread.scrollHeight
       checkIfAtBottom()
@@ -131,7 +132,7 @@ const scrollToMessage = (messageUUID) => {
   }
 
   setTimeout(() => {
-    const thread = threadEl.value
+    const thread = parentScrollContainer?.value || threadEl.value
     const messageEl = thread?.querySelector(`[data-message-uuid="${messageUUID}"]`)
     if (messageEl && thread) {
       // Manual scroll calculation for reliability with variable-height messages
@@ -153,9 +154,12 @@ const scrollToMessage = (messageUUID) => {
 }
 
 const scrollToLastMessage = () => {
-  setTimeout(() => {
-    const thread = threadEl.value
+  // Wait for DOM to render messages after loading completes
+  const attempt = (tries) => {
+    // Use parent scroll container (fresh theme) or own threadEl
+    const thread = parentScrollContainer?.value || threadEl.value
     if (!thread) return
+
     const messages = conversationStore.conversationMessages
     // Find last non-activity message
     let lastMsg = null
@@ -171,13 +175,17 @@ const scrollToLastMessage = () => {
     }
     const messageEl = thread.querySelector(`[data-message-uuid="${lastMsg.uuid}"]`)
     if (messageEl) {
-      // Scroll so the top of the last message is near the top of the viewport
-      // with a small offset for breathing room
-      thread.scrollTop = Math.max(0, messageEl.offsetTop - 12)
+      const targetScroll = Math.max(0, messageEl.offsetTop - 12)
+      console.log('[scroll] scrollToLastMessage:', { uuid: lastMsg.uuid, offsetTop: messageEl.offsetTop, targetScroll, scrollHeight: thread.scrollHeight })
+      thread.scrollTop = targetScroll
+    } else if (tries > 0) {
+      // Element not in DOM yet, retry
+      setTimeout(() => attempt(tries - 1), 100)
     } else {
       scrollToBottom()
     }
-  }, 150)
+  }
+  nextTick(() => setTimeout(() => attempt(5), 50))
 }
 
 onMounted(() => {
@@ -205,11 +213,11 @@ const handleNewMessage = () => {
 }
 
 watch(
-  () => conversationStore.conversationMessages,
-  (messages) => {
-    // Scroll to bottom when conversation changes and there are new messages.
-    // New messages on next db page should not scroll to bottom.
+  () => [conversationStore.conversationMessages, conversationStore.messages.loading],
+  ([messages, loading]) => {
+    // Only scroll when messages finished loading and conversation changed
     if (
+      !loading &&
       messages.length > 0 &&
       conversationStore?.current?.uuid &&
       currentConversationUUID.value !== conversationStore.current.uuid
@@ -217,13 +225,10 @@ watch(
       currentConversationUUID.value = conversationStore.current.uuid
       unReadMessages.value = 0
 
-      // Check if this is a mentioned conversation
       const scrollToUUID = route.query.scrollTo
       if (scrollToUUID) {
-        // Mentioned conversation - only scroll to message, NOT to bottom
         scrollToMessage(scrollToUUID)
       } else {
-        // Normal conversation - scroll to top of last message
         scrollToLastMessage()
       }
     }

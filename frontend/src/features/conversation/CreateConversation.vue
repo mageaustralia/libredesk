@@ -16,35 +16,65 @@
           <!-- Form Fields Section -->
           <div class="space-y-4 pb-2 flex-shrink-0">
             <div class="space-y-2">
-              <FormField name="contact_email">
-                <FormItem class="relative">
-                  <FormLabel>{{ $t('globals.terms.email') }}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      :placeholder="t('conversation.searchContact')"
-                      v-model="emailQuery"
-                      @input="handleSearchContacts"
-                      autocomplete="off"
-                    />
-                  </FormControl>
-                  <FormMessage />
-
-                  <ul
-                    v-if="searchResults.length"
-                    class="border rounded p-2 max-h-60 overflow-y-auto absolute w-full z-50 shadow bg-background"
+              <!-- TO field with CC/BCC toggles -->
+              <div class="space-y-2">
+                <div class="flex items-center space-x-2">
+                  <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">TO:</label>
+                  <EmailTagInput
+                    v-model="emailQuery"
+                    :placeholder="t('conversation.searchContact')"
+                    class="flex-grow"
+                    @blur="handleToBlur"
+                    @contactSelected="selectContact"
+                  />
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      v-if="!showCc"
+                      type="button"
+                      @click="showCc = true"
+                      class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                    >Cc</button>
+                    <button
+                      v-if="!showBcc"
+                      type="button"
+                      @click="showBcc = true"
+                      class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                    >Bcc</button>
+                  </div>
+                </div>
+                <!-- CC field -->
+                <div v-if="showCc" class="flex items-center space-x-2">
+                  <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">CC:</label>
+                  <EmailTagInput
+                    v-model="ccEmails"
+                    placeholder="Add CC recipients"
+                    class="flex-grow"
+                  />
+                  <button
+                    type="button"
+                    @click="showCc = false; ccEmails = ''"
+                    class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
                   >
-                    <li
-                      v-for="contact in searchResults"
-                      :key="contact.email"
-                      @click="selectContact(contact)"
-                      class="cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                    >
-                      {{ contact.first_name }} {{ contact.last_name }} ({{ contact.email }})
-                    </li>
-                  </ul>
-                </FormItem>
-              </FormField>
+                    <X class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <!-- BCC field -->
+                <div v-if="showBcc" class="flex items-center space-x-2">
+                  <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">BCC:</label>
+                  <EmailTagInput
+                    v-model="bccEmails"
+                    placeholder="Add BCC recipients"
+                    class="flex-grow"
+                  />
+                  <button
+                    type="button"
+                    @click="showBcc = false; bccEmails = ''"
+                    class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
+                  >
+                    <X class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
 
               <!-- Name Group -->
               <div class="grid grid-cols-2 gap-4">
@@ -266,6 +296,8 @@ import { useMacroStore } from '@/stores/macro'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
 import api from '@/api'
+import EmailTagInput from '@/components/EmailTagInput.vue'
+import { X } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 
 const dialogOpen = defineModel({
@@ -280,12 +312,14 @@ const teamStore = useTeamStore()
 const userStore = useUserStore()
 const emitter = useEmitter()
 const loading = ref(false)
-const searchResults = ref([])
 const emailQuery = ref('')
 const conversationStore = useConversationStore()
 const macroStore = useMacroStore()
-let timeoutId = null
 const insertContent = ref('')
+const showCc = ref(false)
+const showBcc = ref(false)
+const ccEmails = ref('')
+const bccEmails = ref('')
 const currentSignature = ref('')
 
 const handleEmojiSelect = (emoji) => {
@@ -330,7 +364,6 @@ const formSchema = z.object({
 })
 
 onUnmounted(() => {
-  clearTimeout(timeoutId)
   clearMediaFiles()
   conversationStore.resetMacro(MACRO_CONTEXT.NEW_CONVERSATION)
   conversationStore.isNewConversationOpen = false
@@ -364,7 +397,8 @@ const form = useForm({
 })
 
 watch(emailQuery, (newVal) => {
-  form.setFieldValue('contact_email', newVal)
+  const firstEmail = newVal.split(',').map(e => e.trim()).filter(e => e)[0] || ''
+  form.setFieldValue('contact_email', firstEmail)
 })
 
 /**
@@ -463,34 +497,29 @@ watch(
   }
 )
 
-const handleSearchContacts = async () => {
-  clearTimeout(timeoutId)
-  timeoutId = setTimeout(async () => {
-    const query = emailQuery.value.trim()
 
-    if (query.length < 3) {
-      searchResults.value.splice(0)
-      return
-    }
 
-    try {
-      const resp = await api.searchContacts({ query })
-      searchResults.value = [...resp.data.data]
-    } catch (error) {
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: handleHTTPError(error).message
-      })
-      searchResults.value.splice(0)
-    }
-  }, 300)
+const handleToBlur = () => {
+  // Sync first email to form validation field
+  const firstEmail = emailQuery.value.split(',').map(e => e.trim()).filter(e => e)[0] || ''
+  form.setFieldValue('contact_email', firstEmail)
 }
 
 const selectContact = (contact) => {
-  emailQuery.value = contact.email
-  form.setFieldValue('first_name', contact.first_name)
-  form.setFieldValue('last_name', contact.last_name || '')
-  searchResults.value.splice(0)
+  // When EmailTagInput emits contactSelected, add email and fill name fields
+  const current = emailQuery.value ? emailQuery.value.split(',').map(e => e.trim()).filter(e => e) : []
+  if (!current.includes(contact.email)) {
+    current.push(contact.email)
+  }
+  emailQuery.value = current.join(', ')
+  // Only fill name if first/last are empty (don't overwrite for additional recipients)
+  if (!form.values.first_name) {
+    form.setFieldValue('first_name', contact.first_name || '')
+  }
+  if (!form.values.last_name) {
+    form.setFieldValue('last_name', contact.last_name || '')
+  }
+  form.setFieldValue('contact_email', current[0])
 }
 
 const createConversation = form.handleSubmit(async (values) => {
@@ -502,6 +531,8 @@ const createConversation = form.handleSubmit(async (values) => {
     values.agent_id = values.agent_id ? Number(values.agent_id) : null
     // Array of attachment ids.
     values.attachments = mediaFiles.value.map((file) => file.id)
+    values.cc = ccEmails.value || ''
+    values.bcc = bccEmails.value || ''
     // Initiator of this conversation is always agent
     values.initiator = UserTypeAgent
     const conversation = await api.createConversation(values)

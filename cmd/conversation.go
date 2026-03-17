@@ -55,6 +55,8 @@ type createConversationRequest struct {
 	LastName        string `json:"last_name"`
 	Subject         string `json:"subject"`
 	Content         string `json:"content"`
+	CC              string `json:"cc"`
+	BCC             string `json:"bcc"`
 	Attachments     []int  `json:"attachments"`
 	Initiator       string `json:"initiator"` // "contact" | "agent"
 }
@@ -763,7 +765,16 @@ func handleCreateConversation(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
-	to := []string{req.Email}
+	// Parse TO addresses - first email is the primary contact, all go to TO list.
+	to := []string{}
+	for _, e := range strings.Split(req.Email, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			to = append(to, e)
+		}
+	}
+	if len(to) == 0 {
+		to = []string{req.Email}
+	}
 	user, err := app.user.GetAgent(auser.ID, "")
 	if err != nil {
 		return sendErrorEnvelope(r, err)
@@ -811,7 +822,23 @@ func handleCreateConversation(r *fastglue.Request) error {
 	switch req.Initiator {
 	case umodels.UserTypeAgent:
 		// Queue reply.
-		if _, err := app.conversation.QueueReply(media, req.InboxID, auser.ID /**sender_id**/, conversationUUID, req.Content, to, nil /**cc**/, nil /**bcc**/, map[string]any{} /**meta**/); err != nil {
+		// Parse CC/BCC strings into slices.
+		var ccList, bccList []string
+		if req.CC != "" {
+			for _, e := range strings.Split(req.CC, ",") {
+				if e = strings.TrimSpace(e); e != "" {
+					ccList = append(ccList, e)
+				}
+			}
+		}
+		if req.BCC != "" {
+			for _, e := range strings.Split(req.BCC, ",") {
+				if e = strings.TrimSpace(e); e != "" {
+					bccList = append(bccList, e)
+				}
+			}
+		}
+		if _, err := app.conversation.QueueReply(media, req.InboxID, auser.ID, conversationUUID, req.Content, to, ccList, bccList, map[string]any{}); err != nil {
 			// Delete the conversation if msg queue fails.
 			if err := app.conversation.DeleteConversation(conversationUUID); err != nil {
 				app.lo.Error("error deleting conversation", "error", err)
