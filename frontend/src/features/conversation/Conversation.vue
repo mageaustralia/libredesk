@@ -200,7 +200,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount, provide } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { usePresenceStore } from '@/stores/presence'
 import { useTheme } from '@/composables/useTheme'
@@ -274,67 +274,11 @@ const otherViewers = computed(() => {
   return presenceStore.getViewers(uuid, userStore.userID)
 })
 
-function sendViewingPresence(uuid) {
-  if (currentViewingUUID.value === uuid) return
-  currentViewingUUID.value = uuid
-  wsSendMessage({ type: 'view_conversation', data: { conversation_uuid: uuid || '' } })
-}
-
-// Watch for conversation changes and send presence
-watch(
-  () => conversationStore.current?.uuid,
-  (newUUID, oldUUID) => {
-    // Execute pending send if switching conversations
-    if (oldUUID && pendingSend.value) {
-      executePendingSend()
-    }
-    if (newUUID) {
-      sendViewingPresence(newUUID)
-      checkFollowStatus()
-    }
-  },
-  { immediate: true }
-)
-
-onBeforeUnmount(() => {
-  // Clear presence when leaving
-  sendViewingPresence('')
-  // Execute pending send if navigating away
-  if (pendingSend.value) {
-    executePendingSend()
-  }
-})
-
-const showMergeDialog = ref(false)
-
-// Undo send state
 const pendingSend = ref(null)
 const undoProgress = ref(100)
 let undoTimer = null
 let undoProgressInterval = null
 const UNDO_DELAY_MS = 5000
-
-emitter.on('send-queued', (data) => {
-  // Cancel any previous pending send
-  if (pendingSend.value) {
-    executePendingSend()
-  }
-
-  pendingSend.value = data
-  undoProgress.value = 100
-
-  // Animate progress bar
-  const startTime = Date.now()
-  undoProgressInterval = setInterval(() => {
-    const elapsed = Date.now() - startTime
-    undoProgress.value = Math.max(0, 100 - (elapsed / UNDO_DELAY_MS) * 100)
-  }, 50)
-
-  // Execute send after delay
-  undoTimer = setTimeout(() => {
-    executePendingSend()
-  }, UNDO_DELAY_MS)
-})
 
 async function executePendingSend() {
   clearTimeout(undoTimer)
@@ -369,6 +313,62 @@ async function executePendingSend() {
   }
 }
 
+function sendViewingPresence(uuid) {
+  if (currentViewingUUID.value === uuid) return
+  currentViewingUUID.value = uuid
+  wsSendMessage({ type: 'view_conversation', data: { conversation_uuid: uuid || '' } })
+}
+
+// Watch for conversation changes and send presence
+watch(
+  () => conversationStore.current?.uuid,
+  (newUUID, oldUUID) => {
+    // Execute pending send if switching conversations
+    if (oldUUID && pendingSend.value) {
+      executePendingSend()
+    }
+    if (newUUID) {
+      sendViewingPresence(newUUID)
+      checkFollowStatus()
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  // Clear presence when leaving
+  sendViewingPresence('')
+  // Execute pending send if navigating away
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+})
+
+const showMergeDialog = ref(false)
+
+
+emitter.on('send-queued', (data) => {
+  // Cancel any previous pending send
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+
+  pendingSend.value = data
+  undoProgress.value = 100
+
+  // Animate progress bar
+  const startTime = Date.now()
+  undoProgressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime
+    undoProgress.value = Math.max(0, 100 - (elapsed / UNDO_DELAY_MS) * 100)
+  }, 50)
+
+  // Execute send after delay
+  undoTimer = setTimeout(() => {
+    executePendingSend()
+  }, UNDO_DELAY_MS)
+})
+
 function undoSend() {
   clearTimeout(undoTimer)
   clearInterval(undoProgressInterval)
@@ -392,6 +392,7 @@ function undoSend() {
 const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)
 const scrollContainer = ref(null)
+provide('scrollContainer', scrollContainer)
 
 // Listen for collapse-reply from ReplyBox (e.g. after discarding draft)
 emitter.on('collapse-reply', () => {

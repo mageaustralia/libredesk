@@ -69,7 +69,7 @@ const props = defineProps({
 })
 
 const modelValue = defineModel({ type: String, default: '' })
-const emit = defineEmits(['blur'])
+const emit = defineEmits(['blur', 'contactSelected'])
 
 const inputRef = ref(null)
 const inputValue = ref('')
@@ -174,6 +174,8 @@ const onInputChange = () => {
       suggestions.value = contacts.map(c => ({
         id: c.id,
         name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+        first_name: c.first_name || '',
+        last_name: c.last_name || '',
         email: c.email
       })).filter(c => c.email && !emails.value.includes(c.email))
 
@@ -194,6 +196,7 @@ const selectSuggestion = (contact) => {
   updateModel(current)
   inputValue.value = ''
   closeSuggestions()
+  emit('contactSelected', contact)
   emit('blur')
 }
 
