@@ -140,9 +140,31 @@
           v-if="conversationStore.current?.subject && !conversationStore.conversation.loading"
           class="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-2"
         >
-          <div class="flex items-center gap-2 min-w-0">
+          <div class="group flex items-center gap-2 min-w-0">
             <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ conversationStore.current?.reference_number }}</span>
-            <h2 class="text-sm font-semibold truncate">{{ conversationStore.current?.subject }}</h2>
+            <h2 v-if="!editingHeaderSubject" class="text-sm font-semibold truncate">{{ conversationStore.current?.subject }}</h2>
+            <input
+              v-if="editingHeaderSubject"
+              ref="headerSubjectInput"
+              v-model="headerSubjectDraft"
+              class="flex-1 text-sm font-semibold border rounded px-2 py-0.5 bg-transparent"
+              @keyup.enter="saveHeaderSubject"
+              @keyup.escape="editingHeaderSubject = false"
+            />
+            <button
+              v-if="!editingHeaderSubject"
+              class="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0"
+              @click="startEditHeaderSubject"
+            >
+              <Pencil :size="13" />
+            </button>
+            <button
+              v-if="editingHeaderSubject"
+              class="text-muted-foreground hover:text-foreground shrink-0"
+              @click="saveHeaderSubject"
+            >
+              <Check :size="14" />
+            </button>
           </div>
         </div>
         <MessageList />
@@ -215,7 +237,7 @@ import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from "./ReplyBox.vue"
 import MergeDialog from "./MergeDialog.vue"
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2 } from 'lucide-vue-next'
+import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -265,6 +287,36 @@ const toggleFollow = async () => {
   }
 }
 
+
+// Header subject inline edit
+const editingHeaderSubject = ref(false)
+const headerSubjectDraft = ref('')
+const headerSubjectInput = ref(null)
+
+const startEditHeaderSubject = () => {
+  headerSubjectDraft.value = conversationStore.current?.subject || ''
+  editingHeaderSubject.value = true
+  nextTick(() => headerSubjectInput.value?.focus())
+}
+
+const saveHeaderSubject = async () => {
+  const trimmed = headerSubjectDraft.value.trim()
+  if (!trimmed || trimmed === conversationStore.current?.subject) {
+    editingHeaderSubject.value = false
+    return
+  }
+  try {
+    await api.updateConversationSubject(conversationStore.current.uuid, trimmed)
+    conversationStore.current.subject = trimmed
+    editingHeaderSubject.value = false
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, { description: 'Subject updated' })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
 // Presence tracking
 const currentViewingUUID = ref('')
 
