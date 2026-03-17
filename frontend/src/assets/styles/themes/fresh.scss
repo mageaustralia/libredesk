@@ -222,15 +222,14 @@
       color: hsl(220 14% 15%);
 
       p {
-        margin-bottom: 0.75em;
+        margin-bottom: 0;
       }
 
-      // Empty paragraphs (blank lines from Enter key) — collapse them.
-      // The previous paragraph's margin already provides the gap.
+      // Empty paragraphs (blank lines from Enter key) — act as spacers
+      // to match the spacing seen in the compose editor.
       p:empty,
       p:has(br:only-child) {
-        margin-bottom: 0;
-        min-height: 0;
+        min-height: 1em;
       }
 
       // Last paragraph shouldn't add trailing space

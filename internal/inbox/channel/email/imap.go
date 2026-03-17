@@ -620,12 +620,27 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 // the group address. The real sender is preserved in X-Google-Original-From or Reply-To.
 // Returns the real sender's name and email, or empty strings if no rewrite detected.
 func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName, lastName, email string) {
-	// Priority 1: X-Google-Original-From — definitive proof of From rewriting
+	// Get To domain for internal-address detection
+	toHeader := envelope.GetHeader("To")
+	toDomain := ""
+	if toAddr, err := mail.ParseAddress(toHeader); err == nil {
+		if parts := strings.SplitN(strings.ToLower(toAddr.Address), "@", 2); len(parts) == 2 {
+			toDomain = parts[1]
+		}
+	}
+
+	// Priority 1: X-Google-Original-From
+	// If the original-from is still an internal address (same domain as To),
+	// fall through to Reply-To which may have the real external sender.
 	if origFrom := envelope.GetHeader("X-Google-Original-From"); origFrom != "" {
-		// Parse the address: "Name <email>" or just "<email>" or just "email"
 		if addr, err := mail.ParseAddress(origFrom); err == nil && addr.Address != "" {
 			realEmail := strings.ToLower(addr.Address)
-			if realEmail != strings.ToLower(currentFrom) {
+			origDomain := ""
+			if parts := strings.SplitN(realEmail, "@", 2); len(parts) == 2 {
+				origDomain = parts[1]
+			}
+			// Only use X-Google-Original-From if it is an external address
+			if realEmail != strings.ToLower(currentFrom) && origDomain != toDomain {
 				if strings.TrimSpace(addr.Name) != "" {
 					parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
 					first := parts[0]
@@ -635,7 +650,6 @@ func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName
 					}
 					return first, last, realEmail
 				}
-				// No display name - derive from email
 				first, last := nameFromEmail(realEmail)
 				return first, last, realEmail
 			}
@@ -652,13 +666,7 @@ func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName
 				if parts := strings.SplitN(currentFrom, "@", 2); len(parts) == 2 {
 					fromDomain = strings.ToLower(parts[1])
 				}
-				toDomain := ""
-				toHeader := envelope.GetHeader("To")
-				if toAddr, err := mail.ParseAddress(toHeader); err == nil {
-					if parts := strings.SplitN(strings.ToLower(toAddr.Address), "@", 2); len(parts) == 2 {
-						toDomain = parts[1]
-					}
-				}
+				// toDomain already computed above
 				// If From domain == To domain, it's likely a forwarded email
 				if fromDomain != "" && fromDomain == toDomain {
 					if strings.TrimSpace(addr.Name) != "" {
