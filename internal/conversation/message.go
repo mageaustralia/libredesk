@@ -547,6 +547,20 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 	// Convert HTML content to text for search.
 	message.TextContent = stringutil.HTML2Text(message.Content)
 
+	// Strip null bytes and control characters that PostgreSQL rejects.
+	message.Content = strings.Map(func(r rune) rune {
+		if r == 0 {
+			return -1
+		}
+		return r
+	}, message.Content)
+	message.TextContent = strings.Map(func(r rune) rune {
+		if r == 0 {
+			return -1
+		}
+		return r
+	}, message.TextContent)
+
 	// Insert and scan the message into the struct.
 	if err := m.q.InsertMessage.Get(message,
 		message.Type, message.Status, message.ConversationID, message.ConversationUUID,
