@@ -63,6 +63,17 @@ func (c *Client) GetURL(name, _, _ string) string {
 	return c.signURL(name)
 }
 
+// GetEmailURL generates a signed URL with 30-day expiry for use in notification emails.
+// Gmail and other email clients proxy images and may fetch them hours/days after sending.
+func (c *Client) GetEmailURL(name string) string {
+	if c.opts.SigningKey == "" {
+		return fmt.Sprintf("%s%s/%s", c.opts.RootURL(), c.opts.UploadURI, name)
+	}
+	exp := time.Now().Add(30 * 24 * time.Hour).Unix()
+	sig := c.generateSignature(name, exp)
+	return fmt.Sprintf("%s%s/%s?sig=%s&exp=%d", c.opts.RootURL(), c.opts.UploadURI, name, sig, exp)
+}
+
 // signURL generates a signed URL with expiry timestamp.
 func (c *Client) signURL(name string) string {
 	exp := time.Now().Add(c.opts.Expiry).Unix()

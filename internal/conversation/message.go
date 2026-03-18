@@ -25,6 +25,7 @@ import (
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
 	wmodels "github.com/abhinavxd/libredesk/internal/webhook/models"
 	"github.com/lib/pq"
+	pciscrub "github.com/mageaustralia/go-pci-scrub"
 	"github.com/volatiletech/null/v9"
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 )
@@ -208,10 +209,13 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		message.InReplyTo = message.References[len(message.References)-1]
 	}
 
-	// Convert relative image URLs to absolute URLs for email delivery.
-	if rootURL, err := m.settingsStore.GetAppRootURL(); err == nil && rootURL != "" {
-		re := regexp.MustCompile(`src="(/uploads/[^"]+)"`)
-		message.Content = re.ReplaceAllString(message.Content, `src="`+strings.TrimRight(rootURL, "/")+`$1"`)
+	// Convert relative image URLs to signed absolute URLs for email delivery.
+	{
+		re := regexp.MustCompile(`(?:https?://[^"]*)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+		message.Content = re.ReplaceAllStringFunc(message.Content, func(match string) string {
+			uuid := re.FindStringSubmatch(match)[1]
+			return m.mediaStore.GetEmailURL(uuid)
+		})
 	}
 
 	// Send message
@@ -573,6 +577,19 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 	// Attach just inserted message to the media.
 	for _, media := range message.Media {
 		m.mediaStore.Attach(media.ID, mmodels.ModelMessages, message.ID)
+	}
+
+	// Check for PCI (credit card) data in incoming messages.
+	if message.Type == models.MessageIncoming {
+		result := pciscrub.ScrubWithSpans(message.TextContent)
+		if len(result.Spans) > 0 {
+			if _, err := m.q.FlagMessagePCI.Exec(message.ID); err != nil {
+				m.lo.Error("error flagging message with PCI data", "error", err, "message_id", message.ID)
+			} else {
+				message.HasPCIData = true
+				m.lo.Warn("PCI data detected in incoming message", "message_id", message.ID, "conversation_uuid", message.ConversationUUID)
+			}
+		}
 	}
 
 	// Add contacts as participants (not agents — agents follow explicitly).

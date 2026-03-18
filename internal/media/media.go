@@ -35,6 +35,7 @@ type Store interface {
 	Put(name, contentType string, content io.ReadSeeker) (string, error)
 	Delete(name string) error
 	GetURL(name, disposition, fileName string) string
+	GetEmailURL(name string) string
 	GetBlob(name string) ([]byte, error)
 	Name() string
 	// SignedURLValidator returns a validator function if the store supports signed URLs.
@@ -164,6 +165,11 @@ func (m *Manager) ContentIDExists(contentID string) (bool, string, error) {
 // GetBlob retrieves the raw binary content of a media file by its name.
 func (m *Manager) GetBlob(name string) ([]byte, error) {
 	return m.store.GetBlob(name)
+}
+
+// GetEmailURL returns a URL with extended expiry (30 days) for use in notification emails.
+func (m *Manager) GetEmailURL(uuid string) string {
+	return m.store.GetEmailURL(uuid)
 }
 
 // GetURL returns the URL for accessing a media file by its name.
