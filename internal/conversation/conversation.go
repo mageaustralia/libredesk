@@ -120,6 +120,7 @@ type mediaStore interface {
 	Upload(fileName, contentType string, content io.ReadSeeker) (string, string, error)
 	UploadAndInsert(fileName, contentType, contentID string, modelType null.String, modelID null.Int, content io.ReadSeeker, fileSize int, disposition null.String, meta []byte) (mmodels.Media, error)
 	GetURL(uuid, contentType, fileName string) string
+	GetEmailURL(uuid string) string
 }
 
 type inboxStore interface {
@@ -130,6 +131,7 @@ type inboxStore interface {
 type settingsStore interface {
 	GetAppRootURL() (string, error)
 	GetAISettings() (settingmodels.AISettings, error)
+	GetPCISettings() (settingmodels.PCISettings, error)
 }
 
 type csatStore interface {
@@ -251,6 +253,10 @@ type queries struct {
 	InsertMessage                      *sqlx.Stmt `query:"insert-message"`
 	UpdateMessageStatus                *sqlx.Stmt `query:"update-message-status"`
 	MessageExistsBySourceID            *sqlx.Stmt `query:"message-exists-by-source-id"`
+	FlagMessagePCI                     *sqlx.Stmt `query:"flag-message-pci"`
+	RedactMessagePCI                   *sqlx.Stmt `query:"redact-message-pci"`
+	GetPCIMessagesForAutoRedact         *sqlx.Stmt `query:"get-pci-messages-for-auto-redact"`
+	GetMessageForRedact                *sqlx.Stmt `query:"get-message-for-redact"`
 	GetConversationByMessageID         *sqlx.Stmt `query:"get-conversation-by-message-id"`
 
 	// Mention queries.

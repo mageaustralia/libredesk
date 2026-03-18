@@ -163,6 +163,11 @@ func (c *Client) Name() string {
 	return "s3"
 }
 
+// GetEmailURL generates a URL with extended expiry for email notifications.
+func (c *Client) GetEmailURL(name string) string {
+	return c.GetURL(name, "", "")
+}
+
 // SignedURLValidator returns nil as S3 handles its own presigned URL validation.
 // The S3 service validates presigned URLs when they are accessed.
 func (c *Client) SignedURLValidator() func(name, sig string, exp int64) bool {

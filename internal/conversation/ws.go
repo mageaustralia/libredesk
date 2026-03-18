@@ -11,6 +11,7 @@ import (
 	nmodels "github.com/abhinavxd/libredesk/internal/notification/models"
 	"github.com/abhinavxd/libredesk/internal/template"
 	wsmodels "github.com/abhinavxd/libredesk/internal/ws/models"
+	pciscrub "github.com/mageaustralia/go-pci-scrub"
 	"github.com/volatiletech/null/v9"
 )
 
@@ -164,7 +165,7 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 				},
 				"Message": map[string]any{
 					"UUID":    message.UUID,
-					"Content": m.makeAbsoluteURLs(message.Content),
+					"Content": pciscrub.Scrub(m.makeAbsoluteURLs(message.Content)),
 				},
 			})
 		if err != nil {
@@ -197,11 +198,13 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 // makeAbsoluteURLs rewrites relative /uploads/ URLs in HTML content to signed absolute URLs
 // so that images display correctly in notification emails without requiring authentication.
 func (m *Manager) makeAbsoluteURLs(content string) string {
-	re := regexp.MustCompile(`/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+	// Match both relative (/uploads/UUID) and absolute (https://domain/uploads/UUID) URLs
+	// to handle quoted replies where the email client has already made URLs absolute.
+	re := regexp.MustCompile(`(?:https?://[^/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
 	return re.ReplaceAllStringFunc(content, func(match string) string {
 		uuid := re.FindStringSubmatch(match)[1]
-		// GetURL returns a signed URL with expiry (e.g. https://domain/uploads/uuid?sig=...&exp=...)
-		return m.mediaStore.GetURL(uuid, "", "")
+		// GetEmailURL returns a signed URL with 30-day expiry for email clients.
+		return m.mediaStore.GetEmailURL(uuid)
 	})
 }
 
