@@ -71,16 +71,38 @@
               <span>{{ conversation.inbox_name }}</span>
             </p>
 
-            <!-- Message preview -->
+            <!-- Message preview with hover card -->
             <div
-              class="text-sm flex items-center gap-1.5 break-all text-gray-600 dark:text-gray-300"
+              class="relative"
+              @mouseenter="showPreview = true"
+              @mouseleave="showPreview = false"
             >
-              <Reply
-                class="text-green-600 flex-shrink-0"
-                size="15"
-                v-if="conversation.last_message_sender === 'agent'"
-              />
-              {{ trimmedLastMessage }}
+              <div class="text-sm flex items-center gap-1.5 break-all text-gray-600 dark:text-gray-300">
+                <Reply
+                  class="text-green-600 flex-shrink-0"
+                  size="15"
+                  v-if="conversation.last_message_sender === 'agent'"
+                />
+                {{ trimmedLastMessage }}
+              </div>
+              <!-- Hover preview card -->
+              <div
+                v-if="showPreview && (conversation.first_message || conversation.last_message)"
+                class="absolute left-0 top-full mt-1 z-50 w-96 max-w-[90vw] bg-popover border rounded-lg shadow-lg p-3 space-y-2"
+                @mouseenter="showPreview = true"
+                @mouseleave="showPreview = false"
+              >
+                <div v-if="conversation.first_message">
+                  <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Original message</p>
+                  <p class="text-xs text-foreground leading-relaxed line-clamp-4">{{ conversation.first_message }}</p>
+                </div>
+                <div v-if="conversation.last_message && conversation.last_message !== conversation.first_message" class="border-t pt-2">
+                  <p class="text-[10px] font-semibold uppercase tracking-wide mb-1" :class="conversation.last_message_sender === 'agent' ? 'text-green-600' : 'text-muted-foreground'">
+                    {{ conversation.last_message_sender === 'agent' ? 'Latest reply (agent)' : 'Latest reply (customer)' }}
+                  </p>
+                  <p class="text-xs text-foreground leading-relaxed line-clamp-4">{{ conversation.last_message }}</p>
+                </div>
+              </div>
             </div>
 
             <!-- SLA Badges -->
@@ -257,6 +279,7 @@ const teamsStore = useTeamStore()
 const frdStatus = ref('')
 const rdStatus = ref('')
 const nrdStatus = ref('')
+const showPreview = ref(false)
 
 const props = defineProps({
   conversation: Object,

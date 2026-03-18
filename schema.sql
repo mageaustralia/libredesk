@@ -230,6 +230,8 @@ CREATE TABLE conversations (
     priority_id INT REFERENCES conversation_priorities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
 
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
+    pci_detected_at TIMESTAMPTZ NULL
 	custom_attributes JSONB DEFAULT '{}'::jsonb NOT NULL,
     first_reply_at TIMESTAMPTZ NULL,
     last_reply_at TIMESTAMPTZ NULL,
@@ -279,6 +281,8 @@ CREATE TABLE conversation_messages (
  	sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     sender_type message_sender_type NOT NULL,
     meta JSONB DEFAULT '{}'::JSONB NULL
+    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
+    pci_detected_at TIMESTAMPTZ NULL
 );
 CREATE INDEX index_trgm_conversation_messages_on_text_content ON conversation_messages USING GIN (text_content gin_trgm_ops);
 CREATE INDEX index_conversation_messages_on_conversation_id ON conversation_messages (conversation_id);
@@ -314,6 +318,8 @@ CREATE TABLE conversation_drafts (
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     content TEXT NOT NULL,
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL
+    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
+    pci_detected_at TIMESTAMPTZ NULL
 );
 CREATE UNIQUE INDEX index_uniq_conversation_drafts_on_conversation_id_and_user_id ON conversation_drafts (conversation_id, user_id);
 
@@ -669,6 +675,8 @@ CREATE TABLE user_notifications (
 	message_id BIGINT REFERENCES conversation_messages(id) ON DELETE CASCADE ON UPDATE CASCADE,
 	actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
+    pci_detected_at TIMESTAMPTZ NULL
 	CONSTRAINT constraint_user_notifications_on_title CHECK (length(title) <= 500),
 	CONSTRAINT constraint_user_notifications_on_body CHECK (length(body) <= 2000)
 );

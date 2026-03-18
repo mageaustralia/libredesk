@@ -81,3 +81,9 @@ type TrashSettings struct {
 	AutoDeleteDays        int `json:"trash.auto_delete_days" db:"trash.auto_delete_days"`
 	ActivityPurgeDays     int `json:"trash.activity_purge_days" db:"trash.activity_purge_days"`
 }
+
+// PCISettings holds PCI data notification configuration.
+type PCISettings struct {
+	NotifyAgentID int    `json:"pci.notify_agent_id" db:"pci.notify_agent_id"`
+	NotifyMethod  string `json:"pci.notify_method" db:"pci.notify_method"` // "in_app", "email", "both"
+}

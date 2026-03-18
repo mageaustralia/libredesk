@@ -55,6 +55,13 @@
               ref="agentSearchInput" />
           </div>
           <div class="max-h-48 overflow-y-auto">
+            <button v-if="!agentSearch"
+              @click="toggleAgent('unassigned')"
+              class="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between cursor-pointer border-b"
+              :class="{ 'bg-accent/50': selectedAgents.includes('unassigned') }">
+              <span class="truncate text-muted-foreground italic">Unassigned</span>
+              <Check v-if="selectedAgents.includes('unassigned')" class="w-3.5 h-3.5 text-primary shrink-0" />
+            </button>
             <button v-for="agent in filteredAgents" :key="agent.value"
               @click="toggleAgent(String(agent.value))"
               class="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between cursor-pointer"
@@ -369,6 +376,7 @@ function toggleAgentMode() {
 const agentSummary = computed(() => {
   if (selectedAgents.value.length === 0) return 'Any agent'
   if (selectedAgents.value.length === 1) {
+    if (selectedAgents.value[0] === 'unassigned') return 'Unassigned'
     const opt = (usersStore.options || []).find(o => String(o.value) === selectedAgents.value[0])
     return opt ? opt.label : selectedAgents.value[0]
   }
@@ -483,8 +491,21 @@ function applyAdHocFilters() {
   const filters = []
 
   if (selectedAgents.value.length > 0) {
-    filters.push({ field: 'assigned_user_id', operator: agentMode.value === 'include' ? 'in' : 'not_in',
-      value: JSON.stringify(selectedAgents.value), model: 'conversations' })
+    const hasUnassigned = selectedAgents.value.includes('unassigned')
+    const agentIds = selectedAgents.value.filter(id => id !== 'unassigned')
+    if (hasUnassigned && agentIds.length === 0) {
+      // Only "Unassigned" selected
+      filters.push({ field: 'assigned_user_id', operator: agentMode.value === 'include' ? 'not set' : 'set',
+        value: '', model: 'conversations' })
+    } else if (hasUnassigned && agentIds.length > 0) {
+      // "Unassigned" + specific agents
+      filters.push({ field: 'assigned_user_id', operator: agentMode.value === 'include' ? 'in_or_null' : 'not_in',
+        value: JSON.stringify(agentIds), model: 'conversations' })
+    } else {
+      // Only specific agents
+      filters.push({ field: 'assigned_user_id', operator: agentMode.value === 'include' ? 'in' : 'not_in',
+        value: JSON.stringify(agentIds), model: 'conversations' })
+    }
   }
   if (selectedTeams.value.length > 0) {
     filters.push({ field: 'assigned_team_id', operator: teamMode.value === 'include' ? 'in' : 'not_in',
@@ -612,7 +633,9 @@ function clearAll() {
   agentSearch.value = ''
   teamSearch.value = ''
   tagsSearch.value = ''
-  conversationStore.setListStatus(['Open'])
+  const resolvedNames = ['Resolved', 'Closed', 'Trashed', 'Spam']
+  const allUnresolved = conversationStore.statusOptions.map(s => s.label).filter(name => !resolvedNames.includes(name))
+  conversationStore.setListStatus(allUnresolved.length > 0 ? allUnresolved : ['Open'])
   conversationStore.setAdHocFilters([])
 }
 </script>

@@ -50,6 +50,20 @@
           class="flex flex-col justify-end message-bubble"
           :class="bubbleClasses"
         >
+          <!-- PCI Data Warning -->
+          <div v-if="message.has_pci_data" class="flex items-center gap-2 mb-2 px-3 py-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md">
+            <ShieldAlert class="w-4 h-4 text-red-500 shrink-0" />
+            <span class="text-xs text-red-700 dark:text-red-300 font-medium flex-1">This message contains credit card data</span>
+            <button
+              v-if="!redacting"
+              class="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 underline"
+              @click="redactPCI"
+            >
+              Redact Now
+            </button>
+            <Spinner v-if="redacting" size="w-3 h-3" />
+          </div>
+
           <!-- Message Envelope -->
           <MessageEnvelope :message="message" v-if="showEnvelope" />
 
@@ -66,6 +80,7 @@
           <Letter
             v-else
             :html="sanitizedContent"
+            :rewriteExternalResources="rewriteResource"
             :allowedSchemas="['cid', 'https', 'http', 'mailto']"
             class="mb-1 native-html break-words"
             :class="{ 'mb-3': message.attachments.length > 0 }"
@@ -118,7 +133,7 @@ import { computed, ref } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppSettingsStore } from '@/stores/appSettings'
 import { useI18n } from 'vue-i18n'
-import { Lock, RotateCcw, Check } from 'lucide-vue-next'
+import { Lock, RotateCcw, Check, ShieldAlert } from 'lucide-vue-next'
 import { revertCIDToImageSrc } from '@/utils/strings'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
@@ -180,11 +195,35 @@ const sanitizedContent = computed(() => {
   }
 })
 
+const rewriteResource = (url) => {
+  const baseUrl = settingsStore.settings['app.root_url'] || ''
+  // Rewrite relative /uploads/ paths to absolute
+  if (url.startsWith('/uploads/')) {
+    return baseUrl + url
+  }
+  return url
+}
+
 const nonInlineAttachments = computed(() =>
   props.message.attachments.filter((attachment) => attachment.disposition !== 'inline')
 )
 
 // Bubble classes - conditional based on direction
+const redacting = ref(false)
+
+const redactPCI = async () => {
+  if (!confirm('This will permanently redact credit card data from this message and attempt to delete the original email. This cannot be undone.')) return
+  redacting.value = true
+  try {
+    const cuuid = convStore.current?.uuid
+    await api.redactMessagePCI(cuuid, props.message.uuid)
+    window.location.reload()
+  } catch (err) {
+    redacting.value = false
+    alert('Failed to redact: ' + (err?.response?.data?.message || err.message))
+  }
+}
+
 const bubbleClasses = computed(() => ({
   // Outgoing-specific: private message styling
   'bg-private': isOutgoing.value && props.message.private,

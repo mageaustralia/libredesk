@@ -55,7 +55,7 @@ SELECT
     conversations.last_message_at,
     conversations.last_message_sender,
     (SELECT text_content FROM conversation_messages
-     WHERE conversation_id = conversations.id AND type = 'incoming' AND sender_type = 'contact'
+     WHERE conversation_id = conversations.id AND type != 'activity'
      ORDER BY id ASC LIMIT 1) AS first_message,
     conversations.last_interaction,
     conversations.last_interaction_at,
@@ -465,6 +465,7 @@ SELECT
     m.sender_type,
     m.sender_id,
     m.meta,
+   m.has_pci_data,
     c.uuid as conversation_uuid,
     m.content_type,
     m.source_id,
@@ -494,6 +495,7 @@ SELECT
     m.sender_type,
     m.sender_id,
     m.meta,
+   m.has_pci_data,
     c.uuid as conversation_uuid,
     u.id AS "author.id",
     u.first_name AS "author.first_name",
@@ -539,6 +541,7 @@ SELECT
    m.sender_id,
    m.sender_type,
    m.meta,
+   m.has_pci_data,
    $1::uuid AS conversation_uuid,
    u.id AS "author.id",
    u.first_name AS "author.first_name",
@@ -805,3 +808,24 @@ WHERE c.contact_id = $1
   AND c.status_id NOT IN (4, 5, 6)
 ORDER BY c.created_at DESC
 LIMIT 1;
+
+-- name: flag-message-pci
+UPDATE conversation_messages SET has_pci_data = true, pci_detected_at = NOW() WHERE id = $1;
+
+-- name: redact-message-pci
+UPDATE conversation_messages SET content = $2, text_content = $3, has_pci_data = false, pci_detected_at = NULL, updated_at = NOW() WHERE uuid = $1 RETURNING id, conversation_id, source_id, "type";
+
+-- name: get-pci-messages-for-auto-redact
+SELECT m.id, m.uuid, m.content, m.text_content, m.source_id, m.conversation_id,
+       c.uuid AS conversation_uuid, c.inbox_id
+FROM conversation_messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE m.has_pci_data = true
+  AND m.pci_detected_at < NOW() - INTERVAL '7 days';
+
+-- name: get-message-for-redact
+SELECT m.id, m.uuid, m.content, m.text_content, m.source_id, m.conversation_id,
+       c.uuid AS conversation_uuid, c.inbox_id
+FROM conversation_messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE m.uuid = $1;

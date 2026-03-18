@@ -114,6 +114,25 @@
       />
     </div>
 
+    <!-- Quoted thread toggle -->
+    <div v-if="quotedThreadHtml && messageType === 'reply'" class="px-1">
+      <button
+        @click="threadExpanded = !threadExpanded"
+        class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        type="button"
+      >
+        <span v-if="!threadExpanded" style="background-color:#f1f1f1;border:1px solid #ddd;line-height:1rem;display:inline-block;width:35px;text-align:center;border-radius:1rem;font-size:14px;color:#666;">&middot;&middot;&middot;</span>
+        <span v-else>&#9662; Hide quoted text</span>
+      </button>
+      <div
+        v-if="threadExpanded"
+        contenteditable="true"
+        class="text-sm text-muted-foreground border-l-2 border-muted pl-3 mt-1 mb-2 max-h-60 overflow-y-auto outline-none"
+        v-html="quotedThreadHtml"
+        @input="quotedThreadHtml = $event.target.innerHTML"
+      />
+    </div>
+
     <!-- Macro preview -->
     <MacroActionsPreview
       v-if="conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.actions?.length > 0"
@@ -184,6 +203,8 @@ const emailErrors = defineModel('emailErrors', { default: () => [] })
 const htmlContent = defineModel('htmlContent', { default: '' })
 const textContent = defineModel('textContent', { default: '' })
 const mentions = defineModel('mentions', { default: () => [] })
+const threadExpanded = defineModel('threadExpanded', { default: false })
+const quotedThreadHtml = defineModel('quotedThreadHtml', { default: '' })
 const macroStore = useMacroStore()
 const usersStore = useUsersStore()
 const teamStore = useTeamStore()
@@ -267,6 +288,7 @@ const props = defineProps({
     type: [Number, null],
     default: null
   },
+
   hasDraft: {
     type: Boolean,
     default: false

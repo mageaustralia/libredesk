@@ -345,6 +345,7 @@ export const useConversationStore = defineStore('conversation', () => {
   })
 
   const conversationMessages = computed(() => {
+    const _ = messages.version // eslint-disable-line no-unused-vars
     return messages.data.getAllPagesMessages(conversation.data?.uuid)
   })
 

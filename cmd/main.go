@@ -258,6 +258,7 @@ func main() {
 	go user.MonitorAgentAvailability(ctx)
 	go conversation.RunDraftCleaner(ctx, draftRetentionDuration)
 	go conversation.RunTrashManager(ctx, makeTrashSettingsFunc(settings))
+	go conversation.RunPCIAutoRedact(ctx, func(sourceID string, inboxID int) error { return inbox.DeleteIMAPMessage(inboxID, sourceID) })
 	go userNotification.RunNotificationCleaner(ctx)
 
 	// Start RAG sync coordinator

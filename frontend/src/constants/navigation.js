@@ -46,6 +46,11 @@ export const adminNavItems = [
         titleKey: 'Trash & Cleanup',
         href: '/admin/trash',
         permission: 'general_settings:manage'
+      },
+      {
+        titleKey: 'PCI Redaction',
+        href: '/admin/pci',
+        permission: 'general_settings:manage'
       }
     ]
   },
