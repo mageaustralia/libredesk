@@ -395,3 +395,20 @@ func (m *Manager) GetAISettings() (models.AISettings, error) {
 
 	return out, nil
 }
+
+// GetPCISettings returns PCI notification settings.
+func (m *Manager) GetPCISettings() (models.PCISettings, error) {
+	var (
+		b   types.JSONText
+		out models.PCISettings
+	)
+	b, err := m.GetByPrefix("pci.")
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal([]byte(b), &out); err != nil {
+		m.lo.Error("error unmarshalling PCI settings", "error", err)
+		return out, envelope.NewError(envelope.GeneralError, "Error parsing PCI settings", nil)
+	}
+	return out, nil
+}

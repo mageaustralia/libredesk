@@ -219,6 +219,12 @@ const routes = [
             meta: { title: 'Trash & Cleanup' }
           },
           {
+            path: 'pci',
+            name: 'pci-settings',
+            component: () => import('@/views/admin/pci/PCISettings.vue'),
+            meta: { title: 'PCI Redaction' }
+          },
+          {
             path: 'business-hours',
             component: () => import('@/views/admin/business-hours/BusinessHours.vue'),
             meta: { title: 'Business Hours' },

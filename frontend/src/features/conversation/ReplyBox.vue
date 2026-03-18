@@ -123,6 +123,8 @@
           v-model:messageType="messageType"
           v-model:showBcc="showBcc"
           v-model:mentions="mentions"
+          v-model:quotedThreadHtml="quotedThreadHtml"
+          v-model:threadExpanded="threadExpanded"
           @toggleFullscreen="isEditorFullscreen = !isEditorFullscreen"
           @send="processSend"
           @fileUpload="handleFileUpload"
@@ -168,6 +170,8 @@
         v-model:messageType="messageType"
         v-model:showBcc="showBcc"
         v-model:mentions="mentions"
+        v-model:quotedThreadHtml="quotedThreadHtml"
+        v-model:threadExpanded="threadExpanded"
         @toggleFullscreen="isEditorFullscreen = !isEditorFullscreen"
         @send="processSend"
         @fileUpload="handleFileUpload"
@@ -286,6 +290,47 @@ const aiPrompts = ref([])
 const replyBoxContentRef = ref(null)
 const mentions = ref([])
 const ecommerceConfigured = ref(false)
+const threadExpanded = ref(false)
+
+const quotedThreadHtml = ref('')
+const _threadInitialized = ref(false)
+
+// Build quoted thread from messages
+const _buildThread = () => {
+  if (messageType.value !== 'reply') return ''
+  const msgs = conversationStore.conversationMessages
+    ?.filter(m => !m.private && (m.type === 'incoming' || m.type === 'outgoing') && m.content)
+    ?.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    ?.slice(0, 3)
+  if (!msgs || !msgs.length) return ''
+  const conv = conversationStore.current
+  let html = ''
+  for (const m of msgs) {
+    const name = ((m.author?.first_name || '') + ' ' + (m.author?.last_name || '')).trim() || 'Unknown'
+    const email = m.type === 'incoming' ? (conv?.contact?.email || '') : ''
+    const date = new Date(m.created_at).toLocaleString('en-US', {
+      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    })
+    const emailDisplay = email ? ' &lt;' + email + '&gt;' : ''
+    html += '<div style="margin:8px 0;"><div style="color:#666;font-size:12px;margin-bottom:4px;">On ' + date + ', ' + name + emailDisplay + ' wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">' + m.content + '</blockquote></div>'
+  }
+  return html
+}
+
+// Initialize thread when messages load (only once per conversation)
+watch(() => conversationStore.conversationMessages, (msgs) => {
+  if (!_threadInitialized.value && msgs?.length > 0 && messageType.value === 'reply') {
+    quotedThreadHtml.value = _buildThread()
+    _threadInitialized.value = true
+  }
+}, { immediate: true })
+
+// Reset when switching conversations
+watch(() => conversationStore.current?.uuid, () => {
+  _threadInitialized.value = false
+  quotedThreadHtml.value = ''
+})
 
 // Collision detection state
 const composingStartedAt = ref(null)
@@ -531,6 +576,9 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
     if (!strippedContent && inboxSignature.value && messageType.value !== 'private_note') {
       insertSignature()
     }
+    // Insert quoted thread for replies (after signature)
+    if (messageType.value === 'reply') {
+    }
   }, 200)
 }, { immediate: true })
 
@@ -542,9 +590,11 @@ watch(messageType, (newType, oldType) => {
     if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
       htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker))
     }
-  } else if (oldType === 'private_note' && inboxSignature.value) {
+    // Hide quoted thread for private notes
+    quotedThreadHtml.value = ''
+  } else if (oldType === 'private_note') {
     // Re-add signature when switching back to reply
-    if (!htmlContent.value || !htmlContent.value.includes(sigMarker)) {
+    if (inboxSignature.value && (!htmlContent.value || !htmlContent.value.includes(sigMarker))) {
       const sigBlock = sigMarker + inboxSignature.value
       const strippedContent = htmlContent.value
         ? htmlContent.value.replace(/<[^>]*>/g, '').trim()
@@ -555,6 +605,7 @@ watch(messageType, (newType, oldType) => {
         htmlContent.value = htmlContent.value + '<p><br></p><p>' + sigBlock + '</p>'
       }
     }
+    // Re-insert quoted thread
   }
 })
 
@@ -686,6 +737,10 @@ const handleGenerateWithOrders = () => {
   handleGenerateResponse(true)
 }
 
+
+
+
+
 const updateProvider = async (values) => {
   try {
     isOpenAIKeyUpdating.value = true
@@ -736,7 +791,12 @@ const doSend = async () => {
   isEditorFullscreen.value = false
 
   if (hasTextContent.value > 0 || mediaFiles.value.length > 0 || mentions.value.length > 0) {
-    const message = htmlContent.value
+    // Merge editor content with quoted thread for sending
+    let sendHtml = htmlContent.value
+    if (quotedThreadHtml.value && messageType.value === 'reply') {
+      sendHtml += '<!-- thread --><div class="gmail_quote">' + quotedThreadHtml.value + '</div>'
+    }
+    const message = sendHtml
     const payload = {
       sender_type: UserTypeAgent,
       private: messageType.value === 'private_note',

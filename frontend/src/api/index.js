@@ -322,6 +322,9 @@ const updateAssigneeLastSeen = (uuid) => http.put(`/api/v1/conversations/${uuid}
 const markConversationAsUnread = (uuid) => http.put(`/api/v1/conversations/${uuid}/mark-unread`)
 const getConversationMessage = (cuuid, uuid) =>
   http.get(`/api/v1/conversations/${cuuid}/messages/${uuid}`)
+const redactMessagePCI = (cuuid, uuid) =>
+  http.post(`/api/v1/conversations/${cuuid}/messages/${uuid}/redact`)
+
 const retryMessage = (cuuid, uuid) =>
   http.put(`/api/v1/conversations/${cuuid}/messages/${uuid}/retry`)
 const getConversationMessages = (uuid, params) =>
@@ -655,6 +658,7 @@ export default {
   deleteAutomationRule,
   createConversation,
   sendMessage,
+  redactMessagePCI,
   retryMessage,
   createUser,
   createInbox,

@@ -465,3 +465,30 @@ func handleUpdateTrashSettings(r *fastglue.Request) error {
 	}
 	return r.SendEnvelope(true)
 }
+
+// handleGetPCISettings fetches PCI notification settings.
+func handleGetPCISettings(r *fastglue.Request) error {
+	app := r.Context.(*App)
+	out, err := app.setting.GetByPrefix("pci.")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(json.RawMessage(out))
+}
+
+// handleUpdatePCISettings updates PCI notification settings.
+func handleUpdatePCISettings(r *fastglue.Request) error {
+	app := r.Context.(*App)
+	var req models.PCISettings
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
+	}
+	// Validate notify_method
+	if req.NotifyMethod != "" && req.NotifyMethod != "in_app" && req.NotifyMethod != "email" && req.NotifyMethod != "both" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid notification method. Use: in_app, email, or both", nil, envelope.InputError)
+	}
+	if err := app.setting.Update(req); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}

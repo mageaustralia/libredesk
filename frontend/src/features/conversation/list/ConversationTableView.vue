@@ -144,11 +144,16 @@
                 </div>
               </TooltipTrigger>
               <TooltipContent v-if="conversation.first_message" side="bottom" align="start" class="max-w-md p-3 text-xs leading-relaxed !bg-white !text-gray-900 border shadow-lg">
-                <div class="flex items-center gap-2 mb-1.5 text-muted-foreground">
-                  <span class="font-medium text-gray-900">{{ conversation.contact?.first_name }} {{ conversation.contact?.last_name }}</span>
-                  <span class="text-gray-500" v-if="conversation.last_message_at">{{ formatMessageTimestamp(conversation.last_message_at) }}</span>
+                <div>
+                  <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Original message</p>
+                  <div class="text-gray-700 whitespace-pre-line">{{ (conversation.first_message || '').slice(0, 300) }}{{ (conversation.first_message || '').length > 300 ? '...' : '' }}</div>
                 </div>
-                <div class="text-gray-700 whitespace-pre-line">{{ (conversation.first_message || '').slice(0, 300) }}{{ (conversation.first_message || '').length > 300 ? '...' : '' }}</div>
+                <div v-if="conversation.last_interaction && conversation.last_interaction !== conversation.first_message" class="border-t border-gray-200 mt-2 pt-2">
+                  <p class="text-[10px] font-semibold uppercase tracking-wide mb-1" :class="conversation.last_interaction_sender === 'agent' ? 'text-green-600' : 'text-gray-400'">
+                    {{ conversation.last_interaction_sender === 'agent' ? 'Latest reply (agent)' : 'Latest reply (customer)' }}
+                  </p>
+                  <div class="text-gray-700 whitespace-pre-line">{{ (conversation.last_interaction || '').slice(0, 300) }}{{ (conversation.last_interaction || '').length > 300 ? '...' : '' }}</div>
+                </div>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

@@ -30,15 +30,15 @@ function applyFiltersForView (listType, tID, vID) {
 
   if (NO_STATUS_VIEWS.includes(listType)) {
     // Spam/Trash: clear status filter, clear ad-hoc filters
-    conversationStore.setListStatus('', false)
-    conversationStore.setAdHocFilters([], false)
+    conversationStore.conversations.status = []
+    conversationStore.conversations.adHocFilters = []
     return
   }
 
   if (vID) {
     // Custom views: no status filter (server handles it)
-    conversationStore.setListStatus('', false)
-    conversationStore.setAdHocFilters([], false)
+    conversationStore.conversations.status = []
+    conversationStore.conversations.adHocFilters = []
     return
   }
 
@@ -46,8 +46,8 @@ function applyFiltersForView (listType, tID, vID) {
   const restored = conversationStore.restoreViewFilters(listType, tID, vID)
   if (!restored) {
     // Sane defaults: Open status, newest sort, no ad-hoc filters
-    conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
-    conversationStore.setAdHocFilters([], false)
+    conversationStore.conversations.status = [CONVERSATION_DEFAULT_STATUSES.OPEN]
+    conversationStore.conversations.adHocFilters = []
   }
 }
 
@@ -70,6 +70,18 @@ onMounted(() => {
     conversationStore.fetchConversationsList(true, CONVERSATION_LIST_TYPE.VIEW, 0, [], viewID.value)
   }
 })
+
+// Restore filters when returning from a conversation detail view
+watch(
+  () => route.name,
+  (newName, oldName) => {
+    // Returning from conversation to list view
+    if (oldName && oldName.includes('conversation') && newName && !newName.includes('conversation')) {
+      const listType = type.value || 'assigned'
+      conversationStore.restoreViewFilters(listType, teamID.value || 0, viewID.value || 0)
+    }
+  }
+)
 
 // Refetch when route params change
 watch(

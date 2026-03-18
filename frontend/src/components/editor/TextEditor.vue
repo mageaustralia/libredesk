@@ -146,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3'
 import {
   ChevronDown,
@@ -671,13 +671,15 @@ const editor = useEditor({
   }
 })
 
+
+
 watch(
   htmlContent,
   (newContent) => {
     if (!isInternalUpdate.value && editor.value && newContent !== editor.value.getHTML()) {
       editor.value.commands.setContent(newContent || '', false)
       textContent.value = editor.value.getText()
-      editor.value.commands.focus('end')
+      editor.value.commands.focus('start')
     }
   },
   { immediate: true }

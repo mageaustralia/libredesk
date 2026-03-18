@@ -140,6 +140,7 @@ type Conversation struct {
 	LastMessageAt         null.Time              `db:"last_message_at" json:"last_message_at"`
 	LastMessage           null.String            `db:"last_message" json:"last_message"`
 	LastMessageSender     null.String            `db:"last_message_sender" json:"last_message_sender"`
+	FirstMessage          null.String            `db:"first_message" json:"first_message"`
 	LastInteraction       null.String            `db:"last_interaction" json:"last_interaction"`
 	LastInteractionAt     null.Time              `db:"last_interaction_at" json:"last_interaction_at"`
 	LastInteractionSender null.String            `db:"last_interaction_sender" json:"last_interaction_sender"`
@@ -258,6 +259,8 @@ type Message struct {
 	Author           MessageAuthor          `db:"author" json:"author"`
 	InboxID          int                    `db:"inbox_id" json:"-"`
 	Meta             json.RawMessage        `db:"meta" json:"meta"`
+	HasPCIData         bool                   `db:"has_pci_data" json:"has_pci_data"`
+	PCIDetectedAt      null.Time              `db:"pci_detected_at" json:"pci_detected_at"`
 	Attachments      attachment.Attachments `db:"attachments" json:"attachments"`
 	From             string                 `db:"from"  json:"-"`
 	Subject          string                 `db:"subject" json:"-"`

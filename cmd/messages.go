@@ -281,3 +281,48 @@ func handleSendMessage(r *fastglue.Request) error {
 	}
 	return r.SendEnvelope(message)
 }
+
+// handleRedactMessagePCI scrubs PCI (credit card) data from a message.
+func handleRedactMessagePCI(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		cuuid = r.RequestCtx.UserValue("cuuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Check permission.
+	_, err = enforceConversationAccess(app, cuuid, user)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Redact PCI data.
+	msg, err := app.conversation.RedactMessagePCI(uuid)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	actorName := user.FirstName + " " + user.LastName
+
+	// Try to delete from IMAP.
+	if msg.SourceID.Valid && msg.SourceID.String != "" {
+		if err := app.inbox.DeleteIMAPMessage(msg.InboxID, msg.SourceID.String); err != nil {
+			app.lo.Error("failed to delete PCI email from IMAP after manual redact", "error", err)
+			app.conversation.InsertPCIRedactActivityNote(cuuid, actorName, false,
+				"Card data was redacted but the original email could not be deleted from Gmail. Please delete manually.")
+			app.conversation.NotifyPCIIMAPDeleteFailed(cuuid, uuid)
+		} else {
+			app.conversation.InsertPCIRedactActivityNote(cuuid, actorName, true, "")
+		}
+	} else {
+		app.conversation.InsertPCIRedactActivityNote(cuuid, actorName, true, "")
+	}
+
+	return r.SendEnvelope(true)
+}

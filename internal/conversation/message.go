@@ -148,6 +148,8 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 	}
 
 	// Append quoted previous messages for email threading.
+	// Only append if the frontend didn't already include the thread (marked with <!-- thread -->).
+	if !strings.Contains(message.Content, "<!-- thread -->") {
 	if prevMessages, err := m.GetPreviousEmailMessages(message.ConversationID, message.ID, 3); err == nil && len(prevMessages) > 0 {
 		var quotedHTML strings.Builder
 		quotedHTML.WriteString(`<div class="gmail_quote">`)
@@ -161,6 +163,7 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		}
 		quotedHTML.WriteString(`</div>`)
 		message.Content += quotedHTML.String()
+	}
 	}
 
 	// Render content in template
