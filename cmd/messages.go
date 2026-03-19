@@ -49,6 +49,7 @@ type messageReq struct {
 	SenderType  string                 `json:"sender_type"`
 	Mentions    []cmodels.MentionInput `json:"mentions"`
 	InboxID     int                    `json:"inbox_id"`
+	ForwardedTo []string               `json:"forwarded_to"`
 }
 
 // handleGetMessages returns messages for a conversation.
@@ -274,11 +275,31 @@ func handleSendMessage(r *fastglue.Request) error {
 		inboxID = req.InboxID
 	}
 
+	// Handle forward: set meta and override recipients
+	meta := map[string]any{}
+	sendTo := req.To
+	sendCC := req.CC
+	sendBCC := req.BCC
+	if len(req.ForwardedTo) > 0 {
+		meta["forwarded"] = true
+		meta["forwarded_to"] = req.ForwardedTo
+		sendTo = req.ForwardedTo
+		sendCC = nil
+		sendBCC = nil
+	}
+
 	// Queue reply.
-	message, err := app.conversation.QueueReply(media, inboxID, user.ID, cuuid, req.Message, req.To, req.CC, req.BCC, map[string]any{} /**meta**/)
+	message, err := app.conversation.QueueReply(media, inboxID, user.ID, cuuid, req.Message, sendTo, sendCC, sendBCC, meta)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+	// Insert activity note for forwarded messages.
+	if len(req.ForwardedTo) > 0 {
+		actorName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+		recipients := strings.Join(req.ForwardedTo, ", ")
+		app.conversation.InsertForwardActivityNote(cuuid, actorName, recipients, user.ID)
+	}
+
 	return r.SendEnvelope(message)
 }
 

@@ -237,7 +237,7 @@ import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from "./ReplyBox.vue"
 import MergeDialog from "./MergeDialog.vue"
-import { Reply, StickyNote, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
+import { Reply, StickyNote, Forward, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -460,6 +460,22 @@ emitter.on('shortcut-escape', () => {
 })
 
 // Global keyboard shortcuts for reply/note
+emitter.on('forward-message', async (messageData) => {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    replyExpanded.value = true
+    await nextTick()
+    // Give ReplyBox time to mount and register its listener
+    setTimeout(() => {
+      emitter.emit('set-reply-type', 'forward')
+      emitter.emit('populate-forward', messageData)
+    }, 150)
+  } else {
+    emitter.emit('set-reply-type', 'forward')
+    emitter.emit('populate-forward', messageData)
+  }
+})
+
 emitter.on('shortcut-reply', () => {
   if (!conversationStore.current?.uuid) return
   if (isFresh.value) {

@@ -147,24 +147,34 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		return
 	}
 
-	// Append quoted previous messages for email threading.
-	// Only append if the frontend didn't already include the thread (marked with <!-- thread -->).
-	if !strings.Contains(message.Content, "<!-- thread -->") {
-	if prevMessages, err := m.GetPreviousEmailMessages(message.ConversationID, message.ID, 3); err == nil && len(prevMessages) > 0 {
-		var quotedHTML strings.Builder
-		quotedHTML.WriteString(`<div class="gmail_quote">`)
-		for _, pm := range prevMessages {
-			senderName := strings.TrimSpace(pm.SenderFirstName + " " + pm.SenderLastName)
-			if senderName == "" {
-				senderName = pm.SenderEmail
+	// Check if this is a forwarded message.
+	var metaMap map[string]interface{}
+	isForwarded := false
+	if len(message.Meta) > 0 {
+		if err := json.Unmarshal(message.Meta, &metaMap); err == nil {
+			if fwd, ok := metaMap["forwarded"]; ok {
+				if fwdBool, ok := fwd.(bool); ok && fwdBool {
+					isForwarded = true
+				}
 			}
-			dateStr := pm.CreatedAt.Format("Mon, Jan 2, 2006 at 3:04 PM")
-			quotedHTML.WriteString(fmt.Sprintf(`<br><br><div class="gmail_attr" style="color:#666;font-size:12px;">On %s, %s &lt;%s&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">%s</blockquote>`, dateStr, senderName, pm.SenderEmail, pm.Content))
 		}
-		quotedHTML.WriteString(`</div>`)
-		message.Content += quotedHTML.String()
 	}
+
+	// For forwarded messages, prefix subject with Fwd: and clear threading headers.
+	if isForwarded {
+		conversation, err := m.GetConversation(0, message.ConversationUUID, "")
+		if err == nil && conversation.Subject.Valid {
+			subj := conversation.Subject.String
+			if !strings.HasPrefix(strings.ToLower(subj), "fwd:") {
+				message.Subject = "Fwd: " + subj
+			} else {
+				message.Subject = subj
+			}
+		}
 	}
+
+	// Thread is built client-side (editable by agent) and included in message.Content
+	// with a <!-- thread --> marker. No server-side thread append needed.
 
 	// Render content in template
 	if err := m.RenderMessageInTemplate(inbox.Channel(), &message); err != nil {
@@ -210,6 +220,12 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 
 	if len(message.References) > 0 {
 		message.InReplyTo = message.References[len(message.References)-1]
+	}
+
+	// For forwarded messages, clear threading headers so it starts a new thread for the recipient.
+	if isForwarded {
+		message.References = nil
+		message.InReplyTo = ""
 	}
 
 	// Convert relative image URLs to signed absolute URLs for email delivery.
@@ -535,6 +551,25 @@ func (m *Manager) QueueReply(media []mmodels.Media, inboxID, senderID int, conve
 	}
 
 	return message, nil
+}
+
+// InsertForwardActivityNote adds an activity note when a message is forwarded.
+func (m *Manager) InsertForwardActivityNote(conversationUUID, actorName, recipients string, senderID int) {
+	noteContent := fmt.Sprintf("%s forwarded to %s", actorName, recipients)
+	msg := &models.Message{
+		Type:             models.MessageActivity,
+		Status:           models.MessageStatusSent,
+		ConversationUUID: conversationUUID,
+		Content:          noteContent,
+		TextContent:      noteContent,
+		ContentType:      models.ContentTypeText,
+		Private:          true,
+		SenderID:         senderID,
+		SenderType:       models.SenderTypeAgent,
+	}
+	if err := m.InsertMessage(msg); err != nil {
+		m.lo.Error("error inserting forward activity note", "error", err)
+	}
 }
 
 // InsertMessage inserts a message and attaches the media to the message.
