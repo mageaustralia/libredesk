@@ -320,7 +320,7 @@ const _buildThread = () => {
 
 // Initialize thread when messages load (only once per conversation)
 watch(() => conversationStore.conversationMessages, (msgs) => {
-  if (!_threadInitialized.value && msgs?.length > 0 && messageType.value === 'reply') {
+  if (!_threadInitialized.value && msgs?.length > 0 && (messageType.value === 'reply' || messageType.value === 'forward')) {
     quotedThreadHtml.value = _buildThread()
     _threadInitialized.value = true
   }
@@ -463,6 +463,7 @@ onMounted(() => {
   // Listen for new messages to detect other agent replies while composing
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.on('set-reply-type', (type) => { messageType.value = type })
+  emitter.on('populate-forward', handleForwardMessage)
   emitter.on('shortcut-discard-or-collapse', handleEscapeShortcut)
   emitter.on('restore-send', handleRestoreSend)
 })
@@ -471,8 +472,80 @@ onMounted(() => {
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.off('shortcut-discard-or-collapse', handleEscapeShortcut)
+  emitter.off('populate-forward', handleForwardMessage)
   emitter.off('restore-send', handleRestoreSend)
 })
+
+function handleForwardMessage(messageData) {
+  // Switch to forward mode
+  messageType.value = 'forward'
+  // Clear TO field — agent enters the forward recipient
+  to.value = ''
+  cc.value = ''
+  bcc.value = ''
+  
+  // Build the forwarded message header
+  const author = messageData.author || {}
+  const authorName = ((author.first_name || '') + ' ' + (author.last_name || '')).trim() || 'Unknown'
+  const date = new Date(messageData.created_at).toLocaleString('en-US', {
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  })
+  
+  // Strip any existing quoted thread from the message content (gmail_quote blocks)
+  let msgContent = messageData.content || ''
+  const quoteIdx = msgContent.indexOf('<div class="gmail_quote">')
+  if (quoteIdx > -1) {
+    msgContent = msgContent.substring(0, quoteIdx)
+  }
+  
+  let fwdContent = '<p><br></p>'
+  fwdContent += '<p style="color:#666;font-size:12px;margin:0 0 8px 0;">---------- Forwarded message ----------<br>'
+  fwdContent += 'From: ' + authorName + '<br>'
+  fwdContent += 'Date: ' + date + '</p>'
+  fwdContent += msgContent
+  
+  // Insert signature if available
+  const sigMarker = '<!-- sig -->'
+  if (inboxSignature.value) {
+    htmlContent.value = '<p><br></p><p>' + sigMarker + inboxSignature.value + '</p>' + fwdContent
+  } else {
+    htmlContent.value = fwdContent
+  }
+  
+  // Build quoted thread from messages BEFORE the forwarded one (collapsed via ... toggle)
+  const fwdTime = new Date(messageData.created_at).getTime()
+  const conv = conversationStore.current
+  const priorMsgs = conversationStore.conversationMessages
+    ?.filter(m => !m.private && (m.type === 'incoming' || m.type === 'outgoing') && m.content)
+    ?.filter(m => new Date(m.created_at).getTime() < fwdTime)
+    ?.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    ?.slice(0, 5)
+  
+  if (priorMsgs && priorMsgs.length > 0) {
+    let threadHtml = ''
+    for (const m of priorMsgs) {
+      const name = ((m.author?.first_name || '') + ' ' + (m.author?.last_name || '')).trim() || 'Unknown'
+      const email = m.type === 'incoming' ? (conv?.contact?.email || '') : ''
+      const mDate = new Date(m.created_at).toLocaleString('en-US', {
+        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      })
+      // Strip gmail_quote from prior messages too — avoid nested thread duplication
+      let priorContent = m.content || ''
+      const priorQuoteIdx = priorContent.indexOf('<div class="gmail_quote">')
+      if (priorQuoteIdx > -1) {
+        priorContent = priorContent.substring(0, priorQuoteIdx)
+      }
+      const emailDisplay = email ? ' &lt;' + email + '&gt;' : ''
+      threadHtml += '<div style="margin:8px 0;"><div style="color:#666;font-size:12px;margin-bottom:4px;">On ' + mDate + ', ' + name + emailDisplay + ' wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">' + priorContent + '</blockquote></div>'
+    }
+    quotedThreadHtml.value = threadHtml
+    threadExpanded.value = false
+  } else {
+    quotedThreadHtml.value = ''
+  }
+}
 
 function handleRestoreSend(data) {
   if (data.htmlContent) htmlContent.value = data.htmlContent
@@ -585,7 +658,10 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
 // Toggle signature when switching between reply and private note
 watch(messageType, (newType, oldType) => {
   const sigMarker = '<!-- sig -->'
-  if (newType === 'private_note') {
+  if (newType === 'forward') {
+    // Forward mode — no thread, just the forwarded message content
+    quotedThreadHtml.value = ''
+  } else if (newType === 'private_note') {
     // Remove signature
     if (htmlContent.value && htmlContent.value.includes(sigMarker)) {
       htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(sigMarker))
@@ -593,6 +669,10 @@ watch(messageType, (newType, oldType) => {
     // Hide quoted thread for private notes
     quotedThreadHtml.value = ''
   } else if (oldType === 'private_note') {
+    // Rebuild quoted thread when switching back to reply
+    if (!quotedThreadHtml.value && conversationStore.conversationMessages?.length > 0) {
+      quotedThreadHtml.value = _buildThread()
+    }
     // Re-add signature when switching back to reply
     if (inboxSignature.value && (!htmlContent.value || !htmlContent.value.includes(sigMarker))) {
       const sigBlock = sigMarker + inboxSignature.value
@@ -668,11 +748,26 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       return
     }
 
+    // Extract agent instructions from editor (text typed before clicking Generate)
+    let agentInstructions = ''
+    if (htmlContent.value) {
+      const sigMarker = '<!-- sig -->'
+      let editorText = htmlContent.value
+      // Strip signature
+      if (editorText.includes(sigMarker)) {
+        editorText = editorText.substring(0, editorText.indexOf(sigMarker))
+      }
+      // Strip HTML and get plain text
+      const doc = new DOMParser().parseFromString(editorText, 'text/html')
+      agentInstructions = (doc.body.textContent || '').trim()
+    }
+
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
       inbox_id: selectedInboxId.value || conversationStore.current?.inbox_id || 0,
       customer_message: conversationText,
-      include_ecommerce: includeEcommerce
+      include_ecommerce: includeEcommerce,
+      agent_instructions: agentInstructions
     })
 
     if (resp.data?.data?.response) {
@@ -793,7 +888,7 @@ const doSend = async () => {
   if (hasTextContent.value > 0 || mediaFiles.value.length > 0 || mentions.value.length > 0) {
     // Merge editor content with quoted thread for sending
     let sendHtml = htmlContent.value
-    if (quotedThreadHtml.value && messageType.value === 'reply') {
+    if (quotedThreadHtml.value && (messageType.value === 'reply' || messageType.value === 'forward')) {
       sendHtml += '<!-- thread --><div class="gmail_quote">' + quotedThreadHtml.value + '</div>'
     }
     const message = sendHtml
@@ -819,6 +914,13 @@ const doSend = async () => {
             .map((email) => email.trim())
             .filter((email) => email)
         : []
+    }
+
+    // Handle forward mode: set forwarded_to and clear regular to
+    if (messageType.value === 'forward') {
+      payload.forwarded_to = payload.to
+      payload.to = []
+      payload.private = false
     }
 
     // Include inbox_id if agent selected a different inbox

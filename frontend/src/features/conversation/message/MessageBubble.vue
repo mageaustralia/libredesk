@@ -88,7 +88,7 @@
 
           <!-- Quoted Text Toggle (incoming only) -->
           <div
-            v-if="!isOutgoing && hasQuotedContent"
+            v-if="hasQuotedContent"
             @click="toggleQuote"
             class="text-xs cursor-pointer text-muted-foreground px-2 py-1 w-max hover:bg-muted hover:text-primary rounded transition-all"
           >
@@ -124,6 +124,32 @@
       </Avatar>
     </div>
 
+    <!-- Forward button -->
+    <div
+      v-if="!isActivity && !message.private"
+      class="flex items-center gap-1 mt-1"
+      :class="isOutgoing ? 'pr-[47px] justify-end' : 'pl-[47px]'"
+    >
+      <button
+        @click="forwardMessage"
+        class="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors flex items-center gap-1"
+      >
+        <Forward class="w-3 h-3" />
+        <span>Forward</span>
+      </button>
+    </div>
+
+    <!-- Forwarded badge -->
+    <div
+      v-if="forwardedTo"
+      class="flex items-center gap-1 mt-1"
+      :class="isOutgoing ? 'pr-[47px] justify-end' : 'pl-[47px]'"
+    >
+      <span class="text-xs text-muted-foreground/70 italic flex items-center gap-1">
+        <Forward class="w-3 h-3" />
+        Forwarded to: {{ forwardedTo }}
+      </span>
+    </div>
 
   </div>
 </template>
@@ -133,7 +159,7 @@ import { computed, ref } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppSettingsStore } from '@/stores/appSettings'
 import { useI18n } from 'vue-i18n'
-import { Lock, RotateCcw, Check, ShieldAlert } from 'lucide-vue-next'
+import { Lock, RotateCcw, Check, ShieldAlert, Forward } from 'lucide-vue-next'
 import { revertCIDToImageSrc } from '@/utils/strings'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
@@ -143,6 +169,7 @@ import { Letter } from 'vue-letter'
 import MessageAttachmentPreview from '@/features/conversation/message/attachment/MessageAttachmentPreview.vue'
 import MessageEnvelope from './MessageEnvelope.vue'
 import api from '@/api'
+import { useEmitter } from '@/composables/useEmitter'
 
 const props = defineProps({
   message: Object,
@@ -152,9 +179,14 @@ const props = defineProps({
   }
 })
 
+const emitter = useEmitter()
+
 const convStore = useConversationStore()
 const settingsStore = useAppSettingsStore()
 const { t } = useI18n()
+
+// Activity check
+const isActivity = computed(() => props.message.type === 'activity')
 
 // Direction helpers
 const isOutgoing = computed(() => props.direction === 'outgoing')
@@ -234,8 +266,8 @@ const bubbleClasses = computed(() => ({
   'border-red-400': isOutgoing.value && props.message.status === 'failed',
   relative: isOutgoing.value,
   // Incoming-specific: quoted text visibility
-  'show-quoted-text': !isOutgoing.value && showQuotedText.value,
-  'hide-quoted-text': !isOutgoing.value && !showQuotedText.value
+  'show-quoted-text': showQuotedText.value,
+  'hide-quoted-text': hasQuotedContent.value && !showQuotedText.value
 }))
 
 // Outgoing-only computed properties
@@ -252,10 +284,22 @@ const retryMessage = (msg) => {
 // Incoming-only: quoted text toggle
 const showQuotedText = ref(false)
 const hasQuotedContent = computed(
-  () => !isOutgoing.value && sanitizedContent.value.includes('<blockquote')
+  () => sanitizedContent.value.includes('<blockquote') || sanitizedContent.value.includes('gmail_quote')
 )
 const toggleQuote = () => {
   showQuotedText.value = !showQuotedText.value
+}
+
+// Forward functionality
+const forwardedTo = computed(() => {
+  if (!props.message.meta?.forwarded) return null
+  const fwdTo = props.message.meta?.forwarded_to
+  if (Array.isArray(fwdTo)) return fwdTo.join(', ')
+  return null
+})
+
+const forwardMessage = () => {
+  emitter.emit('forward-message', props.message)
 }
 
 // Envelope visibility (both directions)

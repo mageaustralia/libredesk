@@ -22,6 +22,14 @@
           >
             {{ $t('globals.terms.privateNote') }}
           </TabsTrigger>
+          <TabsTrigger
+            v-if="messageType === 'forward'"
+            value="forward"
+            class="px-3 py-1 rounded transition-colors duration-200"
+            :class="{ 'bg-background text-foreground': messageType === 'forward' }"
+          >
+            Forward
+          </TabsTrigger>
         </TabsList>
       </Tabs>
       <Button class="text-muted-foreground" variant="ghost" @click="toggleFullscreen">
@@ -32,7 +40,7 @@
     <!-- From, To, CC, and BCC fields -->
     <div
       :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
-      v-if="messageType === 'reply'"
+      v-if="messageType === 'reply' || messageType === 'forward'"
     >
       <!-- From inbox selector -->
       <div class="flex items-center space-x-2" v-if="inboxes.length > 1">
@@ -115,7 +123,7 @@
     </div>
 
     <!-- Quoted thread toggle -->
-    <div v-if="quotedThreadHtml && messageType === 'reply'" class="px-1">
+    <div v-if="quotedThreadHtml && (messageType === 'reply' || messageType === 'forward')" class="px-1">
       <button
         @click="threadExpanded = !threadExpanded"
         class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -160,7 +168,7 @@
       :enableSend="enableSend"
       :handleSend="handleSend"
       :messageType="messageType"
-      :showGenerateButton="messageType === 'reply'"
+      :showGenerateButton="messageType === 'reply' || messageType === 'forward'"
       :showOrdersButton="ecommerceConfigured"
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
