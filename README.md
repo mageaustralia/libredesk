@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — FCM push notifications for mobile, merge tickets by reference number, customer reply notifications, signed image URLs in notification emails.
+**Latest** — PCI credit card redaction, voicemail transcription (whisper.cpp), Gmail-style quoted thread in reply editor, permanent delete from trash, hover preview with latest reply.
 
 ### Recent Activities
 
@@ -259,6 +259,64 @@ Each inbox can have its own email signature with dynamic placeholders, configure
 
 Conversation attachments (images) are extracted, resized to 500x500, and included as base64 in AI prompts for multimodal models that support vision.
 
+### PCI Credit Card Redaction
+
+Automatic detection and redaction of credit card numbers in incoming messages.
+
+- **Auto-detect on ingest**: Scans incoming messages for card numbers (Luhn-validated with network prefix matching)
+- **Warning banner**: Red banner with "Redact Now" button on messages containing card data
+- **Manual redact**: Agents can immediately scrub card numbers, expiry, and CVV
+- **7-day auto-redact**: Safety net — unreacted messages are automatically scrubbed after 7 days
+- **IMAP deletion**: Attempts to delete the original email from Gmail after redaction
+- **Notification emails scrubbed**: Card numbers are always masked in agent notification emails
+- **Admin settings**: Configure who gets notified on IMAP delete failure (Admin > PCI Redaction)
+- Uses [go-pci-scrub](https://github.com/mageaustralia/go-pci-scrub) library
+
+### Voicemail Transcription
+
+Automatic transcription of voicemail audio attachments using local whisper.cpp.
+
+- **Auto-detect**: Audio attachments (WAV, MP3, OGG, etc.) are automatically queued for transcription
+- **Local whisper.cpp**: Runs on the host via systemd worker — no API costs
+- **OpenAI fallback**: Falls back to OpenAI Whisper API if local transcription fails
+- **Private note**: Transcript inserted as a private note on the conversation
+- **Admin toggle**: Enable/disable and choose provider at Admin > AI Settings
+- Model: `ggml-base.en` (142MB, ~7x realtime on ARM64)
+
+### Gmail-Style Quoted Thread
+
+Quoted message history in the reply editor, matching Gmail's UX.
+
+- **Collapsible toggle**: `···` button below the editor shows/hides the quoted thread
+- **Editable**: Expand and edit/remove quoted content before sending
+- **Last 3 messages**: Shows the 3 most recent non-private messages
+- **Gmail-compatible**: Sent as `<div class="gmail_quote">` for proper threading in email clients
+- **Backend fallback**: Server still appends quotes if the frontend marker is absent (API clients, edge cases)
+
+### Permanent Delete from Trash
+
+Immediately and permanently delete trashed conversations without waiting for the auto-purge window.
+
+- **Bulk delete**: Select multiple items in Trash view → "Delete Permanently" button (red, destructive)
+- **Confirmation dialog**: Warns before irreversible deletion
+- **Instant refresh**: List updates immediately after deletion
+
+### Hover Preview with Latest Reply
+
+Table view hover tooltip shows both the original message and the latest reply.
+
+- **Original message**: First non-activity message (includes agent-initiated conversations)
+- **Latest reply**: Most recent real message (excludes activity/status changes), labelled as agent or customer
+- **No scrolling needed**: Quick at-a-glance view of conversation state
+
+### Signed Image URLs in Emails
+
+Inline images in outgoing and notification emails use signed URLs with 30-day expiry.
+
+- **Outgoing emails**: Images sent to customers are accessible without authentication
+- **Notification emails**: Agent notification emails display images correctly in Gmail
+- **Handles quoted replies**: Regex matches both relative and absolute URLs (from email client quoting)
+
 ### Security Hardening
 
 - **SSRF protection** on external URL fetching (webhook URLs, knowledge source URLs)
@@ -327,7 +385,7 @@ The unread message count badge now excludes activity messages (assignment change
 - **Email table layout fix**: Removed `table-layout: fixed` from message bubbles so HTML table column widths render correctly
 - **Contact form name parsing**: Enhanced parser handles HTML table forms (e.g., Spinfire contact forms) in addition to colon-separated fields
 - **Drag-and-drop any file type**: Non-image files (PDFs, spreadsheets, docs) dragged into the editor are uploaded as attachments instead of being silently ignored
-- **Attachment preview lightbox**: Clicking an image attachment opens a full-screen lightbox overlay; PDFs open in an inline iframe preview. Download button available separately
+- **Attachment preview lightbox**: Full-screen lightbox with prev/next navigation for multi-image messages, loading spinner, adjacent image preloading. PDFs open in inline iframe preview
 - **Private Note button fix**: Clicking "Private note" now correctly opens in note mode instead of defaulting to the last-used mode
 - **"Add note" button text**: Send button shows "Add note" / "Add note and set as..." when composing a private note
 - **Merge dialog layout fix**: Long ticket subjects no longer overflow the merge dialog — subjects truncate with ellipsis
