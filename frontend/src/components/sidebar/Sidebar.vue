@@ -70,6 +70,21 @@ const { collapseSidebarByDefault } = useTheme()
 const settingsStore = useAppSettingsStore()
 const route = useRoute()
 const router = useRouter()
+
+const clearAndGoSearch = () => {
+  sessionStorage.removeItem('searchQuery')
+  sessionStorage.removeItem('searchResults')
+  sessionStorage.removeItem('searchTotal')
+  if (route.name === 'search') {
+    router.push({ name: 'search', query: { t: Date.now() } })
+  } else {
+    router.push({ name: 'search' })
+  }
+  setTimeout(() => {
+    const input = document.querySelector('[data-search-input] input, [data-search-input]')
+    if (input) input.focus()
+  }, 200)
+}
 const { t } = useI18n()
 const emit = defineEmits(['createView', 'editView', 'deleteView', 'createConversation'])
 
@@ -378,9 +393,9 @@ const viewToDelete = ref(null)
                   <span>{{ t('globals.terms.inbox') }}</span>
                 </div>
                 <div class="mr-1 mt-1 hover:scale-110 transition-transform">
-                  <router-link :to="{ name: 'search' }">
+                  <a href="#" @click.prevent="clearAndGoSearch">
                     <Search size="18" stroke-width="2.5" />
-                  </router-link>
+                  </a>
                 </div>
               </div>
             </SidebarMenuItem>

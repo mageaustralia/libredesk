@@ -80,6 +80,21 @@ const error = ref(null)
 const searchPerformed = ref(searchQuery.value.length >= MIN_SEARCH_LENGTH && results.value.length > 0)
 let debounceTimer = null
 
+// When navigating to search fresh (sessionStorage cleared by sidebar/shortcut),
+// reset local state if it's stale
+
+import { useRoute } from 'vue-router'
+const _route = useRoute()
+watch(() => _route.fullPath, () => {
+  if (_route.name === 'search' && !sessionStorage.getItem('searchQuery')) {
+    searchQuery.value = ''
+    results.value = []
+    total.value = 0
+    searchPerformed.value = false
+    page.value = 1
+  }
+})
+
 const hasMore = computed(() => results.value.length < total.value)
 
 const fetchResults = async (pageNum) => {

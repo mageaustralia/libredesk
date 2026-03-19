@@ -99,6 +99,7 @@
 
       <!-- Trash -->
       <Button
+        v-if="currentViewType !== 'trash'"
         variant="outline"
         size="sm"
         class="h-7 text-xs"
@@ -107,6 +108,19 @@
       >
         <Trash2 class="w-3 h-3 mr-1" />
         Trash
+      </Button>
+
+      <!-- Permanent Delete (only in trash view) -->
+      <Button
+        v-if="currentViewType === 'trash'"
+        variant="destructive"
+        size="sm"
+        class="h-7 text-xs"
+        :disabled="bulkLoading"
+        @click="bulkDeletePermanently"
+      >
+        <Trash2 class="w-3 h-3 mr-1" />
+        Delete Permanently
       </Button>
 
       <!-- Merge (2+ selected) -->
@@ -489,7 +503,7 @@ async function runBulkAction (actionFn) {
   }
   bulkLoading.value = false
   conversationStore.clearSelection()
-  conversationStore.fetchFirstPageConversations()
+  conversationStore.resetAndRefetch()
 
   if (errorCount > 0) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
@@ -517,6 +531,11 @@ const bulkUpdateStatus = (status) => {
 
 const bulkMoveToTrash = () => {
   runBulkAction((uuid) => api.moveToTrash(uuid))
+}
+
+const bulkDeletePermanently = () => {
+  if (!confirm('Permanently delete ' + conversationStore.selectedCount + ' conversation(s)? This cannot be undone.')) return
+  runBulkAction((uuid) => api.deleteConversationPermanently(uuid))
 }
 
 const bulkUpdatePriority = (priority) => {

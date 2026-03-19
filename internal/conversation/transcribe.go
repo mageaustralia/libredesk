@@ -28,9 +28,10 @@ var audioContentTypes = map[string]bool{
 	"audio/3gpp":   true,
 }
 
-// transcribeAudioAttachments transcribes audio attachments using the configured provider.
+// transcribeAudioAttachments transcribes audio attachments.
+// Strategy: write job file for local whisper worker on host.
+// If OpenAI is configured, also attempts API transcription as fallback.
 func (m *Manager) transcribeAudioAttachments(conversationUUID string, media []mmodels.Media) {
-	// Check if transcription is enabled.
 	aiSettings, err := m.settingsStore.GetAISettings()
 	if err != nil {
 		m.lo.Error("error fetching AI settings for transcription", "error", err)
@@ -47,56 +48,24 @@ func (m *Manager) transcribeAudioAttachments(conversationUUID string, media []mm
 			continue
 		}
 
-		m.lo.Info("transcribing audio", "uuid", med.UUID, "filename", med.Filename, "provider", aiSettings.TranscriptionProvider)
+		m.lo.Info("transcribing audio", "uuid", med.UUID, "filename", med.Filename)
 
-		switch aiSettings.TranscriptionProvider {
-		case "openai":
-			go m.transcribeViaAPI(conversationUUID, med)
-		case "local":
-			m.transcribeViaLocal(conversationUUID, med)
-		default:
-			m.lo.Warn("unknown transcription provider", "provider", aiSettings.TranscriptionProvider)
-		}
+		// Write job for host-side whisper worker.
+		go m.transcribeViaLocal(conversationUUID, med)
 	}
 }
 
-// transcribeViaAPI sends the audio to OpenAI's Whisper API.
-func (m *Manager) transcribeViaAPI(conversationUUID string, med mmodels.Media) {
-	// Read the audio file.
-	audioData, err := m.mediaStore.GetBlob(med.UUID)
-	if err != nil {
-		m.lo.Error("error reading audio file for transcription", "error", err, "uuid", med.UUID)
-		return
-	}
-
-	if m.TranscribeFunc == nil {
-		m.lo.Error("transcription function not configured")
-		return
-	}
-
-	transcript, err := m.TranscribeFunc(audioData, med.Filename)
-	if err != nil {
-		m.lo.Error("error transcribing audio via API", "error", err, "uuid", med.UUID)
-		return
-	}
-
-	if transcript == "" {
-		m.lo.Info("empty transcript from API", "uuid", med.UUID)
-		return
-	}
-
-	m.insertTranscript(conversationUUID, med.Filename, transcript)
-}
-
-// transcribeViaLocal writes a job file for the local whisper worker.
+// transcribeViaLocal writes a job file for the host-side whisper worker.
 func (m *Manager) transcribeViaLocal(conversationUUID string, med mmodels.Media) {
 	os.MkdirAll(transcribeQueueDir, 0755)
 
 	jobContent := fmt.Sprintf("%s|%s|%s", conversationUUID, med.UUID, med.Filename)
 	jobPath := transcribeQueueDir + med.UUID + ".job"
 	if err := os.WriteFile(jobPath, []byte(jobContent), 0644); err != nil {
-		m.lo.Error("error writing transcription job", "error", err)
+		m.lo.Error("error writing transcription job", "error", err, "uuid", med.UUID)
+		return
 	}
+	m.lo.Info("transcription job queued", "uuid", med.UUID, "job", jobPath)
 }
 
 // insertTranscript inserts a transcript as a private note on the conversation.
