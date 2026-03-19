@@ -539,6 +539,11 @@ export const useConversationStore = defineStore('conversation', () => {
     fetchConversationsList(showLoader, conversations.listType, conversations.teamID, conversations.listFilters, conversations.viewID, conversations.page)
   }
 
+  function resetAndRefetch () {
+    resetConversations()
+    reFetchConversationsList()
+  }
+
   async function fetchFirstPageConversations () {
     await fetchConversationsList(false, conversations.listType, conversations.teamID, conversations.listFilters, conversations.viewID, 1)
   }
@@ -1027,6 +1032,7 @@ export const useConversationStore = defineStore('conversation', () => {
     updateConversationList,
     resetCurrentConversation,
     fetchFirstPageConversations,
+    resetAndRefetch,
     fetchStatuses,
     fetchPriorities,
     setListSortField,

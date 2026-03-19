@@ -373,6 +373,7 @@ const getSpamConversations = (params) => http.get("/api/v1/conversations/spam", 
 const getTrashConversations = (params) => http.get("/api/v1/conversations/trash", { params })
 const moveToTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/trash`)
 const restoreFromTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/restore`)
+const deleteConversationPermanently = (uuid) => http.delete(`/api/v1/conversations/${uuid}`)
 const markAsSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/spam`)
 const markAsNotSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/not-spam`)
 const mergeConversations = (data) => http.post('/api/v1/conversations/merge', data, {
@@ -607,6 +608,7 @@ export default {
   getTrashConversations,
   moveToTrash,
   restoreFromTrash,
+  deleteConversationPermanently,
   markAsSpam,
   markAsNotSpam,
   mergeConversations,
