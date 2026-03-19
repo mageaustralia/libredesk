@@ -215,9 +215,9 @@ Pull customer and order data from a Maho Commerce (Magento-compatible) store int
 - Order status history and shipment tracking with carrier-specific URLs
 - Supported carriers: Australia Post, Couriers Please, Team Global Express
 
-### Freshdesk Theme
+### Fresh Theme
 
-An alternative UI theme inspired by Freshdesk, selectable via a theme switcher in the sidebar.
+An alternative UI theme inspired by legacy SaaS providers, selectable via a theme switcher in the sidebar.
 
 - Teal colour palette with dark sidebar
 - Conversation list hides when a ticket is open (full-width detail view)
