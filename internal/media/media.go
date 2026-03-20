@@ -79,6 +79,7 @@ type queries struct {
 	GetByUUID               *sqlx.Stmt `query:"get-media-by-uuid"`
 	Delete                  *sqlx.Stmt `query:"delete-media"`
 	Attach                  *sqlx.Stmt `query:"attach-to-model"`
+	AttachByUUID            *sqlx.Stmt `query:"attach-by-uuid"`
 	GetByModel              *sqlx.Stmt `query:"get-model-media"`
 	GetUnlinkedMessageMedia *sqlx.Stmt `query:"get-unlinked-message-media"`
 	ContentIDExists         *sqlx.Stmt `query:"content-id-exists"`
@@ -195,6 +196,15 @@ func (m *Manager) Attach(id int, model string, modelID int) error {
 	if _, err := m.queries.Attach.Exec(id, model, modelID); err != nil {
 		m.lo.Error("error attaching media to model", "model", model, "model_id", modelID, "media_id", id, "error", err)
 		return fmt.Errorf("attaching media;%d to model:%s model_id:%d: %w", id, model, modelID, err)
+	}
+	return nil
+}
+
+// AttachByUUID links a media file (by UUID) to a model, only if not already linked.
+func (m *Manager) AttachByUUID(uuid, model string, modelID int) error {
+	if _, err := m.queries.AttachByUUID.Exec(uuid, model, modelID); err != nil {
+		m.lo.Error("error attaching media by uuid", "uuid", uuid, "model", model, "model_id", modelID, "error", err)
+		return err
 	}
 	return nil
 }

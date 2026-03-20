@@ -115,6 +115,7 @@ type userStore interface {
 type mediaStore interface {
 	GetBlob(name string) ([]byte, error)
 	Attach(id int, model string, modelID int) error
+	AttachByUUID(uuid, model string, modelID int) error
 	GetByModel(id int, model string) ([]mmodels.Media, error)
 	ContentIDExists(contentID string) (bool, string, error)
 	Upload(fileName, contentType string, content io.ReadSeeker) (string, string, error)
