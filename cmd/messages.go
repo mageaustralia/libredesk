@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,26 @@ type messageReq struct {
 	ForwardedTo []string               `json:"forwarded_to"`
 }
 
+// refreshContentUploadURLs replaces expired signed upload URLs in message HTML content
+// with freshly signed ones. This is needed because vue-letter renders content in an iframe
+// (srcdoc) which doesn't share session cookies, so images need valid signed URLs.
+func refreshContentUploadURLs(app *App, content string) string {
+	if !strings.Contains(content, "/uploads/") {
+		return content
+	}
+	// Match /uploads/UUID with optional query params, or full absolute URL with /uploads/UUID
+	re := regexp.MustCompile(`(https?://[^"'\s]*/uploads/|/uploads/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"'\s>]*)?`)
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		subs := re.FindStringSubmatch(match)
+		if len(subs) < 3 {
+			return match
+		}
+		uuid := subs[2]
+		// Generate a fresh signed URL
+		return app.media.GetURL(uuid, "", "")
+	})
+}
+
 // handleGetMessages returns messages for a conversation.
 func handleGetMessages(r *fastglue.Request) error {
 	var (
@@ -98,6 +119,8 @@ func handleGetMessages(r *fastglue.Request) error {
 			att := messages[i].Attachments[j]
 			messages[i].Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
 		}
+		// Refresh signed URLs in inline content (iframe can't use session cookies)
+		messages[i].Content = refreshContentUploadURLs(app, messages[i].Content)
 		// Redact CSAT survey link
 		messages[i].CensorCSATContent()
 	}
@@ -134,6 +157,9 @@ func handleGetMessage(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+
+	// Refresh signed URLs in inline content
+	message.Content = refreshContentUploadURLs(app, message.Content)
 
 	// Redact CSAT survey link
 	message.CensorCSATContent()

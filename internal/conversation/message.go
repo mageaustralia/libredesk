@@ -617,6 +617,15 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 		m.mediaStore.Attach(media.ID, mmodels.ModelMessages, message.ID)
 	}
 
+	// Link inline images referenced in message content (pasted/dropped images).
+	// These are uploaded before the message is sent and have model_id=NULL.
+	inlineRe := regexp.MustCompile(`/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+	for _, match := range inlineRe.FindAllStringSubmatch(message.Content, -1) {
+		if len(match) >= 2 {
+			m.mediaStore.AttachByUUID(match[1], mmodels.ModelMessages, message.ID)
+		}
+	}
+
 	// Check for PCI (credit card) data in incoming messages.
 	if message.Type == models.MessageIncoming {
 		result := pciscrub.ScrubWithSpans(message.TextContent)
