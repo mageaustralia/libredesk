@@ -163,7 +163,7 @@
         <td class="px-2 py-2">
           <span
             class="text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
-            :class="getStatusClass(conversation)"
+            :style="getStatusStyle(conversation)"
           >{{ conversation.status }}</span>
         </td>
 
@@ -199,14 +199,12 @@
         <!-- Agent -->
         <td class="px-2 py-2" @click.stop>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
+            <DropdownMenuTrigger
                 class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer truncate max-w-full"
                 :class="conversation.assigned_user_name ? 'text-muted-foreground' : 'text-orange-500 dark:text-orange-400'"
               >
                 {{ conversation.assigned_user_name || 'Unassigned' }}
                 <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
-              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" class="max-h-96 overflow-y-auto">
               <DropdownMenuItem
@@ -226,17 +224,15 @@
         </td>
 
         <!-- Priority -->
-        <td class="px-2 py-2" @click.stop>
+        <td class="px-2 py-2 overflow-hidden" @click.stop>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer truncate max-w-full">
+            <DropdownMenuTrigger class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer whitespace-nowrap">
                 <span
                   class="w-2 h-2 rounded-full shrink-0"
                   :class="getPriorityDotClass(conversation)"
                 ></span>
                 {{ conversation.priority || 'None' }}
                 <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
-              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem
@@ -250,13 +246,11 @@
         </td>
 
         <!-- Status -->
-        <td class="px-2 py-2" @click.stop>
+        <td class="px-2 py-2 overflow-hidden" @click.stop>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer text-muted-foreground truncate max-w-full">
+            <DropdownMenuTrigger class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer text-muted-foreground whitespace-nowrap">
                 {{ conversation.status }}
                 <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
-              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem
@@ -336,8 +330,8 @@ const defaultWidths = {
   state: 80,
   group: 120,
   agent: 120,
-  priority: 100,
-  status: 140,
+  priority: 120,
+  status: 150,
   updated: 90,
 }
 
@@ -438,17 +432,33 @@ function navigateToConversation(conversation) {
   })
 }
 
-function getStatusClass(conversation) {
-  const s = (conversation.status || '').toLowerCase()
-  switch (s) {
-    case 'open': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'replied': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'resolved': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'closed': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-    case 'snoozed': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-    default: return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-  }
+const STATUS_COLORS = {
+  gray:   { bg: '#f3f4f6', text: '#4b5563' },
+  red:    { bg: '#fee2e2', text: '#b91c1c' },
+  orange: { bg: '#ffedd5', text: '#c2410c' },
+  amber:  { bg: '#fef3c7', text: '#b45309' },
+  yellow: { bg: '#fef9c3', text: '#a16207' },
+  lime:   { bg: '#ecfccb', text: '#4d7c0f' },
+  green:  { bg: '#dcfce7', text: '#15803d' },
+  teal:   { bg: '#ccfbf1', text: '#0f766e' },
+  cyan:   { bg: '#cffafe', text: '#0e7490' },
+  blue:   { bg: '#dbeafe', text: '#1d4ed8' },
+  indigo: { bg: '#e0e7ff', text: '#4338ca' },
+  purple: { bg: '#f3e8ff', text: '#7e22ce' },
+  pink:   { bg: '#fce7f3', text: '#be185d' },
+  rose:   { bg: '#ffe4e6', text: '#be123c' },
+  slate:  { bg: '#e2e8f0', text: '#475569' },
 }
+
+function getStatusStyle(conversation) {
+  const statuses = conversationStore.statuses || []
+  const match = statuses.find(s => s.name === conversation.status)
+  const colorKey = match?.color || 'gray'
+  const c = STATUS_COLORS[colorKey] || STATUS_COLORS.gray
+  return { backgroundColor: c.bg, color: c.text }
+}
+
+function getStatusClass(conversation) { return '' }
 
 function getPriorityDotClass(conversation) {
   const p = (conversation.priority || '').toLowerCase()

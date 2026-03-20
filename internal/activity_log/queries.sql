@@ -9,7 +9,8 @@ SELECT
     actor_id, 
     target_model_type, 
     target_model_id, 
-    ip
+    ip,
+    country
 FROM 
     activity_logs WHERE 1=1 
 

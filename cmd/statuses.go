@@ -33,7 +33,7 @@ func handleCreateStatus(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.empty", "name", "`name`"), nil, envelope.InputError)
 	}
 
-	createdStatus, err := app.status.Create(status.Name)
+	createdStatus, err := app.status.Create(status.Name, status.Color)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -74,7 +74,7 @@ func handleUpdateStatus(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.empty", "name", "`name`"), nil, envelope.InputError)
 	}
 
-	updatedStatus, err := app.status.Update(id, status.Name)
+	updatedStatus, err := app.status.Update(id, status.Name, status.Color)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -96,6 +96,26 @@ func handleReorderStatuses(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "No status IDs provided", nil, envelope.InputError)
 	}
 	if err := app.status.Reorder(req.IDs); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+func handleUpdateStatusColor(r *fastglue.Request) error {
+	var (
+		app = r.Context.(*App)
+		req struct {
+			Color string `json:"color"`
+		}
+	)
+	id, err := strconv.Atoi(r.RequestCtx.UserValue("id").(string))
+	if err != nil || id <= 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.invalid", "name", "`id`"), nil, envelope.InputError)
+	}
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
+	}
+	if err := app.status.UpdateColor(id, req.Color); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	return r.SendEnvelope(true)
