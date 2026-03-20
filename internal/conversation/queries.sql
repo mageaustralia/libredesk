@@ -829,3 +829,13 @@ SELECT m.id, m.uuid, m.content, m.text_content, m.source_id, m.conversation_id,
 FROM conversation_messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE m.uuid = $1;
+
+-- name: update-private-note-content
+UPDATE conversation_messages
+SET content = $2, text_content = $3, updated_at = NOW()
+WHERE uuid = $1 AND private = true AND type = 'outgoing';
+
+-- name: soft-delete-private-note
+UPDATE conversation_messages
+SET content = $2, text_content = $3, meta = jsonb_set(COALESCE(meta, '{}')::jsonb, '{deleted}', 'true')::json, updated_at = NOW()
+WHERE uuid = $1 AND private = true AND type = 'outgoing';

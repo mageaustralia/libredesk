@@ -69,16 +69,22 @@
 
           <hr class="mb-2" v-if="showEnvelope" />
 
+          <!-- Deleted note tombstone -->
+          <div v-if="isDeleted" class="mb-1 text-sm text-muted-foreground italic flex items-center gap-1.5">
+            <Trash2 class="w-3.5 h-3.5" />
+            {{ message.content }}
+          </div>
+
           <!-- Message Content -->
           <div
-            v-if="message.content_type === 'text'"
+            v-if="!isDeleted && message.content_type === 'text'"
             class="mb-1 native-html whitespace-pre-wrap"
             :class="{ 'mb-3': message.attachments.length > 0 }"
           >
             {{ sanitizedContent }}
           </div>
           <Letter
-            v-else
+            v-else-if="!isDeleted"
             :html="sanitizedContent"
             :rewriteExternalResources="rewriteResource"
             :allowedSchemas="['cid', 'https', 'http', 'mailto']"
@@ -111,6 +117,42 @@
               class="cursor-pointer text-muted-foreground hover:text-foreground transition-colors duration-200"
               v-if="showRetry"
             />
+          </div>
+
+          <!-- Edit/Delete for private notes -->
+          <div v-if="isPrivateMessage && !isDeleted" class="flex items-center gap-2 mt-1.5 self-end">
+            <button
+              v-if="!isEditing"
+              @click="startEdit"
+              class="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors flex items-center gap-0.5"
+            >
+              <Pencil class="w-3 h-3" />
+              <span>Edit</span>
+            </button>
+            <button
+              v-if="!isEditing"
+              @click="confirmDelete"
+              class="text-xs text-muted-foreground/50 hover:text-red-500 transition-colors flex items-center gap-0.5"
+            >
+              <Trash2 class="w-3 h-3" />
+              <span>Delete</span>
+            </button>
+          </div>
+
+          <!-- Inline edit area -->
+          <div v-if="isEditing" class="mt-2 w-full">
+            <textarea
+              ref="editTextarea"
+              v-model="editContent"
+              class="w-full min-h-[60px] p-2 text-sm border rounded bg-background text-foreground resize-y"
+              @keydown.escape="cancelEdit"
+            />
+            <div class="flex items-center gap-2 mt-1 justify-end">
+              <button @click="cancelEdit" class="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+              <button @click="saveEdit" class="text-xs text-primary font-medium hover:underline" :disabled="isSaving">
+                {{ isSaving ? 'Saving...' : 'Save' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -155,11 +197,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppSettingsStore } from '@/stores/appSettings'
 import { useI18n } from 'vue-i18n'
-import { Lock, RotateCcw, Check, ShieldAlert, Forward } from 'lucide-vue-next'
+import { Lock, RotateCcw, Check, ShieldAlert, Forward, Pencil, Trash2 } from 'lucide-vue-next'
 import { revertCIDToImageSrc } from '@/utils/strings'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
@@ -170,6 +212,7 @@ import MessageAttachmentPreview from '@/features/conversation/message/attachment
 import MessageEnvelope from './MessageEnvelope.vue'
 import api from '@/api'
 import { useEmitter } from '@/composables/useEmitter'
+import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 
 const props = defineProps({
   message: Object,
@@ -184,6 +227,80 @@ const emitter = useEmitter()
 const convStore = useConversationStore()
 const settingsStore = useAppSettingsStore()
 const { t } = useI18n()
+
+// Edit/delete state
+const isEditing = ref(false)
+const editContent = ref('')
+const editTextarea = ref(null)
+const isSaving = ref(false)
+
+const isDeleted = computed(() => {
+  return props.message.meta?.deleted === true
+})
+
+const startEdit = () => {
+  // Strip HTML for textarea editing
+  const doc = new DOMParser().parseFromString(props.message.content || '', 'text/html')
+  editContent.value = doc.body.textContent || ''
+  isEditing.value = true
+  nextTick(() => editTextarea.value?.focus())
+}
+
+const cancelEdit = () => {
+  isEditing.value = false
+  editContent.value = ''
+}
+
+const saveEdit = async () => {
+  if (!editContent.value.trim()) return
+  isSaving.value = true
+  try {
+    const cuuid = convStore.current?.uuid
+    const htmlContent = '<p>' + editContent.value.replace(/\n/g, '<br>') + '</p>'
+    await api.updatePrivateNote(cuuid, props.message.uuid, htmlContent)
+    isEditing.value = false
+    // Update store reactively
+    convStore.updateMessageProp({
+      conversation_uuid: cuuid,
+      uuid: props.message.uuid,
+      prop: 'content',
+      value: htmlContent
+    })
+  } catch (err) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: 'Failed to update note: ' + (err?.response?.data?.message || err.message)
+    })
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const confirmDelete = async () => {
+  if (!confirm('Delete this private note? The content will be removed and cannot be recovered.')) return
+  try {
+    const cuuid = convStore.current?.uuid
+    await api.deletePrivateNote(cuuid, props.message.uuid)
+    // Update store reactively
+    convStore.updateMessageProp({
+      conversation_uuid: cuuid,
+      uuid: props.message.uuid,
+      prop: 'content',
+      value: 'This note was deleted'
+    })
+    convStore.updateMessageProp({
+      conversation_uuid: cuuid,
+      uuid: props.message.uuid,
+      prop: 'meta',
+      value: { ...(props.message.meta || {}), deleted: true }
+    })
+  } catch (err) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: 'Failed to delete note: ' + (err?.response?.data?.message || err.message)
+    })
+  }
+}
 
 // Activity check
 const isActivity = computed(() => props.message.type === 'activity')

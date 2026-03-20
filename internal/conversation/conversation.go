@@ -254,6 +254,8 @@ type queries struct {
 	InsertMessage                      *sqlx.Stmt `query:"insert-message"`
 	UpdateMessageStatus                *sqlx.Stmt `query:"update-message-status"`
 	MessageExistsBySourceID            *sqlx.Stmt `query:"message-exists-by-source-id"`
+	UpdatePrivateNoteContent *sqlx.Stmt `query:"update-private-note-content"`
+	SoftDeletePrivateNote    *sqlx.Stmt `query:"soft-delete-private-note"`
 	FlagMessagePCI                     *sqlx.Stmt `query:"flag-message-pci"`
 	RedactMessagePCI                   *sqlx.Stmt `query:"redact-message-pci"`
 	GetPCIMessagesForAutoRedact         *sqlx.Stmt `query:"get-pci-messages-for-auto-redact"`
