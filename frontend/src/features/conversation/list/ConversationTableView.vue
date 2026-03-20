@@ -4,7 +4,6 @@
       <col :style="{ width: columnWidths.checkbox + 'px' }">
       <col :style="{ width: columnWidths.contact + 'px' }">
       <col :style="{ width: columnWidths.subject + 'px' }">
-      <col :style="{ width: columnWidths.state + 'px' }">
       <col :style="{ width: columnWidths.group + 'px' }">
       <col :style="{ width: columnWidths.agent + 'px' }">
       <col :style="{ width: columnWidths.priority + 'px' }">
@@ -33,14 +32,6 @@
             class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
             @mousedown.prevent="startResize($event, 'subject')"
             @dblclick="resetColumn('subject')"
-          />
-        </th>
-        <th class="px-2 py-2 font-medium relative select-none group/th">
-          State
-          <div
-            class="absolute -right-px top-1 bottom-1 w-1 cursor-col-resize border-r-2 border-transparent hover:border-primary/50 active:border-primary z-20 group-hover/th:border-muted-foreground/25"
-            @mousedown.prevent="startResize($event, 'state')"
-            @dblclick="resetColumn('state')"
           />
         </th>
         <th class="px-2 py-2 font-medium relative select-none group/th">
@@ -159,14 +150,6 @@
           </TooltipProvider>
         </td>
 
-        <!-- State (last_message_sender indicator) -->
-        <td class="px-2 py-2">
-          <span
-            class="text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
-            :style="getStatusStyle(conversation)"
-          >{{ conversation.status }}</span>
-        </td>
-
         <!-- Group (Team) -->
         <td class="px-2 py-2" @click.stop>
           <DropdownMenu>
@@ -248,9 +231,12 @@
         <!-- Status -->
         <td class="px-2 py-2 overflow-hidden" @click.stop>
           <DropdownMenu>
-            <DropdownMenuTrigger class="text-xs flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer text-muted-foreground whitespace-nowrap">
-                {{ conversation.status }}
-                <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
+            <DropdownMenuTrigger class="flex items-center gap-1 cursor-pointer whitespace-nowrap">
+                <span
+                  class="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  :style="getStatusStyle(conversation)"
+                >{{ conversation.status }}</span>
+                <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem
@@ -327,7 +313,7 @@ const defaultWidths = {
   checkbox: 36,
   contact: 140,
   subject: 400,
-  state: 80,
+
   group: 120,
   agent: 120,
   priority: 120,
