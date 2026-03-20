@@ -329,6 +329,66 @@ func handleSendMessage(r *fastglue.Request) error {
 	return r.SendEnvelope(message)
 }
 
+// handleUpdatePrivateNote updates the content of a private note.
+func handleUpdatePrivateNote(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		cuuid = r.RequestCtx.UserValue("cuuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+		req   struct {
+			Content string `json:"content"`
+		}
+	)
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	if _, err = enforceConversationAccess(app, cuuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
+	}
+
+	if strings.TrimSpace(req.Content) == "" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.empty", "name", "`content`"), nil, envelope.InputError)
+	}
+
+	if err := app.conversation.UpdatePrivateNote(uuid, req.Content); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// handleDeletePrivateNote soft-deletes a private note.
+func handleDeletePrivateNote(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		cuuid = r.RequestCtx.UserValue("cuuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	if _, err = enforceConversationAccess(app, cuuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	actorName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	if err := app.conversation.SoftDeletePrivateNote(uuid, actorName); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
 // handleRedactMessagePCI scrubs PCI (credit card) data from a message.
 func handleRedactMessagePCI(r *fastglue.Request) error {
 	var (

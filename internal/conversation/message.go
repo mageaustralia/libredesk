@@ -553,6 +553,36 @@ func (m *Manager) QueueReply(media []mmodels.Media, inboxID, senderID int, conve
 	return message, nil
 }
 
+// UpdatePrivateNote updates the content of a private note.
+func (m *Manager) UpdatePrivateNote(uuid, content string) error {
+	textContent := stringutil.HTML2Text(content)
+	result, err := m.q.UpdatePrivateNoteContent.Exec(uuid, content, textContent)
+	if err != nil {
+		m.lo.Error("error updating private note", "uuid", uuid, "error", err)
+		return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.message}"), nil)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return envelope.NewError(envelope.InputError, m.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.message}"), nil)
+	}
+	return nil
+}
+
+// SoftDeletePrivateNote marks a private note as deleted, replacing content with a tombstone.
+func (m *Manager) SoftDeletePrivateNote(uuid, actorName string) error {
+	tombstone := fmt.Sprintf("This note was deleted by %s", actorName)
+	result, err := m.q.SoftDeletePrivateNote.Exec(uuid, tombstone, tombstone)
+	if err != nil {
+		m.lo.Error("error soft-deleting private note", "uuid", uuid, "error", err)
+		return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.message}"), nil)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return envelope.NewError(envelope.InputError, m.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.message}"), nil)
+	}
+	return nil
+}
+
 // InsertForwardActivityNote adds an activity note when a message is forwarded.
 func (m *Manager) InsertForwardActivityNote(conversationUUID, actorName, recipients string, senderID int) {
 	noteContent := fmt.Sprintf("%s forwarded to %s", actorName, recipients)
