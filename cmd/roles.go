@@ -76,6 +76,7 @@ func handleUpdateRole(r *fastglue.Request) error {
 		app   = r.Context.(*App)
 		auser = r.RequestCtx.UserValue("user").(amodels.User)
 		ip    = realip.FromRequest(r.RequestCtx)
+		country  = string(r.RequestCtx.Request.Header.Peek("CF-IPCountry"))
 		id, _ = strconv.Atoi(r.RequestCtx.UserValue("id").(string))
 		req   = models.Role{}
 	)
@@ -101,7 +102,7 @@ func handleUpdateRole(r *fastglue.Request) error {
 		app.user.InvalidateAllAgentCache()
 		app.authz.InvalidateAllCache()
 
-		if err := app.activityLog.RolePermissionsChanged(auser.ID, auser.Email, ip, updatedRole.ID, updatedRole.Name, added, removed); err != nil {
+		if err := app.activityLog.RolePermissionsChanged(auser.ID, auser.Email, ip, country, updatedRole.ID, updatedRole.Name, added, removed); err != nil {
 			app.lo.Error("error creating activity log", "error", err)
 		}
 	}

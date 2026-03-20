@@ -71,6 +71,7 @@ const updateStatus = (id, data) => http.put(`/api/v1/statuses/${id}`, data)
 const deleteStatus = (id) => http.delete(`/api/v1/statuses/${id}`)
 const reorderStatuses = (ids) => http.put("/api/v1/statuses/reorder", { ids })
 const toggleStatusShowOnSend = (id, showOnSend) => http.put(`/api/v1/statuses/${id}/show-on-send`, { show_on_send: showOnSend })
+const updateStatusColor = (id, color) => http.put(`/api/v1/statuses/${id}/color`, { color })
 const createTag = (data) => http.post('/api/v1/tags', data)
 const updateTag = (id, data) => http.put(`/api/v1/tags/${id}`, data)
 const deleteTag = (id) => http.delete(`/api/v1/tags/${id}`)
@@ -690,6 +691,7 @@ export default {
   getStatuses,
   reorderStatuses,
   toggleStatusShowOnSend,
+  updateStatusColor,
   getPriorities,
   createStatus,
   updateStatus,

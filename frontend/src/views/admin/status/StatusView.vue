@@ -55,6 +55,30 @@
             >
               <GripVertical class="h-4 w-4 text-muted-foreground shrink-0" />
               <span class="flex-1 text-sm">{{ status.name }}</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    class="h-7 px-2.5 text-xs border rounded cursor-pointer shrink-0 flex items-center gap-1.5 min-w-[90px]"
+                    :style="colorPreviewStyle(status.color || 'gray')"
+                  >
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10" :style="{ backgroundColor: colorDot(status.color || 'gray') }"></span>
+                    {{ colorLabel(status.color || 'gray') }}
+                    <ChevronDown class="w-3 h-3 ml-auto opacity-50" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent class="w-[160px] p-1" align="end">
+                  <button
+                    v-for="c in colorOptions"
+                    :key="c.value"
+                    class="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-muted cursor-pointer"
+                    :class="{ 'bg-muted': (status.color || 'gray') === c.value }"
+                    @click="updateColor(status, c.value); closePopover($event)"
+                  >
+                    <span class="w-4 h-4 rounded shrink-0 border border-black/10" :style="{ backgroundColor: c.bg }"></span>
+                    <span :style="{ color: c.text, fontWeight: (status.color || 'gray') === c.value ? 600 : 400 }">{{ c.label }}</span>
+                  </button>
+                </PopoverContent>
+              </Popover>
               <label class="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0" title="Show in Send dropdown">
                 <Checkbox
                   :checked="status.show_on_send"
@@ -70,6 +94,9 @@
                 @click="deleteStatus(status.id)"
               >
                 <Trash2 class="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+              <Button v-else variant="ghost" size="xs" disabled class="opacity-30 cursor-default">
+                <Lock class="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </div>
           </div>
@@ -87,7 +114,7 @@
 import { ref, onMounted } from 'vue'
 // DataTable removed — using drag/drop list
 import AdminPageWithHelp from '@/layouts/admin/AdminPageWithHelp.vue'
-import { GripVertical, Trash2 } from 'lucide-vue-next'
+import { GripVertical, Trash2, Lock, ChevronDown } from 'lucide-vue-next'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -108,6 +135,7 @@ import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 const { t } = useI18n()
 const isLoading = ref(false)
@@ -192,6 +220,63 @@ const toggleShowOnSend = async (status) => {
     emit.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
       description: 'Failed to update'
+    })
+  }
+}
+
+const colorOptions = [
+  { value: 'gray', label: 'Gray', bg: '#f3f4f6', text: '#4b5563' },
+  { value: 'red', label: 'Red', bg: '#fee2e2', text: '#b91c1c' },
+  { value: 'orange', label: 'Orange', bg: '#ffedd5', text: '#c2410c' },
+  { value: 'amber', label: 'Amber', bg: '#fef3c7', text: '#b45309' },
+  { value: 'yellow', label: 'Yellow', bg: '#fef9c3', text: '#a16207' },
+  { value: 'lime', label: 'Lime', bg: '#ecfccb', text: '#4d7c0f' },
+  { value: 'green', label: 'Green', bg: '#dcfce7', text: '#15803d' },
+  { value: 'teal', label: 'Teal', bg: '#ccfbf1', text: '#0f766e' },
+  { value: 'cyan', label: 'Cyan', bg: '#cffafe', text: '#0e7490' },
+  { value: 'blue', label: 'Blue', bg: '#dbeafe', text: '#1d4ed8' },
+  { value: 'indigo', label: 'Indigo', bg: '#e0e7ff', text: '#4338ca' },
+  { value: 'purple', label: 'Purple', bg: '#f3e8ff', text: '#7e22ce' },
+  { value: 'pink', label: 'Pink', bg: '#fce7f3', text: '#be185d' },
+  { value: 'rose', label: 'Rose', bg: '#ffe4e6', text: '#be123c' },
+  { value: 'slate', label: 'Slate', bg: '#e2e8f0', text: '#475569' },
+]
+
+const colorLabel = (color) => {
+  const c = colorOptions.find(o => o.value === color)
+  return c ? c.label : 'Gray'
+}
+
+const colorDot = (color) => {
+  const c = colorOptions.find(o => o.value === color)
+  return c ? c.text : '#4b5563'
+}
+
+const closePopover = (event) => {
+  // Click the popover trigger to close it
+  const popover = event.target.closest('[data-radix-popper-content-wrapper]')
+  if (popover) {
+    const trigger = popover.previousElementSibling || document.querySelector('[data-state="open"]')
+    if (trigger) trigger.click()
+  }
+}
+
+const colorPreviewStyle = (color) => {
+  const c = colorOptions.find(o => o.value === color)
+  if (!c) return {}
+  return { backgroundColor: c.bg, color: c.text, borderColor: c.text + '33' }
+}
+
+const updateColor = async (status, color) => {
+  const oldColor = status.color
+  status.color = color
+  try {
+    await api.updateStatusColor(status.id, color)
+  } catch (error) {
+    status.color = oldColor
+    emit.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: 'Failed to update color'
     })
   }
 }

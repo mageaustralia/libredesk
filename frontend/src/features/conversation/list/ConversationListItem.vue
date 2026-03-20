@@ -55,7 +55,7 @@
               <span
                 v-if="conversation.status"
                 class="conversation-status-badge text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                :class="statusClass"
+                :style="statusStyle"
               >{{ conversation.status }}</span>
               <!-- Priority badge -->
               <span
@@ -291,23 +291,35 @@ const handleMarkAsUnread = () => {
   conversationStore.markAsUnread(props.conversation.uuid)
 }
 
-const statusClass = computed(() => {
-  const s = (props.conversation.status || '').toLowerCase()
-  switch (s) {
-    case 'open':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'replied':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'resolved':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'closed':
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-    case 'snoozed':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-    default:
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-  }
+const STATUS_COLORS = {
+  gray:   { bg: '#f3f4f6', text: '#4b5563' },
+  red:    { bg: '#fee2e2', text: '#b91c1c' },
+  orange: { bg: '#ffedd5', text: '#c2410c' },
+  amber:  { bg: '#fef3c7', text: '#b45309' },
+  yellow: { bg: '#fef9c3', text: '#a16207' },
+  lime:   { bg: '#ecfccb', text: '#4d7c0f' },
+  green:  { bg: '#dcfce7', text: '#15803d' },
+  teal:   { bg: '#ccfbf1', text: '#0f766e' },
+  cyan:   { bg: '#cffafe', text: '#0e7490' },
+  blue:   { bg: '#dbeafe', text: '#1d4ed8' },
+  indigo: { bg: '#e0e7ff', text: '#4338ca' },
+  purple: { bg: '#f3e8ff', text: '#7e22ce' },
+  pink:   { bg: '#fce7f3', text: '#be185d' },
+  rose:   { bg: '#ffe4e6', text: '#be123c' },
+  slate:  { bg: '#e2e8f0', text: '#475569' },
+}
+
+const statusStyle = computed(() => {
+  const statusName = props.conversation.status
+  const statuses = conversationStore.statuses || []
+  const match = statuses.find(s => s.name === statusName)
+  const colorKey = match?.color || 'gray'
+  const c = STATUS_COLORS[colorKey] || STATUS_COLORS.gray
+  return { backgroundColor: c.bg, color: c.text }
 })
+
+// Keep statusClass for backwards compat (unused but safe)
+const statusClass = computed(() => '')
 
 const priorityClass = computed(() => {
   const p = (props.conversation.priority || '').toLowerCase()

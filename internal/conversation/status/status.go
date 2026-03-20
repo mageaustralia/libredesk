@@ -44,8 +44,9 @@ type queries struct {
 	InsertStatus   *sqlx.Stmt `query:"insert-status"`
 	DeleteStatus   *sqlx.Stmt `query:"delete-status"`
 	UpdateStatus   *sqlx.Stmt `query:"update-status"`
-	ReorderStatuses  *sqlx.Stmt `query:"reorder-statuses"`
-	ToggleShowOnSend *sqlx.Stmt `query:"toggle-show-on-send"`
+	ReorderStatuses    *sqlx.Stmt `query:"reorder-statuses"`
+	ToggleShowOnSend   *sqlx.Stmt `query:"toggle-show-on-send"`
+	UpdateStatusColor  *sqlx.Stmt `query:"update-status-color"`
 }
 
 // New creates and returns a new instance of the Manager.
@@ -72,12 +73,15 @@ func (m *Manager) GetAll() ([]models.Status, error) {
 }
 
 // Create creates a new status.
-func (m *Manager) Create(name string) (models.Status, error) {
+func (m *Manager) Create(name, color string) (models.Status, error) {
 	var status models.Status
 	if err := m.validateStatusName(name); err != nil {
 		return status, err
 	}
-	if err := m.q.InsertStatus.Get(&status, name); err != nil {
+	if color == "" {
+		color = "gray"
+	}
+	if err := m.q.InsertStatus.Get(&status, name, color); err != nil {
 		m.lo.Error("error inserting status", "error", err)
 		return status, envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorCreating", "name", m.i18n.T("globals.terms.status")), nil)
 	}
@@ -107,7 +111,7 @@ func (m *Manager) Delete(id int) error {
 }
 
 // Update updates a status by id.
-func (m *Manager) Update(id int, name string) (models.Status, error) {
+func (m *Manager) Update(id int, name, color string) (models.Status, error) {
 	var updatedStatus models.Status
 	if err := m.validateStatusName(name); err != nil {
 		return updatedStatus, err
@@ -122,7 +126,10 @@ func (m *Manager) Update(id int, name string) (models.Status, error) {
 		return updatedStatus, envelope.NewError(envelope.InputError, m.i18n.T("conversationStatus.cannotUpdateDefault"), nil)
 	}
 
-	if err := m.q.UpdateStatus.Get(&updatedStatus, id, name); err != nil {
+	if color == "" {
+		color = "gray"
+	}
+	if err := m.q.UpdateStatus.Get(&updatedStatus, id, name, color); err != nil {
 		m.lo.Error("error updating status", "error", err)
 		return updatedStatus, envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.Ts("globals.terms.status")), nil)
 	}
@@ -144,6 +151,15 @@ func (m *Manager) Reorder(ids []int) error {
 func (m *Manager) ToggleShowOnSend(id int, show bool) error {
 	if _, err := m.q.ToggleShowOnSend.Exec(id, show); err != nil {
 		m.lo.Error("error toggling show_on_send", "id", id, "error", err)
+		return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.T("globals.terms.status")), nil)
+	}
+	return nil
+}
+
+// UpdateColor updates just the color of a status.
+func (m *Manager) UpdateColor(id int, color string) error {
+	if _, err := m.q.UpdateStatusColor.Exec(id, color); err != nil {
+		m.lo.Error("error updating status color", "id", id, "error", err)
 		return envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorUpdating", "name", m.i18n.T("globals.terms.status")), nil)
 	}
 	return nil

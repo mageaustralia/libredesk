@@ -182,7 +182,7 @@
         <div class="flex items-center justify-between px-4 py-2.5" style="background-color: #fdf0d5; border-bottom: 2px solid #f0c36d;">
           <div class="flex items-center gap-2">
             <CheckCircle2 class="w-4 h-4" style="color: #6f8b2e;" />
-            <span class="text-sm font-semibold" style="color: #6f4400;">{{ pendingSend.isPrivateNote ? 'Note added' : 'Reply sent' }}</span>
+            <span class="text-sm font-semibold" style="color: #6f4400;">{{ pendingSend.isPrivateNote ? 'Note added' : pendingSend.isForward ? 'Message forwarded' : 'Reply sent' }}</span>
           </div>
           <Button size="sm" variant="ghost" class="font-bold uppercase tracking-wide" style="color: #1979c3;" @click="undoSend">
             Undo

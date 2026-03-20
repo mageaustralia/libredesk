@@ -949,7 +949,8 @@ const doSend = async () => {
       macroActions: macroID > 0 ? macroActions : [],
       statusAfterSend: pendingStatusAfterSend || null,
       restoreData,
-      isPrivateNote: messageType.value === 'private_note'
+      isPrivateNote: messageType.value === 'private_note',
+      isForward: messageType.value === 'forward'
     })
 
     // Clear editor state immediately — must happen synchronously before collapse

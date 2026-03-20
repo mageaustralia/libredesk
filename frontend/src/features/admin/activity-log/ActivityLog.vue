@@ -70,7 +70,7 @@
             t('globals.terms.timestamp'),
             t('globals.terms.ipAddress')
           ]"
-          :keys="['activity_description', 'created_at', 'ip']"
+          :keys="['activity_description', 'created_at', 'ip_display']"
           :data="activityLogs"
           :showDelete="false"
           :loading="loading"
@@ -176,6 +176,12 @@ import { format } from 'date-fns'
 import { getVisiblePages } from '@/utils/pagination'
 import api from '@/api'
 
+function countryFlag(code) {
+  if (!code || code.length !== 2) return ''
+  const c = code.toUpperCase()
+  return String.fromCodePoint(...[...c].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65))
+}
+
 const activityLogs = ref([])
 const { t } = useI18n()
 const loading = ref(true)
@@ -217,10 +223,11 @@ async function fetchActivityLogs() {
     totalCount.value = resp.data.data.count
     totalPages.value = resp.data.data.total_pages
 
-    // Format the created_at field
+    // Format fields
     activityLogs.value = activityLogs.value.map((log) => ({
       ...log,
-      created_at: format(new Date(log.created_at), 'PPpp')
+      created_at: format(new Date(log.created_at), 'PPpp'),
+      ip_display: (log.country ? countryFlag(log.country) + ' ' : '') + (log.ip || '')
     }))
   } catch (err) {
     console.error('Error fetching activity logs:', err)
