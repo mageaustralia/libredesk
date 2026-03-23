@@ -863,6 +863,8 @@ const signatureTextarea = ref(null)
 const newAlias = ref('')
 const emailAliases = ref([])
 
+
+
 const addAlias = () => {
   const val = newAlias.value.trim().toLowerCase()
   if (!val || !val.includes('@')) return
@@ -921,7 +923,6 @@ const form = useForm({
     enable_plus_addressing: true,
     auto_assign_on_reply: false,
     signature: '',
-    email_aliases: [],
     auth_type: AUTH_TYPE_PASSWORD,
     imap: {
       host: 'imap.gmail.com',
@@ -970,9 +971,9 @@ const submitLabel = computed(() => {
 })
 
 const onSubmit = form.handleSubmit(async (values) => {
-  // email_aliases is managed via standalone ref (not vee-validate FormField)
-  values.email_aliases = emailAliases.value || []
-  await props.submitForm(values)
+  // Force-inject email_aliases from standalone ref — vee-validate doesn't track this field reliably
+  const finalValues = { ...values, email_aliases: [...(emailAliases.value || [])] }
+  await props.submitForm(finalValues)
 })
 
 const connectWithGoogle = () => {
@@ -1119,4 +1120,6 @@ watch(
   },
   { deep: true, immediate: true }
 )
+
+defineExpose({ emailAliases })
 </script>
