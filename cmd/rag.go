@@ -221,7 +221,8 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	var req struct {
 		ConversationID   int    `json:"conversation_id"`
 		CustomerMessage  string `json:"customer_message"`
-		IncludeEcommerce bool   `json:"include_ecommerce"`
+		IncludeEcommerce  bool   `json:"include_ecommerce"`
+		AgentInstructions string `json:"agent_instructions"`
 		InboxID          int    `json:"inbox_id"`
 	}
 
@@ -405,6 +406,11 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	// Append ecommerce context if available
 	if ecommerceContext != "" {
 		systemPrompt += ecommerceContext
+	}
+
+	// Add agent instructions if provided
+	if strings.TrimSpace(req.AgentInstructions) != "" {
+		systemPrompt += "\n\n## IMPORTANT: Agent Instructions\nThe agent handling this ticket has provided the following specific instructions. These MUST be incorporated into your response:\n" + req.AgentInstructions + "\n"
 	}
 
 	// Add note about images if present

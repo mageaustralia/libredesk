@@ -54,7 +54,7 @@
               class="w-full h-7 px-2 text-sm border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
               ref="agentSearchInput" />
           </div>
-          <div class="max-h-48 overflow-y-auto">
+          <div class="overflow-y-auto">
             <button v-if="!agentSearch"
               @click="toggleAgent('unassigned')"
               class="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between cursor-pointer border-b"
@@ -81,7 +81,7 @@
             <input v-model="teamSearch" type="text" placeholder="Search..."
               class="w-full h-7 px-2 text-sm border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring" />
           </div>
-          <div class="max-h-48 overflow-y-auto">
+          <div class="overflow-y-auto">
             <button v-for="team in filteredTeams" :key="team.value"
               @click="toggleTeam(String(team.value))"
               class="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between cursor-pointer"
@@ -112,7 +112,7 @@
             <input v-model="tagsSearch" type="text" placeholder="Search..."
               class="w-full h-7 px-2 text-sm border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring" />
           </div>
-          <div class="max-h-48 overflow-y-auto">
+          <div class="overflow-y-auto">
             <button v-for="tag in filteredTags" :key="tag.value"
               @click="toggleTag(String(tag.value))"
               class="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between cursor-pointer"
@@ -555,7 +555,10 @@ const activeFilterCount = computed(() => {
   if (dateSLA.value) count++
   if (!isServerFilteredView.value) {
     const s = conversationStore.conversations.status
-    if (s.length !== 1 || s[0] !== 'Open') count++
+    const resolvedNames = ['Resolved', 'Closed', 'Trashed', 'Spam']
+    const isDefault = s.length === 1 && s[0] === 'Open'
+    const isAllUnresolved = s.length > 1 && !s.some(n => resolvedNames.includes(n))
+    if (!isDefault && !isAllUnresolved) count++
   }
   return count
 })

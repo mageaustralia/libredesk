@@ -32,18 +32,24 @@ var audioContentTypes = map[string]bool{
 // Strategy: write job file for local whisper worker on host.
 // If OpenAI is configured, also attempts API transcription as fallback.
 func (m *Manager) transcribeAudioAttachments(conversationUUID string, media []mmodels.Media) {
+	m.lo.Info("transcribeAudioAttachments called", "conversation_uuid", conversationUUID, "media_count", len(media))
+
 	aiSettings, err := m.settingsStore.GetAISettings()
 	if err != nil {
 		m.lo.Error("error fetching AI settings for transcription", "error", err)
 		return
 	}
 
+	m.lo.Info("transcription settings", "enabled", aiSettings.TranscriptionEnabled, "provider", aiSettings.TranscriptionProvider)
+
 	if !aiSettings.TranscriptionEnabled {
+		m.lo.Info("transcription is disabled, skipping")
 		return
 	}
 
 	for _, med := range media {
 		ct := strings.ToLower(med.ContentType)
+		m.lo.Info("checking media for transcription", "uuid", med.UUID, "content_type", ct, "is_audio", audioContentTypes[ct])
 		if !audioContentTypes[ct] {
 			continue
 		}
