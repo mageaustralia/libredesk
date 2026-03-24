@@ -259,13 +259,8 @@ const saveEdit = async () => {
     const htmlContent = '<p>' + editContent.value.replace(/\n/g, '<br>') + '</p>'
     await api.updatePrivateNote(cuuid, props.message.uuid, htmlContent)
     isEditing.value = false
-    // Update store reactively
-    convStore.updateMessageProp({
-      conversation_uuid: cuuid,
-      uuid: props.message.uuid,
-      prop: 'content',
-      value: htmlContent
-    })
+    // Update both the local reactive object and the cache
+    props.message.content = htmlContent
   } catch (err) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
@@ -281,19 +276,10 @@ const confirmDelete = async () => {
   try {
     const cuuid = convStore.current?.uuid
     await api.deletePrivateNote(cuuid, props.message.uuid)
-    // Update store reactively
-    convStore.updateMessageProp({
-      conversation_uuid: cuuid,
-      uuid: props.message.uuid,
-      prop: 'content',
-      value: 'This note was deleted'
-    })
-    convStore.updateMessageProp({
-      conversation_uuid: cuuid,
-      uuid: props.message.uuid,
-      prop: 'meta',
-      value: { ...(props.message.meta || {}), deleted: true }
-    })
+    // Update local reactive object directly
+    props.message.content = 'This note was deleted'
+    if (!props.message.meta) props.message.meta = {}
+    props.message.meta.deleted = true
   } catch (err) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
@@ -401,7 +387,7 @@ const retryMessage = (msg) => {
 // Incoming-only: quoted text toggle
 const showQuotedText = ref(false)
 const hasQuotedContent = computed(
-  () => sanitizedContent.value.includes('<blockquote') || sanitizedContent.value.includes('gmail_quote')
+  () => sanitizedContent.value.includes('<blockquote') || sanitizedContent.value.includes('gmail_quote') || sanitizedContent.value.includes('divRplyFwdMsg')
 )
 const toggleQuote = () => {
   showQuotedText.value = !showQuotedText.value

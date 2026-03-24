@@ -805,7 +805,7 @@ FROM conversations c
 WHERE c.contact_id = $1
   AND c.inbox_id = $2
   AND LOWER(REGEXP_REPLACE(c.subject, '^(re|fw|fwd):\s*', '', 'gi')) = LOWER(REGEXP_REPLACE($3, '^(re|fw|fwd):\s*', '', 'gi'))
-  AND c.status_id NOT IN (4, 5, 6)
+  AND c.status_id NOT IN (3, 4, 5, 6)
 ORDER BY c.created_at DESC
 LIMIT 1;
 

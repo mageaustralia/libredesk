@@ -293,7 +293,12 @@
 }
 
 .hide-quoted-text {
-  blockquote {
+  blockquote,
+  .gmail_quote,
+  .gmail_attr,
+  [class*="gmail_quote"],
+  #divRplyFwdMsg,
+  [id*="divRplyFwdMsg"] {
     @apply hidden;
   }
 }

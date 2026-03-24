@@ -549,6 +549,7 @@ function handleForwardMessage(messageData) {
 
 function handleRestoreSend(data) {
   if (data.htmlContent) htmlContent.value = data.htmlContent
+  if (data.quotedThreadHtml !== undefined) quotedThreadHtml.value = data.quotedThreadHtml
   if (data.messageType) messageType.value = data.messageType
   if (data.to) to.value = data.to
   if (data.cc) cc.value = data.cc
@@ -932,9 +933,10 @@ const doSend = async () => {
     const macroID = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.id
     const macroActions = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.actions || []
 
-    // Save restore data for undo
+    // Save restore data for undo (editor content WITHOUT thread, thread saved separately)
     const restoreData = {
-      htmlContent: message,
+      htmlContent: htmlContent.value,
+      quotedThreadHtml: quotedThreadHtml.value,
       messageType: messageType.value,
       to: to.value,
       cc: cc.value,
