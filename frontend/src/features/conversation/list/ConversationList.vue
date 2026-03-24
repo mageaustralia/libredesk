@@ -411,10 +411,13 @@ const activeFilterCount = computed(() => {
   if (adHoc.some(f => f.field === 'email')) count++
   if (adHoc.some(f => f.field === 'tags')) count++
   if (adHoc.some(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field))) count += adHoc.filter(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field)).length
-  // Only count status as a filter if this isn't a server-filtered view (spam/trash)
+  // Count status as a filter only if a specific single status is chosen (not the defaults)
   if (!NO_STATUS_VIEWS.includes(currentViewType.value)) {
     const s = conversationStore.conversations.status
-    if (s.length !== 1 || s[0] !== 'Open') count++
+    const resolvedNames = ['Resolved', 'Closed', 'Trashed', 'Spam']
+    const isDefault = s.length === 1 && s[0] === 'Open'
+    const isAllUnresolved = s.length > 1 && !s.some(n => resolvedNames.includes(n))
+    if (!isDefault && !isAllUnresolved) count++
   }
   return count
 })

@@ -24,6 +24,7 @@ services:
       - ./i18n:/libredesk/i18n:ro
       - ./static:/libredesk/static:ro
       - ./firebase-service-account.json:/libredesk/firebase-service-account.json:ro
+      - ./transcribe-queue:/libredesk/transcribe-queue:rw
     command: [sh, -c, "./libredesk --install --idempotent-install --yes --config /libredesk/config.toml && ./libredesk --upgrade --yes --config /libredesk/config.toml && ./libredesk --config /libredesk/config.toml"]
 
   # PostgreSQL database

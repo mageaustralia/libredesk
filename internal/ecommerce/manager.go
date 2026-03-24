@@ -174,6 +174,24 @@ func formatOrderFull(o *Order) string {
 	if o.ShippingMethod != "" {
 		sb.WriteString(fmt.Sprintf("- Shipping: %s\n", o.ShippingMethod))
 	}
+	if o.ShippingAddress != nil {
+		parts := []string{}
+		if o.ShippingAddress.City != "" {
+			parts = append(parts, o.ShippingAddress.City)
+		}
+		if o.ShippingAddress.Region != "" {
+			parts = append(parts, o.ShippingAddress.Region)
+		}
+		if o.ShippingAddress.PostCode != "" {
+			parts = append(parts, o.ShippingAddress.PostCode)
+		}
+		if o.ShippingAddress.Country != "" {
+			parts = append(parts, o.ShippingAddress.Country)
+		}
+		if len(parts) > 0 {
+			sb.WriteString(fmt.Sprintf("- Shipping to: %s\n", strings.Join(parts, ", ")))
+		}
+	}
 
 	if len(o.Items) > 0 {
 		sb.WriteString("- Items:\n")

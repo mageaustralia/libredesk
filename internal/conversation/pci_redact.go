@@ -93,14 +93,32 @@ func (m *Manager) NotifyPCIIMAPDeleteFailed(conversationUUID string, msgUUID str
 		return
 	}
 
-	title := fmt.Sprintf("PCI: Failed to delete email from Gmail for conversation")
-	body := fmt.Sprintf("Card data was redacted from a message but the original email could not be deleted from Gmail. Please delete it manually. Conversation: %s", conversationUUID)
+	// Get conversation details for the notification
+	rootURL, _ := m.settingsStore.GetAppRootURL()
+	ticketLink := fmt.Sprintf("%s/inboxes/all/conversation/%s", rootURL, conversationUUID)
+	subject := ""
+	contactEmail := ""
+	conv, err := m.GetConversation(0, conversationUUID, "")
+	if err == nil {
+		subject = conv.Subject.String
+		if conv.Contact.Email.Valid {
+			contactEmail = conv.Contact.Email.String
+		}
+	}
+
+	title := "PCI: Failed to delete email from Gmail"
+	if subject != "" {
+		title = fmt.Sprintf("PCI: Failed to delete email — %s", subject)
+	}
+
+	bodyText := fmt.Sprintf("Card data was redacted but the original email could not be deleted from Gmail. Please delete it manually.\n\nSubject: %s\nFrom: %s\nTicket: %s", subject, contactEmail, ticketLink)
+	bodyHTML := fmt.Sprintf("<p>Card data was redacted but the original email could not be deleted from Gmail. Please delete it manually.</p><p><strong>Subject:</strong> %s<br><strong>From:</strong> %s<br><strong>Ticket:</strong> <a href=\"%s\">%s</a></p>", subject, contactEmail, ticketLink, ticketLink)
 
 	n := notifier.Notification{
 		Type:             nmodels.NotificationType("pci_imap_delete_failed"),
 		RecipientIDs:     []int{settings.NotifyAgentID},
 		Title:            title,
-		Body:             null.StringFrom(body),
+		Body:             null.StringFrom(bodyText),
 		ConversationUUID: conversationUUID,
 	}
 
@@ -117,7 +135,7 @@ func (m *Manager) NotifyPCIIMAPDeleteFailed(conversationUUID string, msgUUID str
 			n.Email = &notifier.EmailNotification{
 				Recipients: []string{agent.Email.String},
 				Subject:    title,
-				Content:    fmt.Sprintf("<p>%s</p>", body),
+				Content:    bodyHTML,
 			}
 			m.dispatcher.Send(n)
 		}
@@ -126,7 +144,7 @@ func (m *Manager) NotifyPCIIMAPDeleteFailed(conversationUUID string, msgUUID str
 			n.Email = &notifier.EmailNotification{
 				Recipients: []string{agent.Email.String},
 				Subject:    title,
-				Content:    fmt.Sprintf("<p>%s</p>", body),
+				Content:    bodyHTML,
 			}
 		}
 		m.dispatcher.Send(n)
