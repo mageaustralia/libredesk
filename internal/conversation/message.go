@@ -1166,8 +1166,12 @@ func (m *Manager) findOrCreateConversation(in *models.Message, inboxID, contactC
 		return new, err
 	}
 
-	// Fallback: match by subject + contact (handles Message-ID rewriting by mail relays like Google)
-	if conversationID == 0 && in.Subject != "" {
+	// Fallback: match by subject + contact (handles Message-ID rewriting by mail relays like Google).
+	// Only use this fallback if the email has threading headers (In-Reply-To or References),
+	// indicating it's a genuine reply. Automated emails with no threading headers but the same
+	// subject (e.g. payment notifications) should always create new conversations.
+	hasThreadingHeaders := in.InReplyTo != "" || len(in.References) > 0
+	if conversationID == 0 && in.Subject != "" && hasThreadingHeaders {
 		err = m.q.FindConversationBySubjectContact.QueryRow(contactID, inboxID, in.Subject).Scan(&conversationID)
 		if err != nil && err != sql.ErrNoRows {
 			m.lo.Error("error in fallback subject+contact threading", "error", err)
