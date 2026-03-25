@@ -426,6 +426,9 @@ The AI assistant uses PostgreSQL with pgvector for semantic search.
 The extension is automatically enabled during database migration.
 
 ---
+- If you are interested in contributing, **please read [CONTRIBUTING.md](./CONTRIBUTING.md) first**.
+- For local development and setup, refer to the [developer setup](https://docs.libredesk.io/contributing/developer-setup).
+- For planned features and project direction, see [ROADMAP.md](./ROADMAP.md).
 
 ## Keeping Up with Upstream
 
