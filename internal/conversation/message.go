@@ -230,7 +230,7 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 
 	// Convert relative image URLs to signed absolute URLs for email delivery.
 	{
-		re := regexp.MustCompile(`(?:https?://[^"]*)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+		re := regexp.MustCompile(`(?:https?://[^"]*)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"\s]*)?`)
 		message.Content = re.ReplaceAllStringFunc(message.Content, func(match string) string {
 			uuid := re.FindStringSubmatch(match)[1]
 			return m.mediaStore.GetEmailURL(uuid)
