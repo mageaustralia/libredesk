@@ -83,14 +83,19 @@
           >
             {{ sanitizedContent }}
           </div>
-          <Letter
+          <div
             v-else-if="!isDeleted"
-            :html="sanitizedContent"
-            :rewriteExternalResources="rewriteResource"
-            :allowedSchemas="['cid', 'https', 'http', 'mailto']"
+            ref="contentEl"
+            @click="handleContentClick"
             class="mb-1 native-html break-words"
             :class="{ 'mb-3': message.attachments.length > 0 }"
-          />
+          >
+            <Letter
+              :html="sanitizedContent"
+              :rewriteExternalResources="rewriteResource"
+              :allowedSchemas="['cid', 'https', 'http', 'mailto']"
+            />
+          </div>
 
           <!-- Quoted Text Toggle (incoming only) -->
           <div
@@ -194,6 +199,37 @@
     </div>
 
   </div>
+
+  <!-- Inline image lightbox -->
+  <Teleport to="body">
+    <div
+      v-if="inlineLightboxOpen"
+      class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
+      @click.self="inlineLightboxOpen = false"
+      @keydown.escape="inlineLightboxOpen = false"
+      @keydown.left="prevInlineImage"
+      @keydown.right="nextInlineImage"
+      tabindex="0"
+      ref="inlineLightboxEl"
+    >
+      <button class="absolute top-4 right-4 text-white hover:text-gray-300 z-10" @click="inlineLightboxOpen = false">
+        <X :size="28" />
+      </button>
+      <a :href="currentInlineImage" download class="absolute top-4 right-14 text-white hover:text-gray-300 z-10" title="Download">
+        <Download :size="24" />
+      </a>
+      <div v-if="inlineImages.length > 1" class="absolute top-4 left-4 text-white/70 text-sm z-10">
+        {{ inlineLightboxIndex + 1 }} / {{ inlineImages.length }}
+      </div>
+      <button v-if="inlineImages.length > 1" class="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 p-2" @click.stop="prevInlineImage">
+        <ChevronLeft :size="32" />
+      </button>
+      <button v-if="inlineImages.length > 1" class="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 p-2" @click.stop="nextInlineImage">
+        <ChevronRight :size="32" />
+      </button>
+      <img :src="currentInlineImage" class="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl" />
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -201,7 +237,7 @@ import { computed, ref, nextTick } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppSettingsStore } from '@/stores/appSettings'
 import { useI18n } from 'vue-i18n'
-import { Lock, RotateCcw, Check, ShieldAlert, Forward, Pencil, Trash2 } from 'lucide-vue-next'
+import { Lock, RotateCcw, Check, ShieldAlert, Forward, Pencil, Trash2, X, Download, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { revertCIDToImageSrc } from '@/utils/strings'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
@@ -415,4 +451,39 @@ const showEnvelope = computed(() => {
     props.message.meta?.subject
   )
 })
+
+// Inline image lightbox
+const contentEl = ref(null)
+const inlineLightboxOpen = ref(false)
+const inlineLightboxIndex = ref(0)
+const inlineLightboxEl = ref(null)
+const inlineImages = ref([])
+
+const currentInlineImage = computed(() => inlineImages.value[inlineLightboxIndex.value] || '')
+
+function handleContentClick(e) {
+  const img = e.target.closest('img')
+  if (!img) return
+  e.preventDefault()
+  // Collect all images from the content area
+  const imgs = Array.from(contentEl.value.querySelectorAll('img'))
+    .map(el => el.src)
+    .filter(src => src && !src.startsWith('data:'))
+  if (imgs.length === 0) return
+  inlineImages.value = imgs
+  const idx = imgs.indexOf(img.src)
+  inlineLightboxIndex.value = idx >= 0 ? idx : 0
+  inlineLightboxOpen.value = true
+  nextTick(() => inlineLightboxEl.value?.focus())
+}
+
+function prevInlineImage() {
+  if (inlineImages.value.length <= 1) return
+  inlineLightboxIndex.value = (inlineLightboxIndex.value - 1 + inlineImages.value.length) % inlineImages.value.length
+}
+
+function nextInlineImage() {
+  if (inlineImages.value.length <= 1) return
+  inlineLightboxIndex.value = (inlineLightboxIndex.value + 1) % inlineImages.value.length
+}
 </script>
