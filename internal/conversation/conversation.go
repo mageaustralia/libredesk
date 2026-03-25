@@ -1741,6 +1741,8 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 	for _, secUUID := range secondaryUUIDs {
 		m.BroadcastConversationUpdate(secUUID, "status", "Closed")
 		m.BroadcastConversationUpdate(secUUID, "merged_into_id", primary.ID)
+		m.BroadcastConversationUpdate(secUUID, "merged_into_uuid", primary.UUID)
+		m.BroadcastConversationUpdate(secUUID, "merged_into_ref", primary.ReferenceNumber)
 	}
 
 	return nil

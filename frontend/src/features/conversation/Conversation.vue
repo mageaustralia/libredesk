@@ -129,7 +129,7 @@
     <!-- Merge banner -->
     <div
       v-if="conversationStore.current?.merged_into_id"
-      class="flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 text-sm border-b border-orange-200 dark:border-orange-800"
+      class="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
     >
       <GitMerge class="w-4 h-4 shrink-0" />
       <span>
@@ -137,9 +137,8 @@
         <router-link
           v-if="conversationStore.current?.merged_into_uuid"
           :to="{ name: 'inbox-conversation', params: { uuid: conversationStore.current.merged_into_uuid } }"
-          class="font-semibold underline hover:text-orange-900 dark:hover:text-orange-100"
+          class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
         >#{{ conversationStore.current.merged_into_ref }}</router-link>
-        <span v-else class="italic">unknown</span>
       </span>
     </div>
 
