@@ -28,7 +28,18 @@
           <span v-if="otherViewers.length > 3" class="text-[10px] text-muted-foreground">+{{ otherViewers.length - 3 }}</span>
         </div>
       </div>
-      <div>
+      <div class="flex items-center gap-1">
+        <!-- Quick Close button -->
+        <Button
+          v-if="!conversationStore.conversation.loading && conversationStore.current?.status !== 'Closed' && conversationStore.current?.status !== 'Trashed'"
+          variant="outline"
+          size="sm"
+          class="h-7 text-xs"
+          @click="handleUpdateStatus('Closed')"
+        >
+          Close
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger>
             <div
