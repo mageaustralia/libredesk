@@ -1700,6 +1700,20 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 			primary.ID, lastMsg.Content, lastMsg.SenderType, lastMsg.CreatedAt)
 	}
 
+	// Reopen the primary conversation if any of the merged conversations (including primary) were open.
+	// This handles the common case of merging a new open ticket into a closed thread.
+	var hasOpen bool
+	err = tx.Get(&hasOpen, `SELECT EXISTS(
+		SELECT 1 FROM conversations c
+		JOIN conversation_statuses cs ON cs.id = c.status_id
+		WHERE c.uuid = ANY($1) AND cs.name NOT IN ('Closed', 'Trashed')
+	)`, pq.Array(allUUIDs))
+	if err == nil && hasOpen {
+		if _, err := tx.Exec(`UPDATE conversations SET status_id = (SELECT id FROM conversation_statuses WHERE name = 'Open'), closed_at = NULL, updated_at = NOW() WHERE id = $1`, primary.ID); err != nil {
+			m.lo.Error("error reopening primary conversation after merge", "id", primary.ID, "error", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		m.lo.Error("error committing merge transaction", "error", err)
 		return envelope.NewError(envelope.GeneralError, "Error committing merge transaction", nil)
@@ -1717,7 +1731,9 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 	}
 
 	// Broadcast updates.
-	m.BroadcastConversationUpdate(primaryUUID, "status", "Open")
+	if hasOpen {
+		m.BroadcastConversationUpdate(primaryUUID, "status", "Open")
+	}
 	for _, secUUID := range secondaryUUIDs {
 		m.BroadcastConversationUpdate(secUUID, "status", "Closed")
 		m.BroadcastConversationUpdate(secUUID, "merged_into_id", primary.ID)
