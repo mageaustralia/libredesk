@@ -479,7 +479,7 @@ func (app *App) gatherEcommerceContext(ctx context.Context, conversationID int) 
 	// Extract text content from messages
 	var messageTexts []string
 	for _, msg := range messages {
-		if msg.Content != "" && msg.Content != "" {
+		if msg.Content != "" {
 			// Strip HTML tags for order number scanning
 			text := stripHTML(msg.Content)
 			if text != "" {
