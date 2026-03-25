@@ -1047,12 +1047,27 @@ const availableSendStatuses = computed(() => {
 
 watch(
   () => conversationStore.getMacro('reply').id,
-  (newId) => {
+  async (newId) => {
     if (!newId) return
-    const macroContent = conversationStore.getMacro('reply').message_content
-    if (!macroContent) return
-    // Insert at cursor position via ReplyBoxContent
-    replyBoxContentRef.value?.insertMacro(macroContent)
+    const macro = conversationStore.getMacro('reply')
+    const macroContent = macro.message_content
+    if (macroContent) {
+      // Insert at cursor position via ReplyBoxContent
+      replyBoxContentRef.value?.insertMacro(macroContent)
+    }
+
+    // Clone macro attachments and add to reply
+    if (macro.attachments && macro.attachments.length > 0) {
+      try {
+        const resp = await api.cloneMacroAttachments(macro.id)
+        const clonedFiles = resp.data.data
+        if (clonedFiles && clonedFiles.length > 0) {
+          setMediaFiles([...mediaFiles.value, ...clonedFiles])
+        }
+      } catch (err) {
+        console.error('Error cloning macro attachments:', err)
+      }
+    }
   },
   { deep: true }
 )

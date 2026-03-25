@@ -2,6 +2,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"embed"
@@ -83,6 +84,8 @@ type queries struct {
 	GetByModel              *sqlx.Stmt `query:"get-model-media"`
 	GetUnlinkedMessageMedia *sqlx.Stmt `query:"get-unlinked-message-media"`
 	ContentIDExists         *sqlx.Stmt `query:"content-id-exists"`
+	DetachModelMedia        *sqlx.Stmt `query:"detach-model-media"`
+	DeleteModelMedia        *sqlx.Stmt `query:"delete-model-media"`
 }
 
 // UploadAndInsert uploads file on storage and inserts an entry in db.
@@ -282,6 +285,93 @@ func (m *Manager) deleteUnlinkedMessageMedia() error {
 		}
 	}
 	return nil
+}
+
+// DetachModelMedia unlinks all media from a model (sets model_id and model_type to NULL).
+func (m *Manager) DetachModelMedia(modelType string, modelID int) error {
+	if _, err := m.queries.DetachModelMedia.Exec(modelType, modelID); err != nil {
+		m.lo.Error("error detaching model media", "model_type", modelType, "model_id", modelID, "error", err)
+		return fmt.Errorf("detaching media for model:%s model_id:%d: %w", modelType, modelID, err)
+	}
+	return nil
+}
+
+// DeleteModelMedia deletes all media files (storage + DB) for a model.
+func (m *Manager) DeleteModelMedia(modelType string, modelID int) error {
+	// First get all media to delete from storage.
+	media, err := m.GetByModel(modelID, modelType)
+	if err != nil {
+		return err
+	}
+	for _, mm := range media {
+		if err := m.store.Delete(mm.UUID); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				m.lo.Error("error deleting media file from store", "uuid", mm.UUID, "error", err)
+			}
+		}
+		// Also delete thumbnail if it's an image.
+		if strings.HasPrefix(mm.ContentType, "image/") {
+			m.store.Delete(image.ThumbPrefix + mm.UUID)
+		}
+	}
+	// Delete DB rows.
+	if _, err := m.queries.DeleteModelMedia.Exec(modelType, modelID); err != nil {
+		m.lo.Error("error deleting model media from db", "model_type", modelType, "model_id", modelID, "error", err)
+		return fmt.Errorf("deleting media for model:%s model_id:%d: %w", modelType, modelID, err)
+	}
+	return nil
+}
+
+// DuplicateForModel copies all media files for a source model, creating new UUIDs and DB rows.
+// The new rows are created with model_type='messages' and model_id=NULL (unlinked, will be attached when message is sent).
+func (m *Manager) DuplicateForModel(srcModelType string, srcModelID int) ([]models.Media, error) {
+	srcMedia, err := m.GetByModel(srcModelID, srcModelType)
+	if err != nil {
+		return nil, err
+	}
+	if len(srcMedia) == 0 {
+		return []models.Media{}, nil
+	}
+
+	var result []models.Media
+	for _, src := range srcMedia {
+		// Read the source file blob.
+		blob, err := m.store.GetBlob(src.UUID)
+		if err != nil {
+			m.lo.Error("error reading source media blob for duplication", "uuid", src.UUID, "error", err)
+			return nil, fmt.Errorf("reading source media %s: %w", src.UUID, err)
+		}
+
+		newUUID := uuid.New().String()
+
+		// Write new file to storage.
+		reader := bytes.NewReader(blob)
+		if _, err := m.store.Put(newUUID, src.ContentType, reader); err != nil {
+			m.lo.Error("error writing duplicated media file", "uuid", newUUID, "error", err)
+			return nil, fmt.Errorf("writing duplicated media %s: %w", newUUID, err)
+		}
+
+		// Also duplicate thumbnail if it's an image.
+		if strings.HasPrefix(src.ContentType, "image/") {
+			thumbBlob, err := m.store.GetBlob(image.ThumbPrefix + src.UUID)
+			if err == nil {
+				thumbReader := bytes.NewReader(thumbBlob)
+				m.store.Put(image.ThumbPrefix+newUUID, src.ContentType, thumbReader)
+			}
+		}
+
+		// Insert new DB row with model_type='messages' and model_id=NULL.
+		newMedia, err := m.Insert(src.Disposition, src.Filename, src.ContentType, "", null.NewString("messages", true), newUUID, null.Int{}, src.Size, src.Meta)
+		if err != nil {
+			// Clean up the file we just wrote.
+			m.store.Delete(newUUID)
+			m.lo.Error("error inserting duplicated media row", "error", err)
+			return nil, fmt.Errorf("inserting duplicated media: %w", err)
+		}
+
+		result = append(result, newMedia)
+	}
+	return result, nil
 }
 
 // detectContentType detects the content type of a file.
