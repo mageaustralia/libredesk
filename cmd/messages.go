@@ -12,6 +12,7 @@ import (
 	authzModels "github.com/abhinavxd/libredesk/internal/authz/models"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
+	"github.com/abhinavxd/libredesk/internal/stringutil"
 	medModels "github.com/abhinavxd/libredesk/internal/media/models"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
 	"github.com/valyala/fasthttp"
@@ -367,6 +368,8 @@ func handleUpdatePrivateNote(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.empty", "name", "`content`"), nil, envelope.InputError)
 	}
 
+	// Sanitize HTML to prevent stored XSS/HTML injection.
+	req.Content = stringutil.SanitizeHTML(req.Content)
 	if err := app.conversation.UpdatePrivateNote(uuid, req.Content); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
