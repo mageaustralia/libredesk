@@ -200,7 +200,7 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 func (m *Manager) makeAbsoluteURLs(content string) string {
 	// Match both relative (/uploads/UUID) and absolute (https://domain/uploads/UUID) URLs
 	// to handle quoted replies where the email client has already made URLs absolute.
-	re := regexp.MustCompile(`(?:https?://[^/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+	re := regexp.MustCompile(`(?:https?://[^/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"\s]*)?`)
 	return re.ReplaceAllStringFunc(content, func(match string) string {
 		uuid := re.FindStringSubmatch(match)[1]
 		// GetEmailURL returns a signed URL with 30-day expiry for email clients.
