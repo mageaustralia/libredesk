@@ -1057,6 +1057,7 @@ export const useConversationStore = defineStore('conversation', () => {
     updateAssigneeLastSeen,
     markAsUnread,
     updateConversationMessage,
+    updateConversationList,
     snoozeConversation,
     fetchConversation,
     fetchConversationsList,
