@@ -205,29 +205,62 @@
     <div
       v-if="inlineLightboxOpen"
       class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
-      @click.self="inlineLightboxOpen = false"
+      @click.self="zoomScale === 1 ? (inlineLightboxOpen = false) : resetZoom()"
       @keydown.escape="inlineLightboxOpen = false"
       @keydown.left="prevInlineImage"
       @keydown.right="nextInlineImage"
+      @wheel.prevent="handleZoomWheel"
       tabindex="0"
       ref="inlineLightboxEl"
     >
-      <button class="absolute top-4 right-4 text-white hover:text-gray-300 z-10" @click="inlineLightboxOpen = false">
-        <X :size="28" />
-      </button>
-      <a :href="currentInlineImage" download class="absolute top-4 right-14 text-white hover:text-gray-300 z-10" title="Download">
-        <Download :size="24" />
-      </a>
+      <!-- Top bar -->
+      <div class="absolute top-4 right-4 flex items-center gap-3 z-10">
+        <button class="text-white/70 hover:text-white flex items-center gap-1 text-sm" @click.stop="zoomIn" title="Zoom in">
+          <ZoomIn :size="20" />
+        </button>
+        <button class="text-white/70 hover:text-white text-xs font-mono min-w-[3rem] text-center" @click.stop="resetZoom" title="Reset zoom">
+          {{ Math.round(zoomScale * 100) }}%
+        </button>
+        <button class="text-white/70 hover:text-white flex items-center gap-1 text-sm" @click.stop="zoomOut" title="Zoom out">
+          <ZoomOut :size="20" />
+        </button>
+        <a :href="currentInlineImage" download class="text-white/70 hover:text-white" title="Download" @click.stop>
+          <Download :size="20" />
+        </a>
+        <button class="text-white hover:text-gray-300" @click="inlineLightboxOpen = false">
+          <X :size="24" />
+        </button>
+      </div>
+      <!-- Counter -->
       <div v-if="inlineImages.length > 1" class="absolute top-4 left-4 text-white/70 text-sm z-10">
         {{ inlineLightboxIndex + 1 }} / {{ inlineImages.length }}
       </div>
+      <!-- Prev -->
       <button v-if="inlineImages.length > 1" class="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 p-2" @click.stop="prevInlineImage">
         <ChevronLeft :size="32" />
       </button>
+      <!-- Next -->
       <button v-if="inlineImages.length > 1" class="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 p-2" @click.stop="nextInlineImage">
         <ChevronRight :size="32" />
       </button>
-      <img :src="currentInlineImage" class="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl" />
+      <!-- Zoomable image -->
+      <div
+        class="overflow-hidden"
+        style="max-width: 90vw; max-height: 90vh;"
+        @mousedown.prevent="startPan"
+        @touchstart.prevent="handleTouchStart"
+        @touchmove.prevent="handleTouchMove"
+        @touchend="handleTouchEnd"
+      >
+        <img
+          :src="currentInlineImage"
+          class="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl select-none"
+          :style="{ transform: `scale(${zoomScale}) translate(${panX / zoomScale}px, ${panY / zoomScale}px)`, cursor: zoomScale > 1 ? 'grab' : 'zoom-in', transition: isPanning ? 'none' : 'transform 0.15s ease' }"
+          draggable="false"
+          @click.stop="zoomScale === 1 ? zoomIn() : null"
+          @dblclick.stop="resetZoom"
+        />
+      </div>
     </div>
   </Teleport>
 </template>
@@ -237,7 +270,7 @@ import { computed, ref, nextTick } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppSettingsStore } from '@/stores/appSettings'
 import { useI18n } from 'vue-i18n'
-import { Lock, RotateCcw, Check, ShieldAlert, Forward, Pencil, Trash2, X, Download, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Lock, RotateCcw, Check, ShieldAlert, Forward, Pencil, Trash2, X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import { revertCIDToImageSrc } from '@/utils/strings'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
@@ -459,13 +492,20 @@ const inlineLightboxIndex = ref(0)
 const inlineLightboxEl = ref(null)
 const inlineImages = ref([])
 
+// Zoom & pan state
+const zoomScale = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const isPanning = ref(false)
+let panStart = { x: 0, y: 0, panX: 0, panY: 0 }
+let lastTouchDist = 0
+
 const currentInlineImage = computed(() => inlineImages.value[inlineLightboxIndex.value] || '')
 
 function handleContentClick(e) {
   const img = e.target.closest('img')
   if (!img) return
   e.preventDefault()
-  // Collect all images from the content area
   const imgs = Array.from(contentEl.value.querySelectorAll('img'))
     .map(el => el.src)
     .filter(src => src && !src.startsWith('data:'))
@@ -473,17 +513,98 @@ function handleContentClick(e) {
   inlineImages.value = imgs
   const idx = imgs.indexOf(img.src)
   inlineLightboxIndex.value = idx >= 0 ? idx : 0
+  resetZoom()
   inlineLightboxOpen.value = true
   nextTick(() => inlineLightboxEl.value?.focus())
 }
 
+function resetZoom() {
+  zoomScale.value = 1
+  panX.value = 0
+  panY.value = 0
+}
+
+function zoomIn() {
+  zoomScale.value = Math.min(zoomScale.value * 1.4, 8)
+}
+
+function zoomOut() {
+  zoomScale.value = Math.max(zoomScale.value / 1.4, 1)
+  if (zoomScale.value === 1) { panX.value = 0; panY.value = 0 }
+}
+
+function handleZoomWheel(e) {
+  if (e.deltaY < 0) {
+    zoomScale.value = Math.min(zoomScale.value * 1.15, 8)
+  } else {
+    zoomScale.value = Math.max(zoomScale.value / 1.15, 1)
+    if (zoomScale.value === 1) { panX.value = 0; panY.value = 0 }
+  }
+}
+
+// Mouse drag to pan
+function startPan(e) {
+  if (zoomScale.value <= 1) return
+  isPanning.value = true
+  panStart = { x: e.clientX, y: e.clientY, panX: panX.value, panY: panY.value }
+  const onMove = (ev) => {
+    panX.value = panStart.panX + (ev.clientX - panStart.x)
+    panY.value = panStart.panY + (ev.clientY - panStart.y)
+  }
+  const onUp = () => {
+    isPanning.value = false
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+// Touch: pinch-to-zoom + drag-to-pan
+function handleTouchStart(e) {
+  if (e.touches.length === 2) {
+    lastTouchDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    )
+  } else if (e.touches.length === 1 && zoomScale.value > 1) {
+    isPanning.value = true
+    panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, panX: panX.value, panY: panY.value }
+  }
+}
+
+function handleTouchMove(e) {
+  if (e.touches.length === 2) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    )
+    if (lastTouchDist > 0) {
+      const delta = dist / lastTouchDist
+      zoomScale.value = Math.max(1, Math.min(8, zoomScale.value * delta))
+      if (zoomScale.value === 1) { panX.value = 0; panY.value = 0 }
+    }
+    lastTouchDist = dist
+  } else if (e.touches.length === 1 && isPanning.value) {
+    panX.value = panStart.panX + (e.touches[0].clientX - panStart.x)
+    panY.value = panStart.panY + (e.touches[0].clientY - panStart.y)
+  }
+}
+
+function handleTouchEnd() {
+  isPanning.value = false
+  lastTouchDist = 0
+}
+
 function prevInlineImage() {
   if (inlineImages.value.length <= 1) return
+  resetZoom()
   inlineLightboxIndex.value = (inlineLightboxIndex.value - 1 + inlineImages.value.length) % inlineImages.value.length
 }
 
 function nextInlineImage() {
   if (inlineImages.value.length <= 1) return
+  resetZoom()
   inlineLightboxIndex.value = (inlineLightboxIndex.value + 1) % inlineImages.value.length
 }
 </script>
