@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	medModels "github.com/abhinavxd/libredesk/internal/media/models"
 )
 
 type Macro struct {
@@ -19,4 +20,7 @@ type Macro struct {
 	UserID         *int            `db:"user_id" json:"user_id,string"`
 	TeamID         *int            `db:"team_id" json:"team_id,string"`
 	UsageCount     int             `db:"usage_count" json:"usage_count"`
+
+	// Pseudo field (not DB-mapped, populated by handler)
+	Attachments    []medModels.Media `db:"-" json:"attachments"`
 }

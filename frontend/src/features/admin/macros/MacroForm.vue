@@ -27,6 +27,33 @@
       </FormItem>
     </FormField>
 
+    <!-- Attachments -->
+    <div>
+      <label class="text-sm font-medium leading-none">Attachments</label>
+      <div class="mt-2">
+        <AttachmentsPreview
+          v-if="mediaFiles.length > 0 || uploadingFiles.length > 0"
+          :attachments="mediaFiles"
+          :uploadingFiles="uploadingFiles"
+          :onDelete="handleFileDelete"
+        />
+        <div class="mt-2">
+          <label
+            class="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded cursor-pointer hover:bg-accent"
+          >
+            <PaperclipIcon :size="16" />
+            <span>Add file</span>
+            <input
+              type="file"
+              class="hidden"
+              multiple
+              @change="handleFileUpload"
+            />
+          </label>
+        </div>
+      </div>
+    </div>
+
     <FormField
       v-slot="{ componentField }"
       name="actions"
@@ -156,6 +183,8 @@ import { Input } from '@/components/ui/input'
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import ActionBuilder from '@/features/admin/macros/ActionBuilder.vue'
 import { useConversationFilters } from '@/composables/useConversationFilters'
+import { useFileUpload } from '@/composables/useFileUpload'
+import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { getTextFromHTML } from '@/utils/strings.js'
@@ -171,6 +200,7 @@ import {
   SelectTag
 } from '@/components/ui/select'
 import { useI18n } from 'vue-i18n'
+import { Paperclip as PaperclipIcon } from 'lucide-vue-next'
 import Editor from '@/components/editor/TextEditor.vue'
 
 const { macroActions } = useConversationFilters()
@@ -195,6 +225,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   }
+})
+
+// File upload composable for macro attachments
+const {
+  uploadingFiles,
+  handleFileUpload,
+  handleFileDelete,
+  mediaFiles,
+  setMediaFiles
+} = useFileUpload({
+  linkedModel: 'macros'
 })
 
 const submitLabel = computed(() => {
@@ -230,6 +271,8 @@ const onSubmit = form.handleSubmit(async (values) => {
   if (textContent.length === 0) {
     values.message_content = ''
   }
+  // Inject attachment IDs into the payload
+  values.attachment_ids = mediaFiles.value.map((f) => f.id)
   props.submitForm(values)
 })
 
@@ -238,6 +281,10 @@ watch(
   (newValues) => {
     if (Object.keys(newValues).length === 0) return
     form.setValues(newValues)
+    // Populate attachments from initial values when editing
+    if (newValues.attachments && newValues.attachments.length > 0) {
+      setMediaFiles([...newValues.attachments])
+    }
   },
   { immediate: true }
 )
