@@ -916,8 +916,12 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 	}
 
 	// Transcribe audio attachments (voicemail) async.
-	if len(in.Message.Media) > 0 {
-		m.transcribeAudioAttachments(in.Message.ConversationUUID, in.Message.Media)
+	// Fetch media from DB since the in-memory slice may not survive InsertMessage's scan.
+	if len(in.Message.Attachments) > 0 {
+		msgMedia, mediaErr := m.mediaStore.GetByModel(in.Message.ID, "messages")
+		if mediaErr == nil && len(msgMedia) > 0 {
+			m.transcribeAudioAttachments(in.Message.ConversationUUID, msgMedia)
+		}
 	}
 
 	// Send push notification to assigned agent for incoming customer messages.
