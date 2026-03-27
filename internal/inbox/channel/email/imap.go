@@ -560,6 +560,25 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Skip outgoing emails that arrived via BCC (e.g., abandoned cart emails sent by Maho).
+	// If the From address domain matches the inbox domain, this is our own system email — not a customer message.
+	{
+		fromEmail := strings.ToLower(incomingMsg.Contact.Email.String)
+		fromDomain := ""
+		if parts := strings.SplitN(fromEmail, "@", 2); len(parts) == 2 {
+			fromDomain = parts[1]
+		}
+		inboxDomain := ""
+		inboxAddr, _ := stringutil.ExtractEmail(e.FromAddress())
+		if parts := strings.SplitN(strings.ToLower(inboxAddr), "@", 2); len(parts) == 2 {
+			inboxDomain = parts[1]
+		}
+		if fromDomain != "" && fromDomain == inboxDomain && fromEmail != inboxAddr {
+			e.lo.Info("skipping own outgoing email (BCC copy)", "from", fromEmail, "inbox", inboxAddr, "subject", envelope.GetHeader("Subject"))
+			return nil
+		}
+	}
+
 	// Check if the From address was rewritten (e.g., Google Workspace DMARC forwarding).
 	// This handles cases where emails sent to info@company.com get forwarded to the
 	// monitored inbox with From rewritten to info@company.com instead of the real sender.
