@@ -369,10 +369,29 @@ async function executePendingSend() {
   } catch (error) {
     // 409 = duplicate rejected by server dedup — first send succeeded, ignore
     if (error?.response?.status === 409) return
+
+    const errMsg = handleHTTPError(error).message
+
+    // Show persistent error toast
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
-      description: handleHTTPError(error).message
+      description: 'Message failed to send: ' + errMsg
     })
+
+    // Restore the editor content so the user can retry
+    if (send.restoreData) {
+      replyExpanded.value = true
+      nextTick(() => {
+        emitter.emit('restore-send', send.restoreData)
+        if (send.isPrivateNote) {
+          emitter.emit('set-reply-type', 'private_note')
+        } else if (send.isForward) {
+          emitter.emit('set-reply-type', 'forward')
+        } else {
+          emitter.emit('set-reply-type', 'reply')
+        }
+      })
+    }
   }
 }
 
