@@ -171,9 +171,9 @@
       </Avatar>
     </div>
 
-    <!-- Forward button -->
+    <!-- Forward button (email only) -->
     <div
-      v-if="!isActivity && !message.private"
+      v-if="!isActivity && !message.private && (!convStore.current?.inbox_channel || convStore.current?.inbox_channel === 'email')"
       class="flex items-center gap-1 mt-1"
       :class="isOutgoing ? 'pr-[47px] justify-end' : 'pl-[47px]'"
     >

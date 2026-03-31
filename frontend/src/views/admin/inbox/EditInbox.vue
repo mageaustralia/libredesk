@@ -3,13 +3,23 @@
     <CustomBreadcrumb :links="breadcrumbLinks" />
   </div>
   <Spinner v-if="formLoading"></Spinner>
-  <EmailInboxForm :initialValues="inbox" :submitForm="submitForm" :isLoading="isLoading" v-else />
+  <template v-else>
+    <MessengerInboxForm
+      v-if="inbox.channel === 'messenger' || inbox.channel === 'instagram'"
+      :initialValues="inbox"
+      :submitForm="submitMessengerForm"
+      :isLoading="isLoading"
+      :channel="inbox.channel"
+    />
+    <EmailInboxForm v-else :initialValues="inbox" :submitForm="submitForm" :isLoading="isLoading" />
+  </template>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
 import api from '@/api'
 import EmailInboxForm from '@/features/admin/inbox/EmailInboxForm.vue'
+import MessengerInboxForm from '@/features/admin/inbox/MessengerInboxForm.vue'
 import { CustomBreadcrumb } from '@/components/ui/breadcrumb/index.js'
 import { Spinner } from '@/components/ui/spinner'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
@@ -27,6 +37,24 @@ const breadcrumbLinks = [
   { path: 'inbox-list', label: 'Inboxes' },
   { path: '', label: 'Edit Inbox' }
 ]
+
+const submitMessengerForm = (values) => {
+  const payload = {
+    name: values.name,
+    from: inbox.value.from || values.page_id || values.ig_account_id || 'messenger',
+    channel: inbox.value.channel,
+    enabled: values.enabled,
+    config: {
+      page_id: values.page_id || '',
+      ig_account_id: values.ig_account_id || '',
+      page_access_token: values.page_access_token?.includes('•') ? '' : values.page_access_token,
+      app_secret: values.app_secret?.includes('•') ? '' : values.app_secret,
+      verify_token: values.verify_token || '',
+      auto_assign_on_reply: values.auto_assign_on_reply || false
+    }
+  }
+  updateInbox(payload)
+}
 
 const submitForm = (values) => {
   // Prepare request payload from form values
@@ -102,18 +130,29 @@ onMounted(async () => {
     let inboxData = resp.data.data
 
     // Modify the inbox data as per the zod schema.
-    if (inboxData?.config?.imap) {
-      inboxData.imap = inboxData?.config?.imap[0]
+    if (inboxData.channel === 'messenger' || inboxData.channel === 'instagram') {
+      // Messenger/Instagram - flatten config fields
+      inboxData.page_id = inboxData?.config?.page_id || ''
+      inboxData.ig_account_id = inboxData?.config?.ig_account_id || ''
+      inboxData.page_access_token = inboxData?.config?.page_access_token || ''
+      inboxData.app_secret = inboxData?.config?.app_secret || ''
+      inboxData.verify_token = inboxData?.config?.verify_token || ''
+      inboxData.auto_assign_on_reply = inboxData?.config?.auto_assign_on_reply || false
+    } else {
+      // Email channel
+      if (inboxData?.config?.imap) {
+        inboxData.imap = inboxData?.config?.imap[0]
+      }
+      if (inboxData?.config?.smtp) {
+        inboxData.smtp = inboxData?.config?.smtp[0]
+      }
+      inboxData.auth_type = inboxData?.config?.auth_type || AUTH_TYPE_PASSWORD
+      inboxData.oauth = inboxData?.config?.oauth || {}
+      inboxData.enable_plus_addressing = inboxData?.config?.enable_plus_addressing || false
+      inboxData.auto_assign_on_reply = inboxData?.config?.auto_assign_on_reply || false
+      inboxData.signature = inboxData?.config?.signature || ''
+      inboxData.email_aliases = inboxData?.config?.email_aliases || []
     }
-    if (inboxData?.config?.smtp) {
-      inboxData.smtp = inboxData?.config?.smtp[0]
-    }
-    inboxData.auth_type = inboxData?.config?.auth_type || AUTH_TYPE_PASSWORD
-    inboxData.oauth = inboxData?.config?.oauth || {}
-    inboxData.enable_plus_addressing = inboxData?.config?.enable_plus_addressing || false
-    inboxData.auto_assign_on_reply = inboxData?.config?.auto_assign_on_reply || false
-    inboxData.signature = inboxData?.config?.signature || ''
-    inboxData.email_aliases = inboxData?.config?.email_aliases || []
     inbox.value = inboxData
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {

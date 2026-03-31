@@ -22,7 +22,9 @@ import (
 )
 
 const (
-	ChannelEmail = "email"
+	ChannelEmail     = "email"
+	ChannelMessenger = "messenger"
+	ChannelInstagram = "instagram"
 )
 
 var (
@@ -303,6 +305,29 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 
 	// Preserve existing passwords if update has empty password
 	switch current.Channel {
+	case "messenger", "instagram":
+		var currentCfg, updateCfg map[string]any
+		if err := json.Unmarshal(current.Config, &currentCfg); err != nil {
+			m.lo.Error("error unmarshalling current config", "id", id, "error", err)
+			return imodels.Inbox{}, envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorParsing", "name", "{globals.terms.config}"), nil)
+		}
+		if err := json.Unmarshal(inbox.Config, &updateCfg); err != nil {
+			m.lo.Error("error unmarshalling update config", "id", id, "error", err)
+			return imodels.Inbox{}, envelope.NewError(envelope.GeneralError, m.i18n.Ts("globals.messages.errorParsing", "name", "{globals.terms.config}"), nil)
+		}
+		// Preserve encrypted fields if update has empty values.
+		for _, field := range []string{"page_access_token", "app_secret"} {
+			if updateCfg[field] == nil || updateCfg[field] == "" {
+				if val, ok := currentCfg[field]; ok {
+					updateCfg[field] = val
+				}
+			}
+		}
+		updatedConfig, err := json.Marshal(updateCfg)
+		if err != nil {
+			return imodels.Inbox{}, err
+		}
+		inbox.Config = updatedConfig
 	case "email":
 		var currentCfg struct {
 			AuthType             string            `json:"auth_type"`
@@ -553,6 +578,11 @@ func (m *Manager) encryptInboxConfig(config json.RawMessage) (json.RawMessage, e
 		}
 	}
 
+	// Encrypt messenger/instagram sensitive fields if present.
+	if err := m.encryptMessengerConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	encrypted, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling encrypted config: %w", err)
@@ -616,10 +646,45 @@ func (m *Manager) decryptInboxConfig(config json.RawMessage) (json.RawMessage, e
 		}
 	}
 
+	// Decrypt messenger/instagram sensitive fields if present.
+	if err := m.decryptMessengerConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	decrypted, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling decrypted config: %w", err)
 	}
 
 	return decrypted, nil
+}
+
+// encryptMessengerConfig encrypts sensitive fields in messenger/instagram config.
+func (m *Manager) encryptMessengerConfig(cfg map[string]any) error {
+	fields := []string{"page_access_token", "app_secret"}
+	for _, f := range fields {
+		if val, ok := cfg[f].(string); ok && val != "" {
+			encrypted, err := crypto.Encrypt(val, m.encryptionKey)
+			if err != nil {
+				return fmt.Errorf("encrypting %s: %w", f, err)
+			}
+			cfg[f] = encrypted
+		}
+	}
+	return nil
+}
+
+// decryptMessengerConfig decrypts sensitive fields in messenger/instagram config.
+func (m *Manager) decryptMessengerConfig(cfg map[string]any) error {
+	fields := []string{"page_access_token", "app_secret"}
+	for _, f := range fields {
+		if val, ok := cfg[f].(string); ok && val != "" {
+			decrypted, err := crypto.Decrypt(val, m.encryptionKey)
+			if err != nil {
+				return fmt.Errorf("decrypting %s: %w", f, err)
+			}
+			cfg[f] = decrypted
+		}
+	}
+	return nil
 }

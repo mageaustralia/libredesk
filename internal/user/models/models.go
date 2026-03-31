@@ -64,6 +64,7 @@ type User struct {
 	Permissions            pq.StringArray       `db:"permissions" json:"permissions"`
 	CustomAttributes       json.RawMessage      `db:"custom_attributes" json:"custom_attributes"`
 	Teams                  tmodels.TeamsCompact `db:"teams" json:"teams"`
+	Signature              string               `db:"signature" json:"signature"`
 	ContactChannelID       int                  `db:"contact_channel_id" json:"contact_channel_id,omitempty"`
 	NewPassword            string               `db:"-" json:"new_password,omitempty"`
 	SendWelcomeEmail       bool                 `db:"-" json:"send_welcome_email,omitempty"`

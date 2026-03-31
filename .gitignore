@@ -9,3 +9,11 @@ uploads
 dist/
 .vscode/
 docs/
+
+# Backups and temp files
+backups/
+*.bak
+*.orig
+fix_contacts.py
+transcribe.sh
+firebase-service-account.json

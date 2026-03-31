@@ -171,3 +171,13 @@ func (u *Manager) GetAgents() ([]models.UserCompact, error) {
 	// Some dirty hack.
 	return u.GetAllUsers(1, 999999999, models.UserTypeAgent, "desc", "users.updated_at", "")
 }
+
+// UpdateAgentSignature updates the email signature for an agent.
+func (u *Manager) UpdateAgentSignature(id int, signature string) error {
+	if _, err := u.q.UpdateAgentSignature.Exec(signature, id); err != nil {
+		u.lo.Error("error updating agent signature", "error", err)
+		return envelope.NewError(envelope.GeneralError, u.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.user}"), nil)
+	}
+	u.InvalidateAgentCache(id)
+	return nil
+}

@@ -89,6 +89,7 @@ type queries struct {
 	SetAPIKey            *sqlx.Stmt `query:"set-api-key"`
 	RevokeAPIKey         *sqlx.Stmt `query:"revoke-api-key"`
 	UpdateAPIKeyLastUsed *sqlx.Stmt `query:"update-api-key-last-used"`
+	UpdateAgentSignature *sqlx.Stmt `query:"update-agent-signature"`
 }
 
 // New creates and returns a new instance of the Manager.

@@ -30,6 +30,26 @@
         {{ $t('globals.messages.saveChanges') }}
       </Button>
 
+      <!-- Email Signature Section -->
+      <div class="border-t pt-5 mt-5">
+        <div class="space-y-1">
+          <span class="sub-title">Email Signature</span>
+          <p class="text-muted-foreground text-xs">Personal sign-off that appears above the company signature in emails.</p>
+        </div>
+        <div class="mt-3">
+          <textarea
+            v-model="signatureText"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            rows="4"
+            placeholder="e.g. Warm Regards,&#10;Your Name"
+          ></textarea>
+          <p class="text-muted-foreground text-xs mt-1">Plain text only. Line breaks will be preserved.</p>
+        </div>
+        <Button class="mt-3" @click="saveSignature" size="sm" :isLoading="isSavingSignature">
+          Save Signature
+        </Button>
+      </div>
+
       <!-- Cropped dialog -->
       <Dialog :open="showCropper">
         <DialogContent class="sm:max-w-md">
@@ -64,7 +84,7 @@
 import { useUserStore } from '@/stores/user'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import VuePictureCropper, { cropper } from 'vue-picture-cropper'
 import { useEmitter } from '@/composables/useEmitter'
 import { handleHTTPError } from '@/utils/http'
@@ -83,12 +103,27 @@ import api from '@/api'
 const emitter = useEmitter()
 const { t } = useI18n()
 const isSaving = ref(false)
+const isSavingSignature = ref(false)
 const userStore = useUserStore()
 const uploadInput = ref(null)
 const newUserAvatar = ref('')
 const showCropper = ref(false)
+const signatureText = ref('')
 let croppedBlob = null
 let avatarFile = null
+
+onMounted(async () => {
+  // Load current signature from user data
+  try {
+    const response = await api.getCurrentUser()
+    const userData = response?.data?.data
+    if (userData && userData.signature) {
+      signatureText.value = userData.signature
+    }
+  } catch (e) {
+    // Ignore - signature just won't be pre-populated
+  }
+})
 
 const selectAvatar = () => {
   uploadInput.value.click()
@@ -138,6 +173,23 @@ const saveUser = async () => {
     })
   } finally {
     isSaving.value = false
+  }
+}
+
+const saveSignature = async () => {
+  try {
+    isSavingSignature.value = true
+    await api.updateCurrentUserSignature({ signature: signatureText.value })
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      description: 'Signature updated successfully.'
+    })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  } finally {
+    isSavingSignature.value = false
   }
 }
 

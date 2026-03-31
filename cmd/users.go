@@ -606,3 +606,32 @@ func validateAgentRequest(r *fastglue.Request, req *agentReq) error {
 
 	return nil
 }
+
+type signatureReq struct {
+	Signature string `json:"signature"`
+}
+
+// handleUpdateAgentSignature updates the current agent's email signature.
+func handleUpdateAgentSignature(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+		req   signatureReq
+	)
+
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.errorParsing", "name", "{globals.terms.request}"), nil, envelope.InputError)
+	}
+
+	if err := app.user.UpdateAgentSignature(auser.ID, req.Signature); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Fetch updated agent and return.
+	agent, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	return r.SendEnvelope(agent)
+}

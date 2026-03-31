@@ -44,6 +44,7 @@ SELECT
     u.api_key,
     u.api_key_last_used_at,
     u.api_secret,
+    u.signature,
     array_agg(DISTINCT r.name) FILTER (WHERE r.name IS NOT NULL) AS roles,
     COALESCE(
         (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'emoji', t.emoji))
@@ -240,6 +241,7 @@ SELECT
     u.api_key,
     u.api_key_last_used_at,
     u.api_secret,
+    u.signature,
     array_agg(DISTINCT r.name) FILTER (WHERE r.name IS NOT NULL) AS roles,
     COALESCE(
         (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'emoji', t.emoji))
@@ -284,3 +286,8 @@ DO UPDATE SET updated_at = now(),
 first_name = CASE WHEN EXCLUDED.first_name != '' THEN EXCLUDED.first_name ELSE users.first_name END,
 last_name = CASE WHEN EXCLUDED.first_name != '' THEN EXCLUDED.last_name ELSE users.last_name END
 RETURNING id;
+
+-- name: update-agent-signature
+UPDATE users
+SET signature = $1, updated_at = now()
+WHERE id = $2 AND type = 'agent';

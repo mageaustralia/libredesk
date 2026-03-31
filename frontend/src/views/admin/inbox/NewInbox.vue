@@ -68,6 +68,9 @@
         <div v-if="selectedChannel === 'email'">
           <EmailInboxForm :initial-values="{}" :submitForm="submitForm" :isLoading="isLoading" />
         </div>
+        <div v-else-if="selectedChannel === 'messenger' || selectedChannel === 'instagram'">
+          <MessengerInboxForm :initial-values="{}" :submitForm="submitMessengerForm" :isLoading="isLoading" :channel="selectedChannel" />
+        </div>
       </div>
 
       <div v-else>
@@ -84,7 +87,7 @@ import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'vue-router'
 import { CustomBreadcrumb } from '@/components/ui/breadcrumb/index.js'
-import { Check, Mail } from 'lucide-vue-next'
+import { Check, Mail, MessageCircle, Instagram } from 'lucide-vue-next'
 import MenuCard from '@/components/layout/MenuCard.vue'
 import {
   Stepper,
@@ -94,6 +97,7 @@ import {
   StepperTitle
 } from '@/components/ui/stepper'
 import EmailInboxForm from '@/features/admin/inbox/EmailInboxForm.vue'
+import MessengerInboxForm from '@/features/admin/inbox/MessengerInboxForm.vue'
 import api from '@/api'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { useEmitter } from '@/composables/useEmitter'
@@ -133,12 +137,32 @@ const selectEmailChannel = () => {
   selectChannel('email')
 }
 
+const selectMessengerChannel = () => {
+  selectChannel('messenger')
+}
+
+const selectInstagramChannel = () => {
+  selectChannel('instagram')
+}
+
 const channels = [
   {
     title: t('globals.terms.email'),
     subTitle: t('admin.inbox.createEmailInbox'),
     onClick: selectEmailChannel,
     icon: Mail
+  },
+  {
+    title: 'Messenger',
+    subTitle: 'Receive and reply to Facebook Page messages',
+    onClick: selectMessengerChannel,
+    icon: MessageCircle
+  },
+  {
+    title: 'Instagram',
+    subTitle: 'Receive and reply to Instagram Direct Messages',
+    onClick: selectInstagramChannel,
+    icon: Instagram
   }
 ]
 
@@ -149,6 +173,24 @@ const goBack = () => {
 
 const goInboxList = () => {
   router.push('/admin/inboxes')
+}
+
+const submitMessengerForm = (values) => {
+  const channelName = selectedChannel.value.toLowerCase()
+  const payload = {
+    name: values.name,
+    from: values.page_id || values.ig_account_id || 'messenger',
+    channel: channelName,
+    config: {
+      page_id: values.page_id || '',
+      ig_account_id: values.ig_account_id || '',
+      page_access_token: values.page_access_token,
+      app_secret: values.app_secret || '',
+      verify_token: values.verify_token,
+      auto_assign_on_reply: values.auto_assign_on_reply || false
+    }
+  }
+  createInbox(payload)
 }
 
 const submitForm = (values) => {

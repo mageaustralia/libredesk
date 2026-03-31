@@ -240,6 +240,7 @@ const updateCurrentUser = (data) =>
   })
 const getUser = (id) => http.get(`/api/v1/agents/${id}`)
 const deleteUserAvatar = () => http.delete('/api/v1/agents/me/avatar')
+const updateCurrentUserSignature = (data) => http.put("/api/v1/agents/me/signature", data)
 const getCurrentUser = () => http.get('/api/v1/agents/me')
 const getCurrentUserTeams = () => http.get('/api/v1/agents/me/teams')
 const updateCurrentUserAvailability = (data) => http.put('/api/v1/agents/me/availability', data, {
@@ -693,6 +694,7 @@ export default {
   updateTemplate,
   deleteTemplate,
   deleteUserAvatar,
+  updateCurrentUserSignature,
   createTag,
   updateTag,
   deleteTag,
