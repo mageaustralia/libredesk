@@ -37,10 +37,16 @@
       </Button>
     </div>
 
-    <!-- From, To, CC, and BCC fields -->
+    <!-- From, To, CC, and BCC fields (email only) -->
+    <div v-if="!isEmailChannel && (messageType === 'reply')" :class="['px-2 py-1 mb-3 rounded bg-muted/50']">
+      <p class="text-xs text-muted-foreground">
+        <span class="font-medium">{{ conversationStore.current?.inbox_channel === 'instagram' ? 'Instagram' : 'Messenger' }}</span>
+        &mdash; plain text only, no formatting
+      </p>
+    </div>
     <div
       :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
-      v-if="messageType === 'reply' || messageType === 'forward'"
+      v-if="isEmailChannel && (messageType === 'reply' || messageType === 'forward')"
     >
       <!-- From inbox selector -->
       <div class="flex items-center space-x-2" v-if="inboxes.length > 1">
@@ -323,6 +329,10 @@ const emit = defineEmits([
 ])
 
 const conversationStore = useConversationStore()
+const isEmailChannel = computed(() => {
+  const ch = conversationStore.current?.inbox_channel
+  return !ch || ch === 'email'
+})
 const emitter = useEmitter()
 const { t } = useI18n()
 const insertContent = ref(null)

@@ -472,11 +472,21 @@ func (e *Email) processEnvelope(ctx context.Context, client *imapclient.Client, 
 func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, incomingMsg models.IncomingMessage) error {
 	envelope, err := enmime.ReadEnvelope(item.Literal)
 	if err != nil {
-		e.lo.Error("error parsing email envelope", "error", err, "message_id", incomingMsg.Message.SourceID.String)
-		for _, err := range envelope.Errors {
-			e.lo.Error("error parsing email envelope. envelope_error: ", "error", err.Error(), "message_id", incomingMsg.Message.SourceID.String)
+		// enmime returns an error for HTML-only emails ("Plain Text from HTML").
+		// This is a warning — the envelope is still usable. Ignore this error.
+		if !strings.Contains(err.Error(), "Plain Text from HTML") {
+			e.lo.Error("error parsing email envelope", "error", err, "message_id", incomingMsg.Message.SourceID.String)
+			if envelope != nil {
+				for _, enErr := range envelope.Errors {
+					e.lo.Error("envelope error detail", "error", enErr.Error(), "message_id", incomingMsg.Message.SourceID.String)
+				}
+			}
+			return fmt.Errorf("parsing email envelope: %w", err)
 		}
-		return fmt.Errorf("parsing email envelope: %w", err)
+		e.lo.Debug("enmime: HTML-only email, no text/plain part (continuing)", "message_id", incomingMsg.Message.SourceID.String)
+	}
+	if envelope == nil {
+		return fmt.Errorf("nil envelope for message %s", incomingMsg.Message.SourceID.String)
 	}
 
 	// Log any envelope errors.
@@ -560,22 +570,39 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
-	// Skip outgoing emails that arrived via BCC (e.g., abandoned cart emails sent by Maho).
-	// If the From address domain matches the inbox domain, this is our own system email — not a customer message.
+		// Skip outgoing BCC copies: emails sent BY the system (e.g., abandoned cart reminders)
+	// that land back in the inbox because the system BCCs itself.
+	// Detection: if From is a same-domain address (but not the inbox itself), AND
+	// the inbox address does NOT appear in To/CC/Delivered-To, it's a BCC copy.
+	// If the email is addressed TO the inbox, it's always inbound — process it.
 	{
 		fromEmail := strings.ToLower(incomingMsg.Contact.Email.String)
 		fromDomain := ""
 		if parts := strings.SplitN(fromEmail, "@", 2); len(parts) == 2 {
 			fromDomain = parts[1]
 		}
-		inboxDomain := ""
 		inboxAddr, _ := stringutil.ExtractEmail(e.FromAddress())
-		if parts := strings.SplitN(strings.ToLower(inboxAddr), "@", 2); len(parts) == 2 {
+		inboxAddr = strings.ToLower(inboxAddr)
+		inboxDomain := ""
+		if parts := strings.SplitN(inboxAddr, "@", 2); len(parts) == 2 {
 			inboxDomain = parts[1]
 		}
+
 		if fromDomain != "" && fromDomain == inboxDomain && fromEmail != inboxAddr {
-			e.lo.Info("skipping own outgoing email (BCC copy)", "from", fromEmail, "inbox", inboxAddr, "subject", envelope.GetHeader("Subject"))
-			return nil
+			// Same-domain sender. Check if the inbox is in To/CC/Delivered-To.
+			recipientHeaders := strings.ToLower(
+				envelope.GetHeader("To") + " " +
+					envelope.GetHeader("CC") + " " +
+					envelope.GetHeader("Delivered-To") + " " +
+					envelope.GetHeader("X-Original-To"))
+
+			addressedToInbox := strings.Contains(recipientHeaders, inboxAddr)
+
+			if !addressedToInbox {
+				e.lo.Info("skipping own outgoing email (BCC copy)", "from", fromEmail, "inbox", inboxAddr, "subject", envelope.GetHeader("Subject"))
+				return nil
+			}
+			e.lo.Debug("same-domain sender but addressed to inbox, treating as inbound", "from", fromEmail, "inbox", inboxAddr, "subject", envelope.GetHeader("Subject"))
 		}
 	}
 

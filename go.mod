@@ -30,6 +30,8 @@ require (
 	github.com/knadh/smtppool v1.1.0
 	github.com/knadh/stuffbin v1.3.0
 	github.com/lib/pq v1.10.9
+	github.com/mageaustralia/go-pci-scrub v0.2.0
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mr-karan/balance v0.0.0-20250317053523-d32c6ade6cf1
 	github.com/redis/go-redis/v9 v9.5.5
 	github.com/rhnvrm/simples3 v0.10.1
@@ -91,9 +93,7 @@ require (
 	github.com/jaytaylor/html2text v0.0.0-20230321000545-74c2419ad056 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
-	github.com/mageaustralia/go-pci-scrub v0.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect

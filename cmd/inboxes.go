@@ -13,6 +13,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/inbox"
 	"github.com/abhinavxd/libredesk/internal/inbox/channel/email/oauth"
+	"github.com/abhinavxd/libredesk/internal/inbox/channel/messenger"
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -180,10 +181,6 @@ func handleDeleteInbox(r *fastglue.Request) error {
 
 // validateInbox validates the inbox
 func validateInbox(app *App, inb imodels.Inbox) error {
-	// Validate from address.
-	if _, err := mail.ParseAddress(inb.From); err != nil {
-		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.invalidFromAddress"), nil)
-	}
 	if len(inb.Config) == 0 {
 		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.empty", "name", "config"), nil)
 	}
@@ -194,9 +191,17 @@ func validateInbox(app *App, inb imodels.Inbox) error {
 		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.empty", "name", "channel"), nil)
 	}
 
-	// Validate email channel config.
-	if inb.Channel == inbox.ChannelEmail {
+	switch inb.Channel {
+	case inbox.ChannelEmail:
+		// Validate from address for email channels.
+		if _, err := mail.ParseAddress(inb.From); err != nil {
+			return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.invalidFromAddress"), nil)
+		}
 		if err := validateEmailConfig(app, inb.Config); err != nil {
+			return err
+		}
+	case inbox.ChannelMessenger, inbox.ChannelInstagram:
+		if err := validateMessengerConfig(app, inb.Config); err != nil {
 			return err
 		}
 	}
@@ -263,6 +268,24 @@ func validateEmailConfig(app *App, configJSON json.RawMessage) error {
 		}
 	}
 
+	return nil
+}
+
+// validateMessengerConfig validates messenger/instagram inbox configuration.
+func validateMessengerConfig(app *App, configJSON json.RawMessage) error {
+	var cfg messenger.MetaConfig
+	if err := json.Unmarshal(configJSON, &cfg); err != nil {
+		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.invalid", "name", "config"), nil)
+	}
+	if cfg.PageAccessToken == "" {
+		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.empty", "name", "page_access_token"), nil)
+	}
+	if cfg.PageID == "" && cfg.IGAccountID == "" {
+		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.empty", "name", "page_id or ig_account_id"), nil)
+	}
+	if cfg.VerifyToken == "" {
+		return envelope.NewError(envelope.InputError, app.i18n.Ts("globals.messages.empty", "name", "verify_token"), nil)
+	}
 	return nil
 }
 

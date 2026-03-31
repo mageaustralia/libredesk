@@ -1,0 +1,26 @@
+diff --git a/docker-compose.yml b/docker-compose.yml
+index e81f9f02..47e40974 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -3,7 +3,7 @@ services:
+   app:
+     build:
+       context: .
+-      dockerfile: Dockerfile.custom
++      dockerfile: Dockerfile
+     container_name: libredesk_app
+     restart: unless-stopped
+     ports:
+diff --git a/frontend/src/features/conversation/sidebar/ConversationSideBarContact.vue b/frontend/src/features/conversation/sidebar/ConversationSideBarContact.vue
+index d3c3dfcf..22dcc0be 100644
+--- a/frontend/src/features/conversation/sidebar/ConversationSideBarContact.vue
++++ b/frontend/src/features/conversation/sidebar/ConversationSideBarContact.vue
+@@ -22,7 +22,7 @@
+         <Skeleton class="w-24 h-4" />
+       </span>
+       <span v-else>
+-        {{ conversation?.contact?.first_name + ' ' + conversation?.contact?.last_name + (conversation?.reference_number ? ' #' + conversation.reference_number : '') + (conversation?.subject ? ' - ' + conversation.subject : '') }}
++        {{ conversation?.contact?.first_name + ' ' + conversation?.contact?.last_name }}
+       </span>
+       <ExternalLink
+         v-if="!conversationStore.conversation.loading && userStore.can('contacts:read')"

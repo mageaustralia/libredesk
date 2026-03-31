@@ -132,6 +132,24 @@ func (m *Inbox) ClearPasswords() error {
 
 		m.Config = clearedConfig
 
+	case "messenger", "instagram":
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(m.Config, &cfg); err != nil {
+			return err
+		}
+		dummyPassword := strings.Repeat(stringutil.PasswordDummy, 10)
+		if _, ok := cfg["page_access_token"]; ok {
+			cfg["page_access_token"] = dummyPassword
+		}
+		if _, ok := cfg["app_secret"]; ok {
+			cfg["app_secret"] = dummyPassword
+		}
+		clearedConfig, err := json.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		m.Config = clearedConfig
+
 	default:
 		return nil
 	}

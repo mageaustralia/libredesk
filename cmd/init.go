@@ -31,6 +31,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/importer"
 	"github.com/abhinavxd/libredesk/internal/inbox"
 	"github.com/abhinavxd/libredesk/internal/inbox/channel/email"
+	"github.com/abhinavxd/libredesk/internal/inbox/channel/messenger"
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	"github.com/abhinavxd/libredesk/internal/macro"
 	"github.com/abhinavxd/libredesk/internal/media"
@@ -657,9 +658,30 @@ func initEmailInbox(inboxRecord imodels.Inbox, msgStore inbox.MessageStore, usrS
 		return nil, fmt.Errorf("initializing `%s` inbox: `%s` error : %w", inboxRecord.Channel, inboxRecord.Name, err)
 	}
 
-	log.Printf("`%s` inbox successfully initialized", inboxRecord.Name)
+		log.Printf(" %s inbox successfully initialized", inboxRecord.Name, inboxRecord.Channel)
 
 	return inbox, nil
+}
+
+// initMessengerInbox loads config and initializes a messenger/instagram inbox.
+func initMessengerInbox(inboxRecord imodels.Inbox, msgStore inbox.MessageStore, usrStore inbox.UserStore) (inbox.Inbox, error) {
+	var cfg messenger.MetaConfig
+	if err := json.Unmarshal(inboxRecord.Config, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshalling %s config for inbox %s: %w", inboxRecord.Channel, inboxRecord.Name, err)
+	}
+
+	inb, err := messenger.New(msgStore, usrStore, messenger.Opts{
+		ID:      inboxRecord.ID,
+		Channel: inboxRecord.Channel,
+		Config:  cfg,
+		Lo:      initLogger(inboxRecord.Channel + "_inbox"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initializing %s inbox %s: %w", inboxRecord.Channel, inboxRecord.Name, err)
+	}
+
+		log.Printf(" %s inbox successfully initialized", inboxRecord.Name, inboxRecord.Channel)
+	return inb, nil
 }
 
 // makeInboxInitializer creates an inbox initializer function.
@@ -668,6 +690,8 @@ func makeInboxInitializer(mgr *inbox.Manager) func(imodels.Inbox, inbox.MessageS
 		switch inboxR.Channel {
 		case inbox.ChannelEmail:
 			return initEmailInbox(inboxR, msgStore, usrStore, mgr)
+		case inbox.ChannelMessenger, inbox.ChannelInstagram:
+			return initMessengerInbox(inboxR, msgStore, usrStore)
 		default:
 			return nil, fmt.Errorf("unknown inbox channel: %s", inboxR.Channel)
 		}

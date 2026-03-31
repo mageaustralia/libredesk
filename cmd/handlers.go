@@ -171,6 +171,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/agents/me/teams", auth(handleGetCurrentAgentTeams))
 	g.PUT("/api/v1/agents/me/availability", auth(handleUpdateAgentAvailability))
 	g.DELETE("/api/v1/agents/me/avatar", auth(handleDeleteCurrentAgentAvatar))
+	g.PUT("/api/v1/agents/me/signature", auth(handleUpdateAgentSignature))
 
 	g.GET("/api/v1/agents/compact", auth(handleGetAgentsCompact))
 	g.GET("/api/v1/agents", perm(handleGetAgents, "users:manage"))
@@ -339,6 +340,10 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	// Public pages.
 	g.GET("/csat/{uuid}", handleShowCSAT)
 	g.POST("/csat/{uuid}", handleUpdateCSATResponse)
+
+	// Meta (Messenger/Instagram) webhook endpoints (public, no auth).
+	g.GET("/webhooks/meta", handleMetaWebhookVerify)
+	g.POST("/webhooks/meta", handleMetaWebhook)
 
 	// Health check.
 	g.GET("/health", handleHealthCheck)

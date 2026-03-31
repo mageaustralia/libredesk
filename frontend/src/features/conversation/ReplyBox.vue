@@ -640,7 +640,13 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
     }
   }
 
-  await fetchInboxSignature(selectedInboxId.value)
+  // Only fetch signatures for email channels
+  const inboxChannel = conv?.inbox_channel
+  if (!inboxChannel || inboxChannel === 'email') {
+    await fetchInboxSignature(selectedInboxId.value)
+  } else {
+    inboxSignature.value = ''
+  }
 
   // Wait for draft to load, then insert signature if editor is empty
   setTimeout(() => {
