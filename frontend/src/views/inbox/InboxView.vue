@@ -79,6 +79,8 @@ watch(
     if (oldName && oldName.includes('conversation') && newName && !newName.includes('conversation')) {
       const listType = type.value || 'assigned'
       conversationStore.restoreViewFilters(listType, teamID.value || 0, viewID.value || 0)
+      // Re-fetch list with restored filters (list may have been invalidated while viewing the conversation)
+      conversationStore.resetAndRefetch()
     }
   }
 )
