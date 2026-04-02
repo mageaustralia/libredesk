@@ -727,12 +727,21 @@ const handleAiPromptSelected = async (key) => {
 const handleGenerateResponse = async (includeEcommerce = false) => {
   isGenerating.value = true
   try {
-    const messages = conversationStore.conversationMessages
-      .filter(m => !m.private && m.content)
+    const allMessages = conversationStore.conversationMessages
+      .filter(m => m.content)
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .slice(-10)
 
-    if (!messages.length) {
+    // Public messages for conversation thread (last 7, oldest-first so AI sees chronology)
+    const publicMessages = allMessages
+      .filter(m => !m.private)
+      .slice(-7)
+
+    // Private/internal notes (last 5) — shown to AI as internal context only
+    const privateNotes = allMessages
+      .filter(m => m.private)
+      .slice(-5)
+
+    if (!publicMessages.length) {
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
         variant: "destructive",
         description: "No messages found in conversation"
@@ -740,12 +749,31 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       return
     }
 
-    const conversationText = messages.map(m => {
+    const formatDate = (iso) => {
+      try {
+        return new Date(iso).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      } catch { return '' }
+    }
+
+    const conversationText = publicMessages.map((m, idx) => {
       const doc = new DOMParser().parseFromString(m.content || "", "text/html")
       const text = doc.body.textContent || ""
       const role = m.type === "incoming" ? "Customer" : "Agent"
-      return role + ": " + text.trim()
+      const date = formatDate(m.created_at)
+      const isLatest = idx === publicMessages.length - 1 ? " [MOST RECENT MESSAGE — respond to this]" : ""
+      return `[${date}] ${role}${isLatest}: ${text.trim()}`
     }).join("\n\n")
+
+    // Append private/internal notes as separate context block
+    let internalNotes = ""
+    if (privateNotes.length > 0) {
+      internalNotes = "\n\n---\nINTERNAL AGENT NOTES (not visible to customer — use to inform your tone and response):\n"
+      internalNotes += privateNotes.map(m => {
+        const doc = new DOMParser().parseFromString(m.content || "", "text/html")
+        const text = doc.body.textContent || ""
+        return `[${formatDate(m.created_at)}] ${text.trim()}`
+      }).join("\n\n")
+    }
 
     if (!conversationText.trim()) {
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
@@ -772,7 +800,7 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current.id,
       inbox_id: selectedInboxId.value || conversationStore.current?.inbox_id || 0,
-      customer_message: conversationText,
+      customer_message: conversationText + internalNotes,
       include_ecommerce: includeEcommerce,
       agent_instructions: agentInstructions
     })

@@ -366,6 +366,8 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	if systemPrompt == "" {
 		systemPrompt = `You are a customer support agent for {{site_name}}. You ARE the staff — write as a team member, never as a middleman or bot. Do not say "I'll check with the team" or "I'll get back to you" — you are responding on behalf of the business directly.
 
+Today is {{today}}.
+
 ## Your role
 - Answer customer enquiries helpfully and accurately using the context provided below.
 - When multiple products or options are relevant, list ALL of them (not just the top match) so the customer can compare. Include prices, stock status, and links where available.
@@ -397,6 +399,9 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 - Never fabricate product details, prices, or policies not found in the context.
 - When linking to products, use the full URL from search results.`
 	}
+	// Inject current date so AI knows what "today" and "recently" means
+	now := time.Now().In(time.FixedZone("AEST", 10*60*60))
+	systemPrompt = strings.ReplaceAll(systemPrompt, "{{today}}", fmt.Sprintf("%s %d %s %d", now.Weekday(), now.Day(), now.Month(), now.Year()))
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{site_name}}", ko.String("app.site_name"))
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{context}}", contextStr)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{macros}}", macrosStr)
