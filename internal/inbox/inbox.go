@@ -338,6 +338,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
 			Signature            string            `json:"signature"`
 			EmailAliases         []string          `json:"email_aliases"`
+			SkipPCIScan          bool              `json:"skip_pci_scan"`
 		}
 		var updateCfg struct {
 			AuthType             string            `json:"auth_type"`
@@ -348,6 +349,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
 			Signature            string            `json:"signature"`
 			EmailAliases         []string          `json:"email_aliases"`
+			SkipPCIScan          bool              `json:"skip_pci_scan"`
 		}
 
 		if err := json.Unmarshal(current.Config, &currentCfg); err != nil {
