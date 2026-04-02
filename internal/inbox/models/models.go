@@ -40,6 +40,7 @@ type Config struct {
 	AutoAssignOnReply    bool         `json:"auto_assign_on_reply"`   // Auto-assign conversation to agent when they reply to unassigned ticket
 	Signature            string       `json:"signature"`              // HTML signature template with placeholders like {{agent.first_name}}
 	EmailAliases         []string     `json:"email_aliases"`          // Additional email addresses that forward to this inbox (filtered from CC)
+	SkipPCIScan          bool         `json:"skip_pci_scan"`           // Skip PCI (credit card) scanning for incoming messages on this inbox
 }
 
 // OAuthConfig holds OAuth 2.0 authentication details.

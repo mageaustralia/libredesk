@@ -86,6 +86,19 @@
         </FormControl>
       </FormItem>
     </FormField>
+    <FormField v-if="showFormFields" v-slot="{ componentField, handleChange }" name="skip_pci_scan">
+      <FormItem class="flex flex-row items-center justify-between box p-4">
+        <div class="space-y-0.5">
+          <FormLabel class="text-base">Skip PCI scanning</FormLabel>
+          <FormDescription>
+            Disable credit card / payment data detection for this inbox. Use for inboxes that receive automated payment notifications where card data is already masked by the sender.
+          </FormDescription>
+        </div>
+        <FormControl>
+          <Switch :checked="componentField.modelValue" @update:checked="handleChange" />
+        </FormControl>
+      </FormItem>
+    </FormField>
     <!-- Email Aliases -->
     <div v-if="showFormFields" class="box p-4 space-y-2">
       <label class="text-base font-medium">Email Aliases</label>
@@ -922,6 +935,7 @@ const form = useForm({
     csat_enabled: false,
     enable_plus_addressing: true,
     auto_assign_on_reply: false,
+    skip_pci_scan: false,
     signature: '',
     auth_type: AUTH_TYPE_PASSWORD,
     imap: {

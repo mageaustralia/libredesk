@@ -658,13 +658,25 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 
 	// Check for PCI (credit card) data in incoming messages.
 	if message.Type == models.MessageIncoming {
-		result := pciscrub.ScrubWithSpans(message.TextContent)
-		if len(result.Spans) > 0 {
-			if _, err := m.q.FlagMessagePCI.Exec(message.ID); err != nil {
-				m.lo.Error("error flagging message with PCI data", "error", err, "message_id", message.ID)
-			} else {
-				message.HasPCIData = true
-				m.lo.Warn("PCI data detected in incoming message", "message_id", message.ID, "conversation_uuid", message.ConversationUUID)
+		// Check if this inbox has PCI scanning disabled.
+		skipPCI := false
+		if message.InboxID > 0 {
+			if inboxRec, err := m.inboxStore.GetDBRecord(message.InboxID); err == nil {
+				var cfg imodels.Config
+				if json.Unmarshal(inboxRec.Config, &cfg) == nil && cfg.SkipPCIScan {
+					skipPCI = true
+				}
+			}
+		}
+		if !skipPCI {
+			result := pciscrub.ScrubWithSpans(message.TextContent)
+			if len(result.Spans) > 0 {
+				if _, err := m.q.FlagMessagePCI.Exec(message.ID); err != nil {
+					m.lo.Error("error flagging message with PCI data", "error", err, "message_id", message.ID)
+				} else {
+					message.HasPCIData = true
+					m.lo.Warn("PCI data detected in incoming message", "message_id", message.ID, "conversation_uuid", message.ConversationUUID)
+				}
 			}
 		}
 	}
