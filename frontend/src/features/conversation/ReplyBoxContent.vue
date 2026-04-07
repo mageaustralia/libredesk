@@ -179,6 +179,7 @@
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
       @emojiSelect="handleEmojiSelect"
+      @editorCommand="handleEditorCommand"
       @generateResponse="handleGenerateResponse"
       @generateWithOrders="handleGenerateWithOrders"
       @sendWithStatus="handleSendWithStatus"
@@ -433,6 +434,10 @@ const handleOnFileDelete = (uuid) => {
 const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
   nextTick(() => (insertContent.value = emoji))
+}
+
+const handleEditorCommand = (command) => {
+  editorRef.value?.runCommand(command)
 }
 
 const handleAiPromptSelected = (key) => {

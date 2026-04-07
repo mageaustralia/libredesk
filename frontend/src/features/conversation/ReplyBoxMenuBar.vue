@@ -1,8 +1,30 @@
 <template>
-  <div
-    class="flex justify-between h-14 relative"
-    :class="{ 'items-end': isFullscreen, 'items-center': !isFullscreen }"
-  >
+  <div class="relative">
+    <!-- Formatting toolbar (toggled) -->
+    <div v-if="isToolbarVisible" class="flex items-center gap-1 px-2 py-1 border-t border-border bg-muted/30">
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleBold')">
+        <Bold class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleItalic')">
+        <Italic class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleBulletList')">
+        <List class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleOrderedList')">
+        <ListOrdered class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('openLink')">
+        <LinkIcon class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('insertImage')">
+        <ImageIcon class="h-3.5 w-3.5" />
+      </Toggle>
+      <div class="w-px h-4 bg-border mx-1" />
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="toggleEmojiPicker" :pressed="isEmojiPickerVisible">
+        <Smile class="h-3.5 w-3.5" />
+      </Toggle>
+    </div>
     <EmojiPicker
       ref="emojiPickerRef"
       :native="true"
@@ -10,6 +32,10 @@
       class="absolute bottom-14 left-14"
       v-if="isEmojiPickerVisible"
     />
+    <div
+      class="flex justify-between h-14"
+      :class="{ 'items-end': isFullscreen, 'items-center': !isFullscreen }"
+    >
     <div class="flex justify-items-start gap-2">
       <!-- File inputs -->
       <input type="file" class="hidden" ref="attachmentInput" multiple @change="handleFileUpload" />
@@ -25,10 +51,11 @@
       <Toggle
         class="px-2 py-2 border-0"
         variant="outline"
-        @click="toggleEmojiPicker"
-        :pressed="isEmojiPickerVisible"
+        @click="isToolbarVisible = !isToolbarVisible"
+        :pressed="isToolbarVisible"
       >
-        <Smile class="h-4 w-4" />
+        <ChevronUp v-if="isToolbarVisible" class="h-4 w-4" />
+        <ALargeSmall v-else class="h-4 w-4" />
       </Toggle>
       <Toggle
         class="px-2 py-2 border-0"
@@ -98,6 +125,7 @@
         </DropdownMenu>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -106,7 +134,7 @@ import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
-import { Paperclip, Smile, Sparkles, ShoppingCart, Zap, ChevronDown, Trash2 } from 'lucide-vue-next'
+import { Paperclip, Smile, Sparkles, ShoppingCart, Zap, ChevronDown, ChevronUp, ALargeSmall, Bold, Italic, List, ListOrdered, Link as LinkIcon, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -121,8 +149,9 @@ import { EMITTER_EVENTS } from '@/constants/emitterEvents'
 const emitter = useEmitter()
 const attachmentInput = ref(null)
 const isEmojiPickerVisible = ref(false)
+const isToolbarVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders', 'sendWithStatus', 'deleteDraft'])
+const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders', 'sendWithStatus', 'deleteDraft', 'editorCommand'])
 
 // Using defineProps for props that don't need two-way binding
 defineProps({
@@ -188,6 +217,10 @@ function handleGenerate() {
 
 function handleGenerateWithOrders() {
   emit('generateWithOrders')
+}
+
+function emitCommand(command) {
+  emit('editorCommand', command)
 }
 
 function openMacroPicker() {

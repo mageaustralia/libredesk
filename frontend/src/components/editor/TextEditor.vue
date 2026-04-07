@@ -178,6 +178,7 @@ import {
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import StarterKit from '@tiptap/starter-kit'
+import { liftListItem as pmLiftListItem } from '@tiptap/pm/schema-list'
 import Link from '@tiptap/extension-link'
 import Mention from '@tiptap/extension-mention'
 import Table from '@tiptap/extension-table'
@@ -656,6 +657,19 @@ const editor = useEditor({
         emit('send')
         return true
       }
+      // Exit list on Enter in empty list item (splitListItem bails on this case)
+      if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        const { state } = view
+        const { $from } = state.selection
+        if ($from.parent.content.size === 0 && $from.depth >= 3) {
+          const listItemType = state.schema.nodes.listItem
+          if ($from.node(-1).type === listItemType) {
+            if (pmLiftListItem(listItemType)(state, view.dispatch)) {
+              return true
+            }
+          }
+        }
+      }
     }
   },
   onUpdate: ({ editor }) => {
@@ -730,7 +744,19 @@ const focus = () => {
   editor.value?.commands.focus()
 }
 
-defineExpose({ focus, extractMentions })
+const runCommand = (command) => {
+  if (!editor.value) return
+  switch (command) {
+    case 'toggleBold': editor.value.chain().focus().toggleBold().run(); break
+    case 'toggleItalic': editor.value.chain().focus().toggleItalic().run(); break
+    case 'toggleBulletList': editor.value.chain().focus().toggleBulletList().run(); break
+    case 'toggleOrderedList': editor.value.chain().focus().toggleOrderedList().run(); break
+    case 'openLink': openLinkModal(); break
+    case 'insertImage': triggerImageUpload(); break
+  }
+}
+
+defineExpose({ focus, extractMentions, editor, runCommand })
 </script>
 
 <style lang="scss">
