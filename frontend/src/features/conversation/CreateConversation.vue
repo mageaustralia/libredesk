@@ -204,6 +204,7 @@
                 <FormControl class="flex-1 flex flex-col min-h-0">
                   <div class="flex flex-col h-full">
                     <Editor
+                      ref="createEditorRef"
                       v-model:htmlContent="componentField.modelValue"
                       @update:htmlContent="(value) => componentField.onChange(value)"
                       :placeholder="t('editor.newLine') + t('editor.ctrlK')"
@@ -242,6 +243,7 @@
             <ReplyBoxMenuBar
               :handleFileUpload="handleFileUpload"
               @emojiSelect="handleEmojiSelect"
+              @editorCommand="(cmd) => createEditorRef?.runCommand(cmd)"
               :showSendButton="false"
             />
             <Button type="submit" :disabled="isDisabled" :isLoading="loading">
@@ -316,6 +318,7 @@ const emailQuery = ref('')
 const conversationStore = useConversationStore()
 const macroStore = useMacroStore()
 const insertContent = ref('')
+const createEditorRef = ref(null)
 const showCc = ref(false)
 const showBcc = ref(false)
 const ccEmails = ref('')
