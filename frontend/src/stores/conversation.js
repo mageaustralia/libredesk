@@ -561,7 +561,7 @@ export const useConversationStore = defineStore('conversation', () => {
     if (filters) conversations.listFilters = [...filters]
     // Merge ad-hoc filters
     if (conversations.adHocFilters && conversations.adHocFilters.length > 0) {
-      const validAdHoc = conversations.adHocFilters.filter(f => f.value && f.value !== "[]" && f.value !== "")
+      const validAdHoc = conversations.adHocFilters.filter(f => (f.value && f.value !== "[]" && f.value !== "") || f.operator === 'not set' || f.operator === 'set')
       filters = [...filters, ...validAdHoc]
     }
     if (conversations.status && conversations.status.length > 0 && conversations.listType !== CONVERSATION_LIST_TYPE.VIEW && conversations.listType !== CONVERSATION_LIST_TYPE.SPAM && conversations.listType !== CONVERSATION_LIST_TYPE.TRASH) {

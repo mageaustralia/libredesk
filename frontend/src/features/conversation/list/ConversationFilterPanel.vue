@@ -569,8 +569,17 @@ function syncFromStore() {
 
   const agentFilter = adHoc.find(f => f.field === 'assigned_user_id')
   if (agentFilter) {
-    agentMode.value = agentFilter.operator === 'not_in' ? 'exclude' : 'include'
-    try { selectedAgents.value = JSON.parse(agentFilter.value) } catch { selectedAgents.value = [] }
+    if (agentFilter.operator === 'not set') {
+      agentMode.value = 'include'
+      selectedAgents.value = ['unassigned']
+    } else if (agentFilter.operator === 'set') {
+      agentMode.value = 'exclude'
+      selectedAgents.value = ['unassigned']
+    } else {
+      agentMode.value = agentFilter.operator === 'not_in' ? 'exclude' : 'include'
+      const ids = (() => { try { return JSON.parse(agentFilter.value) } catch { return [] } })()
+      selectedAgents.value = agentFilter.operator === 'in_or_null' ? [...ids, 'unassigned'] : ids
+    }
   } else { agentMode.value = 'include'; selectedAgents.value = [] }
 
   const teamFilter = adHoc.find(f => f.field === 'assigned_team_id')
