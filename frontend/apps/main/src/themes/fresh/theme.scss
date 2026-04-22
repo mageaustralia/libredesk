@@ -1,0 +1,319 @@
+// Fresh-inspired theme for Libredesk
+// Activated by [data-theme="fresh"] class on root element
+
+[data-theme="fresh"] {
+  // ─── Core palette ───────────────────────────────────────
+  --background: 0 0% 100%;
+  --foreground: 220 14% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 14% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 14% 10%;
+
+  // Teal primary
+  --primary: 174 62% 33%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;
+  --secondary-foreground: 220 14% 10%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 220 9% 40%;
+  --accent: 174 40% 95%;
+  --accent-foreground: 174 62% 25%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+
+  // Borders — slightly cooler and more visible
+  --border: 220 13% 89%;
+  --input: 220 13% 89%;
+  --ring: 174 62% 33%;
+  --radius: 0.5rem;
+
+  // Canvas and special
+  --canvas: 210 20% 96%;
+  --private: 35 90% 94%;
+
+  // ─── Dark sidebar (icon rail) ───────────────────────────
+  --sidebar-background: 220 15% 16%;
+  --sidebar-foreground: 210 10% 85%;
+  --sidebar-primary: 174 62% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 15% 22%;
+  --sidebar-accent-foreground: 210 10% 92%;
+  --sidebar-border: 220 15% 20%;
+  --sidebar-ring: 174 62% 50%;
+}
+
+// ─── Typography & density ───────────────────────────────
+[data-theme="fresh"] {
+
+  // Conversation list: bolder names, tighter layout
+  // Targets ConversationListItem.vue router-link
+  .divide-y > a {
+    padding: 0.75rem 1rem;
+
+    // Contact name — make it stand out
+    h3 {
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    // Time stamp
+    .text-xs.text-gray-400 {
+      font-size: 0.6875rem;
+    }
+
+    // Message preview — slightly smaller
+    .text-sm.text-gray-600 {
+      font-size: 0.8125rem;
+      color: hsl(220 9% 46%);
+    }
+
+    // Selected conversation — teal tint instead of gray
+    &.bg-accent\/60 {
+      background-color: hsl(174 40% 95%);
+      border-left: 3px solid hsl(174 62% 33%);
+    }
+  }
+
+  // Conversation list header bar
+  .h-12.border-b {
+    background-color: hsl(0 0% 100%);
+  }
+
+  // Unread badge — use teal instead of green
+  .bg-green-600.text-white.rounded-full {
+    background-color: hsl(174 62% 33%);
+  }
+
+  // Reply indicator — teal instead of green
+  .text-green-600 {
+    color: hsl(174 62% 40%);
+  }
+
+  // ─── Buttons ──────────────────────────────────────────
+  // Primary buttons get teal
+  .bg-primary {
+    background-color: hsl(174 62% 33%);
+    &:hover {
+      background-color: hsl(174 62% 28%);
+    }
+  }
+
+  // ─── Message area improvements ────────────────────────
+  .message-bubble {
+    min-width: 90%;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  // ─── SLA badges — more subtle ─────────────────────────
+  // Make SLA badges less visually noisy when not critical
+
+  // ─── Scrollbar — teal tint ────────────────────────────
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(220 13% 82%);
+    &:hover {
+      background-color: hsl(220 13% 72%);
+    }
+  }
+}
+
+// ─── Unified scroll: disable nested scrollbars ──────────
+// In Fresh theme everything scrolls in one container.
+// Disable MessageList's own scrollbar and ReplyBox's max-height.
+
+// MessageList root: don't constrain height, let it flow naturally
+.fresh-unified-scroll > div {
+  height: auto !important;
+}
+
+// MessageList inner threadEl: no separate scroll
+.fresh-unified-scroll > div > div.overflow-y-auto {
+  overflow: visible !important;
+  flex: none !important;
+}
+
+// ReplyBoxContent: no max-height constraint
+[data-theme="fresh"] .max-h-\[600px\] {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+// ─── Messages: full width instead of 80% ────────────────
+// Default theme constrains messages to w-4/5 (80%). In Fresh
+// theme let them use the full available width.
+[data-theme="fresh"] .w-4\/5 {
+  width: 100% !important;
+}
+
+// ─── Conversation list: subject + ticket number ─────────
+[data-theme="fresh"] {
+  // Subject line styling - bold and prominent
+  .conversation-subject {
+    font-weight: 700;
+    font-size: 0.8125rem;
+    color: hsl(220 14% 10%);
+    line-height: 1.3;
+  }
+
+  // Status badges - Fresh uses colored pills
+  .conversation-status-badge {
+    letter-spacing: 0.02em;
+  }
+}
+
+// ─── Table view styles ──────────────────────────────────
+[data-theme="fresh"] {
+  .conversation-table {
+    thead {
+      background-color: hsl(210 20% 97%);
+
+      th {
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.6875rem;
+        color: hsl(220 9% 46%);
+        border-bottom: 2px solid hsl(220 13% 89%);
+      }
+    }
+
+    .conversation-table-row {
+      &:hover {
+        background-color: hsl(174 40% 97%);
+      }
+
+      &.bg-accent\/60 {
+        background-color: hsl(174 40% 95%);
+        border-left: 3px solid hsl(174 62% 33%);
+      }
+    }
+
+    // Tighter row density
+    td {
+      padding-top: 0.375rem;
+      padding-bottom: 0.375rem;
+    }
+  }
+
+  // Unread badge in table — teal
+  .conversation-table .bg-green-600 {
+    background-color: hsl(174 62% 33%);
+  }
+}
+
+// ─── Message content typography ─────────────────────────
+// Match Freshdesk's larger, more readable message font
+[data-theme="fresh"] {
+  // Base font for entire app - slightly larger
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+
+  // Message bubbles - Freshdesk-like readability
+  .message-bubble {
+    font-size: 14px;
+    line-height: 1.6;
+
+    .native-html {
+      font-size: 14px;
+      line-height: 1.6;
+      color: hsl(220 14% 15%);
+
+      p {
+        margin-bottom: 0;
+      }
+
+      // Empty paragraphs (blank lines from Enter key) — act as spacers
+      // to match the spacing seen in the compose editor.
+      p:empty,
+      p:has(br:only-child) {
+        min-height: 1em;
+      }
+
+      // Last paragraph shouldn't add trailing space
+      p:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+
+  // Message envelope (From/To/Subject header)
+  .message-envelope {
+    font-size: 13px;
+  }
+
+  // Sidebar contact info
+  .text-sm {
+    font-size: 0.8125rem;
+  }
+}
+
+
+// ─── Dark mode ──────────────────────────────────────────
+// Higher specificity than .dark or [data-theme="fresh"] alone, so it wins.
+.dark[data-theme="fresh"] {
+  --background: 220 13% 11%;
+  --foreground: 220 10% 92%;
+  --card: 220 13% 14%;
+  --card-foreground: 220 10% 92%;
+  --popover: 220 13% 16%;
+  --popover-foreground: 220 10% 92%;
+
+  --primary: 174 62% 45%;
+  --primary-foreground: 220 13% 11%;
+
+  --secondary: 220 13% 17%;
+  --secondary-foreground: 220 10% 92%;
+  --muted: 220 13% 17%;
+  --muted-foreground: 220 9% 60%;
+  --accent: 174 30% 22%;
+  --accent-foreground: 174 60% 80%;
+  --destructive: 0 70% 55%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 13% 20%;
+  --input: 220 13% 17%;
+  --ring: 174 62% 45%;
+  --radius: 0.5rem;
+
+  --canvas: 220 13% 9%;
+  --private: 35 40% 18%;
+
+  // Sidebar — already dark in light mode, just deepen it a touch
+  --sidebar-background: 220 15% 9%;
+  --sidebar-foreground: 220 10% 88%;
+  --sidebar-primary: 174 62% 50%;
+  --sidebar-primary-foreground: 220 13% 11%;
+  --sidebar-accent: 220 15% 14%;
+  --sidebar-accent-foreground: 220 10% 92%;
+  --sidebar-border: 220 15% 16%;
+  --sidebar-ring: 174 62% 50%;
+
+  // Override the hardcoded light-mode hsl() values from the typography
+  // section so they don't punch holes in the dark UI.
+  .divide-y > a {
+    .text-sm.text-gray-600 {
+      color: hsl(220 9% 65%);
+    }
+    &.bg-accent\/60 {
+      background-color: hsl(174 30% 18%);
+      border-left-color: hsl(174 62% 50%);
+    }
+  }
+  .h-12.border-b {
+    background-color: hsl(220 13% 14%);
+  }
+  // Light-mode hardcoded text color in fresh's typography section punches
+  // through on dark message bubbles. Restore foreground.
+  .message-bubble .native-html {
+    color: hsl(var(--foreground));
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(220 13% 25%);
+    &:hover {
+      background-color: hsl(220 13% 35%);
+    }
+  }
+}
