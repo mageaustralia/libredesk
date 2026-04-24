@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +23,16 @@ import (
 const (
 	defaultReadInterval   = time.Duration(5 * time.Minute)
 	defaultScanInboxSince = time.Duration(48 * time.Hour)
+)
+
+var (
+	contactFormNameRe  = regexp.MustCompile(`(?i)(?:^|\n)\s*\*?name\*?\s*:\*?\s*(.+?)\s*(?:\n|$)`)
+	contactFormEmailRe = regexp.MustCompile(`(?i)(?:^|\n)\s*\*?e-?mail\*?\s*:\*?\s*(\S+?)\s*(?:\n|$)`)
+	nameSplitRe        = regexp.MustCompile(`[._\-]+`)
+	digitsOnlyRe       = regexp.MustCompile(`^[0-9]+$`)
+	htmlBrRe           = regexp.MustCompile(`(?i)<br\s*/?>\s*`)
+	htmlTagRe          = regexp.MustCompile(`<[^>]*>`)
+	wsCollapseRe       = regexp.MustCompile(`[ \t]+`)
 )
 
 // ReadIncomingMessages reads and processes incoming messages from an IMAP server based on the provided configuration.
@@ -532,6 +544,72 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Skip BCC copies of our own outgoing emails. When the inbox itself is BCC'd on
+	// outgoing system mail (e.g. abandoned cart reminders), those messages re-enter
+	// IMAP and would otherwise spawn new conversations. Same-domain senders like
+	// noreply@ are legitimate inbound mail, so only skip when From exactly equals
+	// the inbox address AND no recipient header references the inbox.
+	{
+		fromEmail := strings.ToLower(incomingMsg.Contact.Email.String)
+		inboxAddr, _ := stringutil.ExtractEmail(e.FromAddress())
+		inboxAddr = strings.ToLower(inboxAddr)
+
+		if fromEmail != "" && fromEmail == inboxAddr {
+			recipientHeaders := strings.ToLower(
+				envelope.GetHeader("To") + " " +
+					envelope.GetHeader("CC") + " " +
+					envelope.GetHeader("Delivered-To") + " " +
+					envelope.GetHeader("X-Original-To"))
+
+			if !strings.Contains(recipientHeaders, inboxAddr) {
+				e.lo.Info("skipping own outgoing email (BCC copy)", "from", fromEmail, "inbox", inboxAddr, "subject", envelope.GetHeader("Subject"))
+				return nil
+			}
+		}
+	}
+
+	// Detect rewritten From addresses (e.g. Google Workspace DMARC forwarding to a
+	// group alias). When a forwarder rewrites From to its own alias, the real
+	// sender survives in X-Google-Original-From or Reply-To.
+	if realFirst, realLast, realEmail := extractRealSender(envelope, strings.ToLower(incomingMsg.Contact.Email.String)); realEmail != "" {
+		e.lo.Info("detected rewritten From address, using real sender",
+			"real_email", realEmail,
+			"real_name", realFirst+" "+realLast,
+			"rewritten_from", incomingMsg.Contact.Email.String)
+		incomingMsg.Contact.FirstName = realFirst
+		incomingMsg.Contact.LastName = realLast
+		incomingMsg.Contact.Email = null.NewString(realEmail, true)
+
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal(incomingMsg.Meta, &metaMap); err == nil {
+			metaMap["from"] = []string{realEmail}
+			if updated, err := json.Marshal(metaMap); err == nil {
+				incomingMsg.Meta = updated
+			}
+		}
+	}
+
+	// Detect website contact-form emails sent from a system address but containing
+	// the real customer's Name/E-mail in the body. Promote those to the contact so
+	// replies reach the actual customer.
+	if firstName, lastName, parsedEmail, ok := parseContactFormFields(envelope.Text, incomingMsg.Content); ok {
+		e.lo.Debug("parsed contact form fields from email body",
+			"parsed_name", firstName+" "+lastName,
+			"parsed_email", parsedEmail,
+			"original_from", incomingMsg.Contact.Email.String)
+		incomingMsg.Contact.FirstName = firstName
+		incomingMsg.Contact.LastName = lastName
+		incomingMsg.Contact.Email = null.NewString(parsedEmail, true)
+
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal(incomingMsg.Meta, &metaMap); err == nil {
+			metaMap["from"] = []string{strings.ToLower(parsedEmail)}
+			if updated, err := json.Marshal(metaMap); err == nil {
+				incomingMsg.Meta = updated
+			}
+		}
+	}
+
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.SourceID.String,
 		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines))
 
@@ -542,16 +620,172 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 }
 
 // getContactName extracts the contact's first and last name from the IMAP address.
+// When the From header has no display name, fall back to deriving a readable name
+// from the email local part instead of the bare host.
 func getContactName(imapAddr imap.Address) (string, string) {
 	from := strings.TrimSpace(imapAddr.Name)
 	names := strings.Fields(from)
 	if len(names) == 0 {
-		return imapAddr.Host, ""
+		return nameFromEmail(imapAddr.Addr())
 	}
 	if len(names) == 1 {
 		return names[0], ""
 	}
-	return names[0], names[1]
+	return names[0], strings.Join(names[1:], " ")
+}
+
+// nameFromEmail derives a human-readable first/last name from an email's local
+// part by splitting on common separators and dropping numeric-only segments.
+// e.g. "john.smith@x" -> ("John", "Smith"); "paul_sallemi@x" -> ("Paul", "Sallemi");
+// "sharyn@x" -> ("Sharyn", "").
+func nameFromEmail(emailAddr string) (string, string) {
+	parts := strings.SplitN(emailAddr, "@", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return emailAddr, ""
+	}
+	local := parts[0]
+	nameParts := nameSplitRe.Split(local, -1)
+	var cleaned []string
+	for _, p := range nameParts {
+		p = strings.TrimSpace(p)
+		if p != "" && !digitsOnlyRe.MatchString(p) {
+			cleaned = append(cleaned, strings.ToUpper(p[:1])+strings.ToLower(p[1:]))
+		}
+	}
+	if len(cleaned) == 0 {
+		return local, ""
+	}
+	if len(cleaned) == 1 {
+		return cleaned[0], ""
+	}
+	return cleaned[0], strings.Join(cleaned[1:], " ")
+}
+
+// extractRealSender returns the real sender's name and email when the From
+// address has been rewritten by a forwarder. Two cases handled:
+//
+//  1. X-Google-Original-From is present (Google Workspace group/alias forwarding).
+//     Used only when the original-from is an external address — if it still points
+//     at the inbox's own domain, fall through to Reply-To.
+//  2. Reply-To differs from From AND From shares a domain with To, which is the
+//     classic "self-addressed forward" pattern.
+//
+// Returns empty strings when no rewrite is detected.
+func extractRealSender(envelope *enmime.Envelope, currentFrom string) (firstName, lastName, email string) {
+	currentFrom = strings.ToLower(currentFrom)
+
+	// Use ParseAddressList so multi-recipient To headers don't silently fail.
+	toHeader := envelope.GetHeader("To")
+	toDomain := ""
+	if addrs, err := mail.ParseAddressList(toHeader); err == nil && len(addrs) > 0 {
+		if parts := strings.SplitN(strings.ToLower(addrs[0].Address), "@", 2); len(parts) == 2 {
+			toDomain = parts[1]
+		}
+	}
+
+	if origFrom := envelope.GetHeader("X-Google-Original-From"); origFrom != "" {
+		if addr, err := mail.ParseAddress(origFrom); err == nil && addr.Address != "" {
+			realEmail := strings.ToLower(addr.Address)
+			origDomain := ""
+			if parts := strings.SplitN(realEmail, "@", 2); len(parts) == 2 {
+				origDomain = parts[1]
+			}
+			if realEmail != currentFrom && origDomain != toDomain {
+				if strings.TrimSpace(addr.Name) != "" {
+					parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+					first := parts[0]
+					last := ""
+					if len(parts) > 1 {
+						last = parts[1]
+					}
+					return first, last, realEmail
+				}
+				first, last := nameFromEmail(realEmail)
+				return first, last, realEmail
+			}
+		}
+	}
+
+	if replyTo := envelope.GetHeader("Reply-To"); replyTo != "" {
+		if addr, err := mail.ParseAddress(replyTo); err == nil && addr.Address != "" {
+			realEmail := strings.ToLower(addr.Address)
+			if realEmail != currentFrom {
+				fromDomain := ""
+				if parts := strings.SplitN(currentFrom, "@", 2); len(parts) == 2 {
+					fromDomain = parts[1]
+				}
+				if fromDomain != "" && fromDomain == toDomain {
+					if strings.TrimSpace(addr.Name) != "" {
+						parts := strings.SplitN(strings.TrimSpace(addr.Name), " ", 2)
+						first := parts[0]
+						last := ""
+						if len(parts) > 1 {
+							last = parts[1]
+						}
+						return first, last, realEmail
+					}
+					first, last := nameFromEmail(realEmail)
+					return first, last, realEmail
+				}
+			}
+		}
+	}
+
+	return "", "", ""
+}
+
+// parseContactFormFields extracts a real customer's name and email from a website
+// contact-form email body when the email is sent from a system address. Looks for
+// "Name:" and "Email:"/"E-mail:" labels in plain text (or HTML stripped to text).
+// Returns found=false when both labels are not present or the email is invalid.
+func parseContactFormFields(plainText, html string) (firstName, lastName, email string, found bool) {
+	text := plainText
+	if text == "" && html != "" {
+		text = html
+		text = htmlBrRe.ReplaceAllString(text, "\n")
+		text = htmlTagRe.ReplaceAllString(text, "")
+		text = strings.ReplaceAll(text, "&amp;", "&")
+		text = strings.ReplaceAll(text, "&lt;", "<")
+		text = strings.ReplaceAll(text, "&gt;", ">")
+		text = strings.ReplaceAll(text, "&nbsp;", " ")
+		text = strings.ReplaceAll(text, "&#39;", "'")
+		text = strings.ReplaceAll(text, "&quot;", "\"")
+		text = wsCollapseRe.ReplaceAllString(text, " ")
+		lines := strings.Split(text, "\n")
+		for i, line := range lines {
+			lines[i] = strings.TrimSpace(line)
+		}
+		text = strings.Join(lines, "\n")
+	}
+
+	if text == "" {
+		return "", "", "", false
+	}
+
+	nameMatch := contactFormNameRe.FindStringSubmatch(text)
+	emailMatch := contactFormEmailRe.FindStringSubmatch(text)
+
+	if nameMatch == nil || emailMatch == nil {
+		return "", "", "", false
+	}
+
+	name := strings.TrimSpace(nameMatch[1])
+	parsedEmail := strings.TrimSpace(emailMatch[1])
+
+	// Reject malformed addresses so downstream SMTP/dedup never sees garbage.
+	if _, err := mail.ParseAddress(parsedEmail); err != nil {
+		return "", "", "", false
+	}
+
+	names := strings.Fields(name)
+	if len(names) == 0 {
+		return "", "", "", false
+	}
+
+	if len(names) == 1 {
+		return names[0], "", strings.ToLower(parsedEmail), true
+	}
+	return names[0], strings.Join(names[1:], " "), strings.ToLower(parsedEmail), true
 }
 
 // isAutoReply checks if a given email envelope indicates an auto-reply message.
