@@ -137,7 +137,7 @@ func (e *Email) processMailbox(ctx context.Context, scanInboxSince time.Duration
 		return fmt.Errorf("error searching messages: %w", err)
 	}
 
-	return e.fetchAndProcessMessages(ctx, client, searchResults, e.Identifier())
+	return e.fetchAndProcessMessages(ctx, client, searchResults, e.Identifier(), cfg.Mailbox)
 }
 
 // searchMessages searches for messages in the specified time range.
@@ -168,7 +168,7 @@ func (e *Email) searchMessages(client *imapclient.Client, since time.Time) (*ima
 }
 
 // fetchAndProcessMessages fetches and processes messages based on the search results.
-func (e *Email) fetchAndProcessMessages(ctx context.Context, client *imapclient.Client, searchResults *imap.SearchData, inboxID int) error {
+func (e *Email) fetchAndProcessMessages(ctx context.Context, client *imapclient.Client, searchResults *imap.SearchData, inboxID int, mailbox string) error {
 	seqSet := imap.SeqSet{}
 	if searchResults.Min > 0 && searchResults.Max > 0 {
 		e.lo.Debug("using ESEARCH range", "min", searchResults.Min, "max", searchResults.Max, "inbox_id", inboxID)
@@ -312,7 +312,7 @@ func (e *Email) fetchAndProcessMessages(ctx context.Context, client *imapclient.
 		}
 
 		// Process the envelope.
-		if err := e.processEnvelope(ctx, client, msgData.env, msgData.seqNum, inboxID, msgData.extractedMessageID); err != nil && err != context.Canceled {
+		if err := e.processEnvelope(ctx, client, msgData.env, msgData.seqNum, inboxID, msgData.extractedMessageID, mailbox); err != nil && err != context.Canceled {
 			e.lo.Error("error processing envelope", "error", err)
 		}
 	}
@@ -321,7 +321,7 @@ func (e *Email) fetchAndProcessMessages(ctx context.Context, client *imapclient.
 }
 
 // processEnvelope processes a single email envelope.
-func (e *Email) processEnvelope(ctx context.Context, client *imapclient.Client, env *imap.Envelope, seqNum uint32, inboxID int, extractedMessageID string) error {
+func (e *Email) processEnvelope(ctx context.Context, client *imapclient.Client, env *imap.Envelope, seqNum uint32, inboxID int, extractedMessageID, mailbox string) error {
 	if len(env.From) == 0 {
 		e.lo.Warn("no sender received for email", "message_id", env.MessageID)
 		return nil
@@ -410,12 +410,13 @@ func (e *Email) processEnvelope(ctx context.Context, client *imapclient.Client, 
 		return fmt.Errorf("marshalling meta: %w", err)
 	}
 	incomingMsg := models.IncomingMessage{
-		Channel:  ChannelEmail,
-		InboxID:  inboxID,
-		Contact:  contact,
-		Subject:  env.Subject,
-		SourceID: null.StringFrom(messageID),
-		Meta:     meta,
+		Channel:     ChannelEmail,
+		InboxID:     inboxID,
+		Contact:     contact,
+		Subject:     env.Subject,
+		SourceID:    null.StringFrom(messageID),
+		Meta:        meta,
+		MailboxName: mailbox,
 	}
 
 	// Fetch full message body.

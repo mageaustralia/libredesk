@@ -98,6 +98,18 @@
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <Button
+        v-if="route.params.type !== 'trash' && route.params.type !== 'spam'"
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        :disabled="bulkLoading"
+        @click="bulkMoveToTrash"
+      >
+        <Trash2 class="w-3 h-3 mr-1" />
+        {{ t('conversation.trash') }}
+      </Button>
+
       <Loader2 v-if="bulkLoading" class="w-4 h-4 animate-spin text-muted-foreground ml-2" />
 
       <Button
@@ -305,7 +317,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutList, Table2 } from 'lucide-vue-next'
+import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutList, Table2, Trash2 } from 'lucide-vue-next'
 import { Button } from '@shared-ui/components/ui/button'
 import { Checkbox } from '@shared-ui/components/ui/checkbox'
 import {
@@ -437,6 +449,10 @@ const bulkUpdateStatus = (status) => {
 
 const bulkUpdatePriority = (priority) => {
   runBulkAction((uuid) => api.updateConversationPriority(uuid, { priority }))
+}
+
+const bulkMoveToTrash = () => {
+  runBulkAction((uuid) => api.moveToTrash(uuid))
 }
 
 const hasConversations = computed(() => conversationStore.conversationsList.length !== 0)

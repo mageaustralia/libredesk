@@ -17,12 +17,17 @@ const viewID = computed(() => route.params.viewID)
 
 const conversationStore = useConversationStore()
 
+// Spam and trash views ignore status filtering — they show every conversation
+// in their bucket regardless of Open/Snoozed/Resolved/Closed.
+const isStatusUnfilteredView = (t) => t === CONVERSATION_LIST_TYPE.SPAM || t === CONVERSATION_LIST_TYPE.TRASH
+
 // Init conversations list based on route params
 onMounted(() => {
   // Fetch list based on type
   if (type.value) {
-    // Set list status if not already set
-    if (conversationStore.conversations.status.length === 0) {
+    if (isStatusUnfilteredView(type.value)) {
+      conversationStore.setListStatus([], false)
+    } else if (conversationStore.conversations.status.length === 0) {
       conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
     }
     conversationStore.fetchConversationsList(true, type.value)
@@ -52,8 +57,9 @@ watch(
   [type, teamID, viewID],
   ([newType, newTeamID, newViewID], [oldType, oldTeamID, oldViewID]) => {
     if (newType !== oldType && newType) {
-      // Set list status if not already set
-      if (conversationStore.conversations.status.length === 0) {
+      if (isStatusUnfilteredView(newType)) {
+        conversationStore.setListStatus([], false)
+      } else if (conversationStore.conversations.status.length === 0) {
         conversationStore.setListStatus(CONVERSATION_DEFAULT_STATUSES.OPEN, false)
       }
       conversationStore.fetchConversationsList(true, newType)
