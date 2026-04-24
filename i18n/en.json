@@ -119,6 +119,8 @@
   "admin.inbox.authProtocol.description": "Authentication protocol to use.",
   "admin.inbox.authProtocol.login": "Login",
   "admin.inbox.authProtocol.plain": "Plain",
+  "admin.inbox.autoAssignOnReply": "Auto-assign on reply",
+  "admin.inbox.autoAssignOnReply.description": "When an agent replies to a conversation that has no assignee, the conversation is automatically assigned to that agent.",
   "admin.inbox.chooseChannel": "Choose channel",
   "admin.inbox.createEmailInbox": "Create an email inbox for email-based customer support",
   "admin.inbox.createLiveChatInbox": "Create a live chat inbox for real-time customer support",
