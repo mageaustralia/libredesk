@@ -496,6 +496,7 @@
   "conversation.list.viewMode.table": "Table view",
   "conversation.mentions": "Mentions",
   "conversation.myInbox": "My inbox",
+  "conversation.nStatuses": "{count} statuses",
   "conversation.newConversation": "New conversation",
   "conversation.noConversationsFound": "No conversations found",
   "conversation.notMemberOfTeam": "You're not a member of this team, Please refresh the page and try again",
