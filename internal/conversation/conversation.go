@@ -310,6 +310,12 @@ type queries struct {
 	// Mention queries.
 	InsertMention *sqlx.Stmt `query:"insert-mention"`
 
+	// Spam and trash queries.
+	AutoTrashResolved  *sqlx.Stmt `query:"auto-trash-old-resolved"`
+	AutoTrashSpam      *sqlx.Stmt `query:"auto-trash-old-spam"`
+	PurgeOldTrash      *sqlx.Stmt `query:"purge-old-trash"`
+	PurgeOldTrashMedia *sqlx.Stmt `query:"purge-old-trash-media"`
+
 	// Broadcast queries.
 	GetActiveLivechatConversationsByAgent *sqlx.Stmt `query:"get-active-livechat-conversations-by-agent"`
 }
@@ -539,6 +545,16 @@ func (c *Manager) GetTeamUnassignedConversationsList(viewingUserID, teamID int, 
 // GetMentionedConversationsList retrieves conversations where the user is mentioned (directly or via team).
 func (c *Manager) GetMentionedConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
 	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.MentionedConversations}, order, orderBy, filters, page, pageSize)
+}
+
+// GetSpamConversationsList retrieves conversations marked as spam.
+func (c *Manager) GetSpamConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
+	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.SpamConversations}, order, orderBy, filters, page, pageSize)
+}
+
+// GetTrashedConversationsList retrieves trashed conversations.
+func (c *Manager) GetTrashedConversationsList(viewingUserID int, order, orderBy, filters string, page, pageSize int) ([]models.ConversationListItem, error) {
+	return c.GetConversations(viewingUserID, 0, []int{}, []string{models.TrashedConversations}, order, orderBy, filters, page, pageSize)
 }
 
 // InsertMentions inserts mentions for a message.
@@ -1582,6 +1598,10 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 					   WHERE tm.team_id = cm.mentioned_team_id AND tm.user_id = $1
 				   )
 			)`)
+		case models.SpamConversations:
+			conditions = append(conditions, "conversations.status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam')")
+		case models.TrashedConversations:
+			conditions = append(conditions, "conversations.status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')")
 		default:
 			return "", nil, fmt.Errorf("unknown conversation type: %s", lt)
 		}
@@ -1591,6 +1611,11 @@ func (c *Manager) makeConversationsListQuery(viewingUserID, userID int, teamIDs 
 	var whereClause string
 	if len(conditions) > 0 {
 		whereClause = "AND (" + strings.Join(conditions, " OR ") + ")"
+	}
+
+	// Hide spam/trashed from every other view so they only appear when explicitly requested.
+	if !slices.Contains(listTypes, models.SpamConversations) && !slices.Contains(listTypes, models.TrashedConversations) {
+		whereClause += " AND conversations.status_id NOT IN (SELECT id FROM conversation_statuses WHERE name IN ('Spam', 'Trashed'))"
 	}
 
 	// Add tag filter conditions
@@ -1841,4 +1866,25 @@ func (m *Manager) calculateBusinessHoursInfo(conversation models.Conversation) (
 	}
 
 	return businessHoursID, utcOffset
+}
+// MoveToTrash moves a conversation to trash. Delegates to UpdateConversationStatus
+// so the change picks up audit logging, webhooks, websocket broadcast and
+// automation rule evaluation just like a normal status change.
+func (m *Manager) MoveToTrash(uuid string, actor umodels.User) error {
+	return m.UpdateConversationStatus(uuid, 0, models.StatusTrashed, "", actor)
+}
+
+// RestoreFromTrash restores a trashed conversation back to Open.
+func (m *Manager) RestoreFromTrash(uuid string, actor umodels.User) error {
+	return m.UpdateConversationStatus(uuid, 0, models.StatusOpen, "", actor)
+}
+
+// MarkAsSpam marks a conversation as spam.
+func (m *Manager) MarkAsSpam(uuid string, actor umodels.User) error {
+	return m.UpdateConversationStatus(uuid, 0, models.StatusSpam, "", actor)
+}
+
+// MarkAsNotSpam moves a spam conversation back to Open.
+func (m *Manager) MarkAsNotSpam(uuid string, actor umodels.User) error {
+	return m.UpdateConversationStatus(uuid, 0, models.StatusOpen, "", actor)
 }

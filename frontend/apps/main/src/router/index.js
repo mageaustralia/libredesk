@@ -116,7 +116,7 @@ const routes = [
         meta: { titleKey: 'globals.terms.search', hidePageHeader: true }
       },
       {
-        path: '/inboxes/:type(assigned|unassigned|all|mentioned)?',
+        path: '/inboxes/:type(assigned|unassigned|all|mentioned|spam|trash)?',
         name: 'inboxes',
         redirect: '/inboxes/assigned',
         component: InboxLayout,
@@ -134,6 +134,8 @@ const routes = [
                 if (route.params.type === 'mentioned') return 'conversation.mentions'
                 if (route.params.type === 'unassigned') return 'globals.terms.unassigned'
                 if (route.params.type === 'all') return 'globals.messages.all'
+                if (route.params.type === 'spam') return 'conversation.spam'
+                if (route.params.type === 'trash') return 'conversation.trash'
                 return ''
               }
             },
@@ -192,6 +194,12 @@ const routes = [
             name: 'general',
             component: () => import('@main/views/admin/general/General.vue'),
             meta: { titleKey: 'globals.terms.general' }
+          },
+          {
+            path: 'trash',
+            name: 'trash-settings',
+            component: () => import('@main/views/admin/trash/TrashSettings.vue'),
+            meta: { titleKey: 'admin.trash.title' }
           },
           {
             path: 'business-hours',

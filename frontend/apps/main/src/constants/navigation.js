@@ -30,6 +30,12 @@ export const adminNavItems = [
         permission: 'sla:manage',
         isTitleKeyPlural: true,
         icon: 'Timer'
+      },
+      {
+        titleKey: 'admin.trash.title',
+        href: '/admin/trash',
+        permission: 'general_settings:manage',
+        icon: 'Trash2'
       }
     ]
   },

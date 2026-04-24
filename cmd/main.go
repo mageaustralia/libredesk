@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -248,6 +249,7 @@ func main() {
 	go media.DeleteUnlinkedMedia(ctx)
 	go user.MonitorUserAvailability(ctx, onUsersOffline(conversation))
 	go conversation.RunDraftCleaner(ctx, draftRetentionDuration)
+	go conversation.RunTrashManager(ctx, makeTrashSettingsFunc(settings))
 	go userNotification.RunNotificationCleaner(ctx)
 
 	var app = &App{
@@ -358,5 +360,37 @@ func onUsersOffline(conv *conversation.Manager) func([]umodels.OfflineUser) {
 				conv.BroadcastContactUpdate(u.ID, map[string]any{"availability_status": umodels.Offline})
 			}
 		}
+	}
+}
+
+// makeTrashSettingsFunc returns a TrashSettingsFunc that reads retention windows
+// from the settings store on every invocation. Falls back to defaults if the
+// stored values are missing or unreadable so a misconfigured DB never stops the
+// background worker from running.
+func makeTrashSettingsFunc(s *setting.Manager) conversation.TrashSettingsFunc {
+	return func() (int, int, int) {
+		var (
+			autoTrashResolvedDays = 90
+			autoTrashSpamDays     = 30
+			autoDeleteDays        = 30
+		)
+		out, err := s.GetByPrefix("trash.")
+		if err != nil {
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+		}
+		var vals map[string]int
+		if err := json.Unmarshal(out, &vals); err != nil {
+			return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
+		}
+		if v, ok := vals["trash.auto_trash_resolved_days"]; ok {
+			autoTrashResolvedDays = v
+		}
+		if v, ok := vals["trash.auto_trash_spam_days"]; ok {
+			autoTrashSpamDays = v
+		}
+		if v, ok := vals["trash.auto_delete_days"]; ok {
+			autoDeleteDays = v
+		}
+		return autoTrashResolvedDays, autoTrashSpamDays, autoDeleteDays
 	}
 }

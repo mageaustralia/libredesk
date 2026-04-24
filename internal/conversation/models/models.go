@@ -18,6 +18,8 @@ var (
 	StatusResolved = "Resolved"
 	StatusClosed   = "Closed"
 	StatusSnoozed  = "Snoozed"
+	StatusSpam     = "Spam"
+	StatusTrashed  = "Trashed"
 
 	AssigneeTypeTeam = "team"
 	AssigneeTypeUser = "user"
@@ -28,6 +30,8 @@ var (
 	TeamUnassignedConversations = "team_unassigned"
 	TeamAllConversations        = "team_all"
 	MentionedConversations      = "mentioned"
+	SpamConversations           = "spam"
+	TrashedConversations        = "trash"
 
 	MessageIncoming = "incoming"
 	MessageOutgoing = "outgoing"
@@ -163,6 +167,7 @@ type Conversation struct {
 	ContactID                 int                    `db:"contact_id" json:"contact_id"`
 	InboxID                   int                    `db:"inbox_id" json:"inbox_id"`
 	ClosedAt                  null.Time              `db:"closed_at" json:"closed_at"`
+	TrashedAt                 null.Time              `db:"trashed_at" json:"trashed_at"`
 	ResolvedAt                null.Time              `db:"resolved_at" json:"resolved_at"`
 	ReferenceNumber           string                 `db:"reference_number" json:"reference_number"`
 	Priority                  null.String            `db:"priority" json:"priority"`
@@ -472,6 +477,11 @@ type IncomingMessage struct {
 	ConversationUUIDFromReplyTo string // UUID extracted from plus-addressed recipient (inbox+conv-{uuid}@domain)
 	InReplyTo                   string
 	References                  []string
+
+	// IMAP folder this message was fetched from (e.g. "INBOX", "[Gmail]/Spam"). Empty
+	// for non-IMAP channels. Used to auto-mark conversations as spam when fetched from
+	// a junk/spam mailbox.
+	MailboxName string
 }
 
 // ToMessage converts IncomingMessage to a Message for DB insertion.

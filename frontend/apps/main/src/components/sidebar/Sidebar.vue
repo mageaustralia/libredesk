@@ -31,6 +31,8 @@ import {
   CircleDashed,
   List,
   AtSign,
+  ShieldAlert,
+  Trash2,
   Settings,
   Clock,
   Timer,
@@ -77,7 +79,8 @@ const navIconMap = {
   Link,
   BarChart3,
   CircleUser,
-  Contact
+  Contact,
+  Trash2
 }
 import {
   DropdownMenu,
@@ -470,6 +473,20 @@ const viewToDelete = ref(null)
                     <span>
                       {{ t('globals.messages.all') }}
                     </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton :isActive="isActiveParent('/inboxes/spam')" @click="navigateToInbox('spam')">
+                    <ShieldAlert />
+                    <span>{{ t('conversation.spam') }}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton :isActive="isActiveParent('/inboxes/trash')" @click="navigateToInbox('trash')">
+                    <Trash2 />
+                    <span>{{ t('conversation.trash') }}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 

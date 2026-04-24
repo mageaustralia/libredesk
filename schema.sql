@@ -231,6 +231,7 @@ CREATE TABLE conversations (
     first_reply_at TIMESTAMPTZ NULL,
     last_reply_at TIMESTAMPTZ NULL,
     closed_at TIMESTAMPTZ NULL,
+    trashed_at TIMESTAMPTZ NULL,
     resolved_at TIMESTAMPTZ NULL,
 
 	"subject" TEXT NULL,
@@ -260,6 +261,7 @@ CREATE INDEX index_conversations_on_last_interaction_at ON conversations (last_i
 CREATE INDEX index_conversations_on_next_sla_deadline_at ON conversations (next_sla_deadline_at);
 CREATE INDEX index_conversations_on_waiting_since ON conversations (waiting_since);
 CREATE INDEX index_conversations_on_last_continuity_email_sent_at ON conversations (last_continuity_email_sent_at);
+CREATE INDEX IF NOT EXISTS index_conversations_trashed_at ON conversations (trashed_at) WHERE trashed_at IS NOT NULL;
 
 DROP TABLE IF EXISTS conversation_messages CASCADE;
 CREATE TABLE conversation_messages (
@@ -732,7 +734,10 @@ VALUES
 	('notification.email.hello_hostname', '""'::jsonb),
     ('notification.email.email_address', '"admin@yourcompany.com"'::jsonb),
     ('notification.email.max_msg_retries', '3'::jsonb),
-    ('notification.email.enabled', 'false'::jsonb);
+    ('notification.email.enabled', 'false'::jsonb),
+    ('trash.auto_trash_resolved_days', '90'::jsonb),
+    ('trash.auto_trash_spam_days', '30'::jsonb),
+    ('trash.auto_delete_days', '30'::jsonb);
 
 -- Default conversation priorities
 INSERT INTO conversation_priorities (name) VALUES
@@ -745,7 +750,9 @@ INSERT INTO conversation_statuses (name) VALUES
 ('Open'),
 ('Snoozed'),
 ('Resolved'),
-('Closed');
+('Closed'),
+('Spam'),
+('Trashed');
 
 -- Default roles
 INSERT INTO

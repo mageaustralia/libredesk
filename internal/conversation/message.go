@@ -919,6 +919,17 @@ func (m *Manager) ProcessIncomingMessage(in models.IncomingMessage) (models.Mess
 	// No-op if the conversation's inbox isn't livechat.
 	m.broadcastMessageToWidgetClients(&msg)
 
+	// Auto-mark as spam when fetched from a junk/spam IMAP folder so automation
+	// runs against the already-classified conversation.
+	if isSpamMailbox(in.MailboxName) {
+		systemUser, err := m.userStore.GetSystemUser()
+		if err != nil {
+			m.lo.Error("error fetching system user for spam mark", "uuid", msg.ConversationUUID, "error", err)
+		} else if err := m.MarkAsSpam(msg.ConversationUUID, systemUser); err != nil {
+			m.lo.Error("error marking conversation as spam", "uuid", msg.ConversationUUID, "error", err)
+		}
+	}
+
 	// Process post-message hooks (automation rules, webhooks, SLA, etc.).
 	if err := m.ProcessIncomingMessageHooks(msg.ConversationUUID, isNewConversation); err != nil {
 		m.lo.Error("error processing incoming message hooks", "conversation_uuid", msg.ConversationUUID, "error", err)
@@ -1609,4 +1620,14 @@ func (m *Manager) getMediaPreview(media mmodels.Media) string {
 	default:
 		return m.i18n.T("globals.terms.file")
 	}
+}
+
+var spamMailboxPattern = regexp.MustCompile(`(?i)(^|/)(\[.+\]/)?(spam|junk)( ?email| ?mail)?$`)
+
+// isSpamMailbox returns true if the IMAP mailbox folder name matches a known
+// spam/junk convention (Outlook "Junk Email", Gmail "[Gmail]/Spam", generic
+// "Spam"/"Junk", etc.). Tighter than a substring match so names like
+// "spam-archive" or "junkfood-orders" don't false-positive.
+func isSpamMailbox(mailbox string) bool {
+	return spamMailboxPattern.MatchString(mailbox)
 }

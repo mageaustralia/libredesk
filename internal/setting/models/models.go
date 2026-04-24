@@ -33,3 +33,10 @@ type Settings struct {
 	EmailNotification
 	General
 }
+
+// TrashSettings holds trash/spam auto-cleanup retention windows in days.
+type TrashSettings struct {
+	AutoTrashResolvedDays int `json:"trash.auto_trash_resolved_days" db:"trash.auto_trash_resolved_days"`
+	AutoTrashSpamDays     int `json:"trash.auto_trash_spam_days" db:"trash.auto_trash_spam_days"`
+	AutoDeleteDays        int `json:"trash.auto_delete_days" db:"trash.auto_delete_days"`
+}

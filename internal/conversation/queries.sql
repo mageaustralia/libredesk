@@ -335,6 +335,11 @@ UPDATE conversations
 SET status_id = (SELECT id FROM conversation_statuses WHERE name = $2),
     resolved_at = COALESCE(resolved_at, CASE WHEN $2 IN ('Resolved', 'Closed') THEN NOW() END),
     closed_at = COALESCE(closed_at, CASE WHEN $2 = 'Closed' THEN NOW() END),
+    -- Trashed sets the timestamp on the way in; transitioning out of Trashed clears it.
+    trashed_at = CASE
+        WHEN $2 = 'Trashed' THEN COALESCE(trashed_at, NOW())
+        ELSE NULL
+    END,
     snoozed_until = CASE WHEN $2 = 'Snoozed' THEN $3::timestamptz ELSE snoozed_until END,
     updated_at = NOW()
 WHERE uuid = $1;
@@ -501,7 +506,10 @@ SET
 WHERE 
   uuid = $1
   AND status_id IN (
-    SELECT id FROM conversation_statuses WHERE name NOT IN ('Open')
+    -- Trashed conversations stay trashed even if a new reply arrives — they're
+    -- considered deleted. Spam IS allowed to reopen so a genuine customer reply
+    -- can self-correct a false-positive spam classification.
+    SELECT id FROM conversation_statuses WHERE name NOT IN ('Open', 'Trashed')
   )
 
 -- name: get-conversation-by-message-id
@@ -884,3 +892,39 @@ SELECT EXISTS(
       AND source_id = ANY(ARRAY(SELECT s FROM unnest($1::text[]) AS s WHERE s <> ''))
       AND (meta ? 'forwarded_to' OR meta @> '{"from_forward": true}'::jsonb)
 ) AS is_from_forward;
+
+-- name: auto-trash-old-resolved
+-- Aged from updated_at so a reopen-and-re-resolve resets the clock.
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed'),
+    trashed_at = NOW(),
+    updated_at = NOW()
+WHERE status_id IN (SELECT id FROM conversation_statuses WHERE name IN ('Resolved', 'Closed'))
+AND updated_at < NOW() - INTERVAL '1 day' * $1
+AND trashed_at IS NULL;
+
+-- name: auto-trash-old-spam
+-- Aged from created_at: spam doesn't earn a "fresh activity" clock reset.
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed'),
+    trashed_at = NOW(),
+    updated_at = NOW()
+WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Spam')
+AND created_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: purge-old-trash-media
+-- Unlink media rows so the periodic media cleaner removes both the DB row AND
+-- the underlying storage blob (and any thumbnails). Hard-deleting media here
+-- would orphan the files in S3/disk because cleanup would never see them.
+UPDATE media SET model_id = 0 WHERE model_type = 'messages' AND model_id IN (
+    SELECT id FROM conversation_messages WHERE conversation_id IN (
+        SELECT id FROM conversations
+        WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
+        AND trashed_at < NOW() - INTERVAL '1 day' * $1
+    )
+);
+
+-- name: purge-old-trash
+DELETE FROM conversations
+WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
+AND trashed_at < NOW() - INTERVAL '1 day' * $1;
