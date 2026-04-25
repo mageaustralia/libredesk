@@ -921,13 +921,23 @@ func (m *Manager) ProcessIncomingMessage(in models.IncomingMessage) (models.Mess
 
 	// Auto-mark as spam when fetched from a junk/spam IMAP folder so automation
 	// runs against the already-classified conversation.
-	if isSpamMailbox(in.MailboxName) {
+	fromSpamFolder := isSpamMailbox(in.MailboxName)
+	if fromSpamFolder {
 		systemUser, err := m.userStore.GetSystemUser()
 		if err != nil {
 			m.lo.Error("error fetching system user for spam mark", "uuid", msg.ConversationUUID, "error", err)
 		} else if err := m.MarkAsSpam(msg.ConversationUUID, systemUser); err != nil {
 			m.lo.Error("error marking conversation as spam", "uuid", msg.ConversationUUID, "error", err)
 		}
+	}
+
+	// Notify the assigned agent that the customer has replied. Skips new
+	// conversations (the assignment notification covers those), spam-folder
+	// messages (gated on the folder, not the mark result, so a failed
+	// MarkAsSpam still suppresses the notification), and unassigned
+	// conversations (the helper itself handles that).
+	if !isNewConversation && !fromSpamFolder && msg.SenderType == models.SenderTypeContact {
+		go m.notifyAssignedAgentOfReply(msg)
 	}
 
 	// Process post-message hooks (automation rules, webhooks, SLA, etc.).

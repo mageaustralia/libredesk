@@ -1110,6 +1110,37 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 	return nil
 }
 
+// notifyAssignedAgentOfReply dispatches an in-app notification + WS toast to the
+// conversation's assigned agent when a customer replies. Skipped if the
+// conversation is unassigned. Email is intentionally not sent: the customer's
+// reply itself already arrives in the agent's email channel.
+func (m *Manager) notifyAssignedAgentOfReply(message models.Message) {
+	conv, err := m.GetConversation(message.ConversationID, message.ConversationUUID, "")
+	if err != nil {
+		m.lo.Warn("notify reply: failed to fetch conversation", "uuid", message.ConversationUUID, "error", err)
+		return
+	}
+	if conv.AssignedUserID.Int == 0 {
+		return
+	}
+	authorName := strings.TrimSpace(conv.Contact.FullName())
+	if authorName == "" {
+		authorName = m.i18n.T("globals.terms.customer")
+	}
+	m.dispatcher.Send(notifier.Notification{
+		Type:             nmodels.NotificationTypeNewReply,
+		RecipientIDs:     []int{conv.AssignedUserID.Int},
+		Title:            m.i18n.Ts("notification.customerReplied", "author", authorName, "referenceNumber", conv.ReferenceNumber),
+		Body:             conv.Subject,
+		ConversationID:   null.IntFrom(message.ConversationID),
+		MessageID:        null.IntFrom(message.ID),
+		ActorID:          null.IntFrom(message.SenderID),
+		ConversationUUID: message.ConversationUUID,
+		ActorFirstName:   conv.Contact.FirstName,
+		ActorLastName:    conv.Contact.LastName,
+	})
+}
+
 // NotifyMention sends notifications (in-app, WebSocket, email) for mentions.
 // For team mentions, expands to all team members.
 func (m *Manager) NotifyMention(conversationUUID string, message models.Message, mentions []models.MentionInput, mentionedByUserID int) {
