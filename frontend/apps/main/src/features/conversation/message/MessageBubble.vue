@@ -252,6 +252,7 @@ import { Lock, Mail, RotateCcw, Check, Pencil, Trash2, Forward } from 'lucide-vu
 import { Tooltip, TooltipContent, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
 import { Spinner } from '@shared-ui/components/ui/spinner'
 import { formatMessageTimestamp, formatFullTimestamp } from '@shared-ui/utils/datetime.js'
+import { handleHTTPError } from '@shared-ui/utils/http.js'
 import { Avatar, AvatarFallback, AvatarImage } from '@shared-ui/components/ui/avatar'
 import { Letter } from 'vue-letter'
 import ImageLightbox from '@/components/ImageLightbox.vue'
@@ -385,8 +386,7 @@ const saveEdit = async () => {
   } catch (err) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
-      title: t('globals.messages.edit'),
-      description: err?.response?.data?.message || err.message
+      description: handleHTTPError(err).message
     })
   } finally {
     isSavingEdit.value = false
@@ -409,8 +409,7 @@ const confirmDelete = async () => {
   } catch (err) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
-      title: t('globals.messages.delete'),
-      description: err?.response?.data?.message || err.message
+      description: handleHTTPError(err).message
     })
   }
 }
