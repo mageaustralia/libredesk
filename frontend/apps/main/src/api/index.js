@@ -61,6 +61,11 @@ const searchContacts = (params) => http.get('/api/v1/contacts/search', { params 
 const getEmailNotificationSettings = () => http.get('/api/v1/settings/notifications/email')
 const updateEmailNotificationSettings = (data) =>
   http.put('/api/v1/settings/notifications/email', data)
+const testEmailNotificationSettings = (data) =>
+  http.post('/api/v1/settings/notifications/email/test', data, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000
+  })
 const getPriorities = () => http.get('/api/v1/priorities')
 const getStatuses = () => http.get('/api/v1/statuses')
 const createStatus = (data) => http.post('/api/v1/statuses', data)
@@ -405,6 +410,11 @@ const updateInbox = (id, data) =>
     }
   })
 const deleteInbox = (id) => http.delete(`/api/v1/inboxes/${id}`)
+const testInboxConnection = (data) =>
+  http.post('/api/v1/inboxes/test-connection', data, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000
+  })
 const saveDraft = (uuid, data) =>
   http.post(`/api/v1/conversations/${uuid}/draft`, data, {
     headers: {
@@ -619,6 +629,7 @@ export default {
   updateInbox,
   deleteInbox,
   toggleInbox,
+  testInboxConnection,
   createTeam,
   updateTeam,
   getSettings,
@@ -647,6 +658,7 @@ export default {
   getUsersCompact,
   getEmailNotificationSettings,
   updateEmailNotificationSettings,
+  testEmailNotificationSettings,
   saveDraft,
   getAllDrafts,
   deleteDraft,

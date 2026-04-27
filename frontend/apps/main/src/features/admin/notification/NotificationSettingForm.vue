@@ -195,6 +195,38 @@
     </FormField>
 
     <Button type="submit" :isLoading="isLoading"> {{ submitLabel }} </Button>
+
+    <!-- Test Connection Section -->
+    <div class="border-t pt-6 mt-6 space-y-4">
+      <h3 class="text-base font-semibold">{{ $t('admin.inbox.testConnection') }}</h3>
+      <div class="space-y-3">
+        <div class="flex items-center gap-2">
+          <Input
+            v-model="testEmail"
+            type="email"
+            :placeholder="$t('admin.inbox.testConnection.emailPlaceholder')"
+            class="flex-1 max-w-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            @click="runTest"
+            :disabled="isTesting || !testEmail"
+          >
+            <Loader2 v-if="isTesting" class="w-4 h-4 mr-2 animate-spin" />
+            {{ isTesting ? $t('admin.inbox.testConnection.testing') : $t('admin.inbox.testConnection.test') }}
+          </Button>
+        </div>
+        <div v-if="testLogs.length > 0">
+          <div
+            class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
+            :class="testSuccess === true ? 'border-green-500 border' : testSuccess === false ? 'border-red-500 border' : ''"
+          >
+            <div v-for="(log, index) in testLogs" :key="index" class="py-0.5">{{ log }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </form>
 </template>
 
@@ -225,6 +257,9 @@ import SwitchField from '@shared-ui/components/SwitchField.vue'
 import { Label } from '@shared-ui/components/ui/label/index.js'
 import { Input } from '@shared-ui/components/ui/input/index.js'
 import { useI18n } from 'vue-i18n'
+import { Loader2 } from 'lucide-vue-next'
+import api from '@/api'
+import { handleHTTPError } from '@shared-ui/utils/http.js'
 
 const isLoading = ref(false)
 const { t } = useI18n()
@@ -263,6 +298,40 @@ const onSmtpSubmit = smtpForm.handleSubmit(async (values) => {
     isLoading.value = false
   }
 })
+
+// Test connection state
+const isTesting = ref(false)
+const testEmail = ref('')
+const testLogs = ref([])
+const testSuccess = ref(null)
+
+const runTest = async () => {
+  isTesting.value = true
+  testLogs.value = []
+  testSuccess.value = null
+  try {
+    const values = smtpForm.values
+    const response = await api.testEmailNotificationSettings({
+      'notification.email.host': values.host,
+      'notification.email.port': values.port,
+      'notification.email.username': values.username,
+      'notification.email.password': values.password,
+      'notification.email.auth_protocol': values.auth_protocol,
+      'notification.email.tls_type': values.tls_type,
+      'notification.email.tls_skip_verify': values.tls_skip_verify,
+      'notification.email.email_address': values.email_address,
+      'notification.email.hello_hostname': values.hello_hostname,
+      test_email: testEmail.value
+    })
+    testLogs.value = response.data.data.logs || []
+    testSuccess.value = response.data.data.success
+  } catch (error) {
+    testLogs.value = [handleHTTPError(error).message]
+    testSuccess.value = false
+  } finally {
+    isTesting.value = false
+  }
+}
 
 // Watch for changes in initialValues and update the form.
 watch(
