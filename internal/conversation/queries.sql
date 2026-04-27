@@ -976,6 +976,14 @@ WHERE cm.id = sm.id;
 -- $1 = destination conversation_id, $2 = source conversation_id.
 UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2;
 
+-- name: move-conversation-mentions
+-- $1 = destination conversation_id, $2 = source conversation_id.
+UPDATE conversation_mentions SET conversation_id = $1 WHERE conversation_id = $2;
+
+-- name: move-conversation-notifications
+-- $1 = destination conversation_id, $2 = source conversation_id.
+UPDATE user_notifications SET conversation_id = $1 WHERE conversation_id = $2;
+
 -- name: copy-conversation-tags
 -- $1 = destination conversation_id, $2 = source conversation_id. Skips duplicate tags.
 INSERT INTO conversation_tags (conversation_id, tag_id)

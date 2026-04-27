@@ -1058,6 +1058,10 @@ func handleMergeConversations(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "primary_uuid and at least one secondary_uuid are required", nil, envelope.InputError)
 	}
 
+	if len(req.SecondaryUUIDs) > 50 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("conversation.merge.tooManyTickets", "max", "50"), nil, envelope.InputError)
+	}
+
 	user, err := app.user.GetAgent(auser.ID, "")
 	if err != nil {
 		return sendErrorEnvelope(r, err)
@@ -1074,9 +1078,48 @@ func handleMergeConversations(r *fastglue.Request) error {
 		}
 	}
 
-	if err := app.conversation.MergeConversations(req.PrimaryUUID, req.SecondaryUUIDs, user); err != nil {
+	result, err := app.conversation.MergeConversations(req.PrimaryUUID, req.SecondaryUUIDs, user)
+	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 
+	if len(result.Warnings) > 0 {
+		return r.SendEnvelope(map[string]any{
+			"success":  true,
+			"warnings": result.Warnings,
+		})
+	}
+
 	return r.SendEnvelope(true)
+}
+
+// handleGetConversationByRef retrieves a single conversation by its reference number.
+// This dedicated endpoint avoids the 3-character minimum enforced by the search endpoint,
+// allowing lookup of tickets with reference numbers #1-#99.
+func handleGetConversationByRef(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		ref   = r.RequestCtx.UserValue("ref").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+	)
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	conv, err := app.conversation.GetConversation(0, "", ref)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	allowed, err := app.authz.EnforceConversationAccess(user, conv)
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if !allowed {
+		return r.SendErrorEnvelope(fasthttp.StatusForbidden, app.i18n.T("status.deniedPermission"), nil, envelope.PermissionError)
+	}
+
+	return r.SendEnvelope(conv)
 }

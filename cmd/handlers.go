@@ -73,6 +73,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/conversations/{uuid}/spam", perm(handleMarkAsSpam, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/not-spam", perm(handleMarkAsNotSpam, "conversations:update_status"))
 	g.POST("/api/v1/conversations/merge", perm(handleMergeConversations, "conversations:update_status"))
+	g.GET("/api/v1/conversations/by-ref/{ref}", perm(handleGetConversationByRef, "conversations:read"))
 	g.PUT("/api/v1/conversations/{uuid}/last-seen", perm(handleUpdateConversationAssigneeLastSeen, "conversations:read"))
 	g.PUT("/api/v1/conversations/{uuid}/mark-unread", perm(handleMarkConversationAsUnread, "conversations:read"))
 	g.POST("/api/v1/conversations/{uuid}/tags", perm(handleUpdateConversationtags, "conversations:update_tags"))

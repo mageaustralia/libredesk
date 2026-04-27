@@ -317,12 +317,14 @@ type queries struct {
 	PurgeOldTrashMedia *sqlx.Stmt `query:"purge-old-trash-media"`
 
 	// Merge queries.
-	GetConversationsByUUIDs       *sqlx.Stmt `query:"get-conversations-by-uuids"`
-	ShiftSecondaryMsgTimestamps   *sqlx.Stmt `query:"shift-secondary-message-timestamps"`
-	MoveConversationMessages      *sqlx.Stmt `query:"move-conversation-messages"`
-	CopyConversationTags          *sqlx.Stmt `query:"copy-conversation-tags"`
-	MarkConversationMergedInto    *sqlx.Stmt `query:"mark-conversation-merged-into"`
-	AnyConversationOpen           *sqlx.Stmt `query:"any-conversation-open"`
+	GetConversationsByUUIDs         *sqlx.Stmt `query:"get-conversations-by-uuids"`
+	ShiftSecondaryMsgTimestamps     *sqlx.Stmt `query:"shift-secondary-message-timestamps"`
+	MoveConversationMessages        *sqlx.Stmt `query:"move-conversation-messages"`
+	MoveConversationMentions        *sqlx.Stmt `query:"move-conversation-mentions"`
+	MoveConversationNotifications   *sqlx.Stmt `query:"move-conversation-notifications"`
+	CopyConversationTags            *sqlx.Stmt `query:"copy-conversation-tags"`
+	MarkConversationMergedInto      *sqlx.Stmt `query:"mark-conversation-merged-into"`
+	AnyConversationOpen             *sqlx.Stmt `query:"any-conversation-open"`
 
 	// Broadcast queries.
 	GetActiveLivechatConversationsByAgent *sqlx.Stmt `query:"get-active-livechat-conversations-by-agent"`
@@ -1937,6 +1939,14 @@ type mergeConversationRow struct {
 	ContactID       int    `db:"contact_id"`
 }
 
+// MergeResult is the return value of MergeConversations. Warnings is non-empty
+// when the core tx succeeded but one or more post-commit side effects (status
+// changes) failed. The messages were moved; the agent should refresh.
+type MergeResult struct {
+	PrimaryUUID string
+	Warnings    []string
+}
+
 // MergeConversations merges one or more secondary conversations into a primary.
 //
 // For each secondary, in a single transaction:
@@ -1944,6 +1954,8 @@ type mergeConversationRow struct {
 //     they land *after* the primary's first message (preserving relative order
 //     within the secondary). This avoids time-jumbled merged threads.
 //   - Move all messages from the secondary onto the primary.
+//   - Move conversation_mentions + user_notifications so they follow their
+//     messages to the primary (not left pointing at the now-closed secondary).
 //   - Copy the secondary's tags to the primary (deduplicated).
 //   - Mark the secondary as merged into the primary (sets
 //     merged_into_conversation_id + merged_at).
@@ -1959,14 +1971,14 @@ type mergeConversationRow struct {
 //     conversation" on primary, "Merged into #Y" on secondaries).
 //   - A websocket update broadcasts merged_into_uuid + merged_into_ref to
 //     each secondary so banners on open clients render the link immediately.
-func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string, actor umodels.User) error {
+func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string, actor umodels.User) (MergeResult, error) {
 	if primaryUUID == "" || len(secondaryUUIDs) == 0 {
-		return envelope.NewError(envelope.InputError, "primary_uuid and at least one secondary_uuid are required", nil)
+		return MergeResult{}, envelope.NewError(envelope.InputError, "primary_uuid and at least one secondary_uuid are required", nil)
 	}
 	// Reject self-merge.
 	for _, s := range secondaryUUIDs {
 		if s == primaryUUID {
-			return envelope.NewError(envelope.InputError, "primary and secondary cannot be the same conversation", nil)
+			return MergeResult{}, envelope.NewError(envelope.InputError, "primary and secondary cannot be the same conversation", nil)
 		}
 	}
 
@@ -1975,7 +1987,7 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 	var rows []mergeConversationRow
 	if err := m.q.GetConversationsByUUIDs.Select(&rows, pq.Array(allUUIDs)); err != nil {
 		m.lo.Error("error fetching conversations for merge", "error", err)
-		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+		return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
 	convMap := make(map[string]mergeConversationRow, len(rows))
@@ -1985,12 +1997,12 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 
 	primary, ok := convMap[primaryUUID]
 	if !ok {
-		return envelope.NewError(envelope.InputError, "primary conversation not found", nil)
+		return MergeResult{}, envelope.NewError(envelope.InputError, "primary conversation not found", nil)
 	}
 	// All requested secondaries must exist.
 	for _, s := range secondaryUUIDs {
 		if _, ok := convMap[s]; !ok {
-			return envelope.NewError(envelope.InputError, "one or more secondary conversations not found", nil)
+			return MergeResult{}, envelope.NewError(envelope.InputError, "one or more secondary conversations not found", nil)
 		}
 	}
 
@@ -2008,7 +2020,7 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 	tx, err := m.db.BeginTxx(context.Background(), nil)
 	if err != nil {
 		m.lo.Error("error starting merge transaction", "error", err)
-		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+		return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 	defer tx.Rollback()
 
@@ -2019,48 +2031,75 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 		// CTE still sees the *primary*'s earliest message.
 		if _, err := tx.Stmtx(m.q.ShiftSecondaryMsgTimestamps).Exec(primary.ID, sec.ID); err != nil {
 			m.lo.Error("error shifting secondary message timestamps", "secondary_id", sec.ID, "error", err)
-			return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 		}
 
 		// Move messages onto the primary.
 		if _, err := tx.Stmtx(m.q.MoveConversationMessages).Exec(primary.ID, sec.ID); err != nil {
 			m.lo.Error("error moving messages during merge", "from", sec.ID, "to", primary.ID, "error", err)
-			return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+		}
+
+		// Move mentions + notifications so they follow their messages to the
+		// primary. Without this they remain pointed at the closed secondary.
+		if _, err := tx.Stmtx(m.q.MoveConversationMentions).Exec(primary.ID, sec.ID); err != nil {
+			m.lo.Error("error moving mentions during merge", "from", sec.ID, "to", primary.ID, "error", err)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+		}
+		if _, err := tx.Stmtx(m.q.MoveConversationNotifications).Exec(primary.ID, sec.ID); err != nil {
+			m.lo.Error("error moving notifications during merge", "from", sec.ID, "to", primary.ID, "error", err)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 		}
 
 		// Copy tags (skip duplicates).
 		if _, err := tx.Stmtx(m.q.CopyConversationTags).Exec(primary.ID, sec.ID); err != nil {
 			m.lo.Error("error copying tags during merge", "from", sec.ID, "to", primary.ID, "error", err)
-			return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 		}
 
 		// Mark the secondary as merged into the primary.
 		if _, err := tx.Stmtx(m.q.MarkConversationMergedInto).Exec(sec.ID, primary.ID); err != nil {
 			m.lo.Error("error marking conversation merged", "secondary_id", sec.ID, "error", err)
-			return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+			return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		m.lo.Error("error committing merge transaction", "error", err)
-		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+		return MergeResult{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
 	// Post-tx side effects: status changes go through UpdateConversationStatus
 	// so audit/webhook/ws all fire, mirroring the Spam/Trash port.
+	//
+	// Failures here are collected into Warnings rather than discarding them
+	// silently. The core tx committed — messages moved — but the agent should
+	// know if some status updates didn't stick so they can manually close the
+	// affected secondaries.
+	var statusWarnings []string
 
 	// Close each secondary (drives its own audit + webhook + ws broadcast).
 	for _, secUUID := range secondaryUUIDs {
+		sec := convMap[secUUID]
 		if err := m.UpdateConversationStatus(secUUID, 0, models.StatusClosed, "", actor); err != nil {
-			m.lo.Warn("error closing secondary after merge", "uuid", secUUID, "error", err)
+			m.lo.Warn("merge: failed to close secondary", "uuid", secUUID, "error", err)
+			statusWarnings = append(statusWarnings, fmt.Sprintf("close #%s", sec.ReferenceNumber))
 		}
 	}
 
 	// Reopen the primary if any merged conversation was open. Same channel —
 	// audit/webhook/ws all picked up.
+	//
+	// Note: this broadcast follows the close-status broadcast from
+	// UpdateConversationStatus. WS clients see status=Closed first, then
+	// merged_into_id arrives milliseconds later. The flash is acceptable
+	// because both events update the same conversation row in the store
+	// via deepMerge. If this becomes user-visible, fold merged_into into
+	// UpdateConversationStatus's WS payload via a meta map.
 	if hasOpenSecondary {
 		if err := m.UpdateConversationStatus(primaryUUID, 0, models.StatusOpen, "", actor); err != nil {
-			m.lo.Warn("error reopening primary after merge", "uuid", primaryUUID, "error", err)
+			m.lo.Warn("merge: failed to reopen primary", "uuid", primaryUUID, "error", err)
+			statusWarnings = append(statusWarnings, fmt.Sprintf("reopen #%s", primary.ReferenceNumber))
 		}
 	}
 
@@ -2089,5 +2128,5 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 		})
 	}
 
-	return nil
+	return MergeResult{PrimaryUUID: primaryUUID, Warnings: statusWarnings}, nil
 }
