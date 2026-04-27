@@ -1034,3 +1034,49 @@ func handleGetTrashedConversations(r *fastglue.Request) error {
 		Page:       page,
 	})
 }
+
+// mergeConversationsReq is the JSON body shape for handleMergeConversations.
+type mergeConversationsReq struct {
+	PrimaryUUID    string   `json:"primary_uuid"`
+	SecondaryUUIDs []string `json:"secondary_uuids"`
+}
+
+// handleMergeConversations merges one or more secondary conversations into a primary.
+// Permission: conversations:update_status (matches the trash/spam status mutators).
+func handleMergeConversations(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+		req   mergeConversationsReq
+	)
+
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
+	}
+
+	if req.PrimaryUUID == "" || len(req.SecondaryUUIDs) == 0 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "primary_uuid and at least one secondary_uuid are required", nil, envelope.InputError)
+	}
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	// Permission gate applies to the primary AND each secondary — agents
+	// can only merge conversations they are allowed to access.
+	if _, err := enforceConversationAccess(app, req.PrimaryUUID, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	for _, secUUID := range req.SecondaryUUIDs {
+		if _, err := enforceConversationAccess(app, secUUID, user); err != nil {
+			return sendErrorEnvelope(r, err)
+		}
+	}
+
+	if err := app.conversation.MergeConversations(req.PrimaryUUID, req.SecondaryUUIDs, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	return r.SendEnvelope(true)
+}

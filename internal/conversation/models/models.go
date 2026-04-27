@@ -203,6 +203,10 @@ type Conversation struct {
 	NextResponseDueAt         null.Time              `db:"next_response_deadline_at" json:"next_response_deadline_at"`
 	NextResponseMetAt         null.Time              `db:"next_response_met_at" json:"next_response_met_at"`
 	LastContinuityEmailSentAt null.Time              `db:"last_continuity_email_sent_at" json:"-"`
+	MergedIntoID              null.Int               `db:"merged_into_conversation_id" json:"merged_into_id"`
+	MergedAt                  null.Time              `db:"merged_at" json:"merged_at"`
+	MergedIntoUUID            null.String            `db:"merged_into_uuid" json:"merged_into_uuid"`
+	MergedIntoRef             null.String            `db:"merged_into_ref" json:"merged_into_ref"`
 	PreviousConversations     []PreviousConversation `db:"-" json:"previous_conversations"`
 }
 

@@ -185,7 +185,11 @@ SELECT
    as_latest.id as applied_sla_id,
    nxt_resp_event.deadline_at AS next_response_deadline_at,
    nxt_resp_event.met_at as next_response_met_at,
-   c.last_continuity_email_sent_at
+   c.last_continuity_email_sent_at,
+   c.merged_into_conversation_id,
+   c.merged_at,
+   (SELECT uuid FROM conversations mc WHERE mc.id = c.merged_into_conversation_id) AS merged_into_uuid,
+   (SELECT reference_number FROM conversations mc WHERE mc.id = c.merged_into_conversation_id) AS merged_into_ref
 FROM conversations c
 JOIN users ct ON c.contact_id = ct.id
 JOIN inboxes inb ON c.inbox_id = inb.id
@@ -934,3 +938,76 @@ UPDATE media SET model_id = 0 WHERE model_type = 'messages' AND model_id IN (
 DELETE FROM conversations
 WHERE status_id = (SELECT id FROM conversation_statuses WHERE name = 'Trashed')
 AND trashed_at < NOW() - INTERVAL '1 day' * $1;
+
+-- name: get-conversations-by-uuids
+-- Lightweight fetch for merge: returns only the columns MergeConversations needs
+-- (no joins). $1 is a Go pq.Array of UUID strings.
+SELECT id, uuid, reference_number, COALESCE(subject, '') AS subject, contact_id
+FROM conversations
+WHERE uuid = ANY($1::uuid[]);
+
+-- name: shift-secondary-message-timestamps
+-- Before moving messages from a secondary into a primary, shift any secondary
+-- messages whose created_at is older than the primary's earliest non-activity
+-- message so they land *after* the primary's first message but preserve their
+-- relative order. Without this, a freshly-merged thread can read time-jumbled
+-- (older customer reply appearing before the original ticket).
+-- $1 = primary conversation_id, $2 = secondary conversation_id.
+WITH primary_first AS (
+    SELECT COALESCE(MIN(created_at), NOW()) AS ts
+    FROM conversation_messages
+    WHERE conversation_id = $1 AND type != 'activity'
+),
+secondary_msgs AS (
+    SELECT id, created_at,
+        ROW_NUMBER() OVER (ORDER BY created_at ASC) AS rn
+    FROM conversation_messages
+    WHERE conversation_id = $2 AND type != 'activity'
+        AND created_at < (SELECT ts FROM primary_first)
+)
+UPDATE conversation_messages cm
+SET created_at = (SELECT ts FROM primary_first) - INTERVAL '1 second' * (
+    (SELECT COUNT(*) FROM secondary_msgs) - sm.rn
+)
+FROM secondary_msgs sm
+WHERE cm.id = sm.id;
+
+-- name: move-conversation-messages
+-- $1 = destination conversation_id, $2 = source conversation_id.
+UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2;
+
+-- name: copy-conversation-tags
+-- $1 = destination conversation_id, $2 = source conversation_id. Skips duplicate tags.
+INSERT INTO conversation_tags (conversation_id, tag_id)
+SELECT $1, tag_id FROM conversation_tags WHERE conversation_id = $2
+ON CONFLICT (conversation_id, tag_id) DO NOTHING;
+
+-- name: mark-conversation-merged-into
+-- Mark a secondary as merged into the given primary. Status close + closed_at
+-- bookkeeping is handled separately via UpdateConversationStatus so audit log,
+-- webhooks and websockets all fire.
+-- $1 = secondary conversation_id, $2 = primary conversation_id.
+UPDATE conversations SET
+    merged_into_conversation_id = $2,
+    merged_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: reopen-conversation-by-id
+-- Used by merge: reopens a primary that was closed when at least one secondary
+-- was open at merge time. $1 = primary conversation_id.
+UPDATE conversations SET
+    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Open'),
+    closed_at = NULL,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: any-conversation-open
+-- Returns true if any conversation in $1 (UUID array) currently has a status
+-- other than Closed/Trashed. Run BEFORE the merge transaction so the result
+-- isn't tainted by secondaries we're about to close.
+SELECT EXISTS(
+    SELECT 1 FROM conversations c
+    JOIN conversation_statuses cs ON cs.id = c.status_id
+    WHERE c.uuid = ANY($1::uuid[]) AND cs.name NOT IN ('Closed', 'Trashed')
+);

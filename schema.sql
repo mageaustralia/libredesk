@@ -233,6 +233,8 @@ CREATE TABLE conversations (
     closed_at TIMESTAMPTZ NULL,
     trashed_at TIMESTAMPTZ NULL,
     resolved_at TIMESTAMPTZ NULL,
+    merged_at TIMESTAMPTZ NULL,
+    merged_into_conversation_id BIGINT REFERENCES conversations(id) ON DELETE SET NULL,
 
 	"subject" TEXT NULL,
 	waiting_since TIMESTAMPTZ NULL,
@@ -262,6 +264,7 @@ CREATE INDEX index_conversations_on_next_sla_deadline_at ON conversations (next_
 CREATE INDEX index_conversations_on_waiting_since ON conversations (waiting_since);
 CREATE INDEX index_conversations_on_last_continuity_email_sent_at ON conversations (last_continuity_email_sent_at);
 CREATE INDEX IF NOT EXISTS index_conversations_trashed_at ON conversations (trashed_at) WHERE trashed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS index_conversations_merged_into ON conversations (merged_into_conversation_id) WHERE merged_into_conversation_id IS NOT NULL;
 
 DROP TABLE IF EXISTS conversation_messages CASCADE;
 CREATE TABLE conversation_messages (
