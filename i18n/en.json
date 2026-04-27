@@ -528,6 +528,7 @@
   "conversation.merge.selectPrimary": "Select the primary ticket:",
   "conversation.merge.success": "Merged {count} conversations",
   "conversation.merge.title": "Merge Conversations",
+  "conversation.merge.tooManyTickets": "Cannot merge more than {max} tickets in one operation",
   "conversation.merge.warning": "This action cannot be undone. Messages will be permanently moved.",
   "conversation.moveToTrash": "Move to trash",
   "conversation.myInbox": "My inbox",

@@ -381,6 +381,7 @@ const markAsNotSpam = (uuid) => http.put(`/api/v1/conversations/${uuid}/not-spam
 const mergeConversations = (data) => http.post('/api/v1/conversations/merge', data, {
   headers: { 'Content-Type': 'application/json' }
 })
+const getConversationByRef = (ref) => http.get(`/api/v1/conversations/by-ref/${encodeURIComponent(ref)}`)
 const getViewConversations = (id, params) =>
   http.get(`/api/v1/views/${id}/conversations`, { params })
 const uploadMedia = (data) =>
@@ -719,5 +720,6 @@ export default {
   markAllNotificationsAsRead,
   deleteNotification,
   deleteAllNotifications,
-  getContactPageVisits
+  getContactPageVisits,
+  getConversationByRef
 }

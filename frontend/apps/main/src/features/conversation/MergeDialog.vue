@@ -154,7 +154,7 @@ async function lookupTicket() {
   const num = ticketNumber.value.trim().replace(/^#/, '')
   if (!num) return
 
-  if (mergeTickets.value.some(t => String(t.reference_number) === num)) {
+  if (mergeTickets.value.some(tk => String(tk.reference_number) === num)) {
     lookupError.value = t('conversation.merge.alreadyAdded', { num })
     return
   }
@@ -163,37 +163,25 @@ async function lookupTicket() {
   lookupError.value = ''
 
   try {
-    // Use the global conversation search (requires query length >= 3 server-side).
-    // For shorter ref numbers we fall back to the same value (server clamps minimum).
-    const res = await api.searchConversations({ query: num })
-    const results = res.data?.data || []
-
-    // Exact ref number match — search may return multiple partial matches.
-    const match = results.find(c => String(c.reference_number) === num)
-    if (!match) {
+    // Use the dedicated by-ref endpoint — avoids the 3-char minimum on the
+    // search endpoint, so tickets #1-#99 can be looked up correctly.
+    const res = await api.getConversationByRef(num)
+    const conv = res.data?.data
+    if (!conv) {
       lookupError.value = t('conversation.merge.notFound', { num })
       return
     }
 
-    // Search results omit contact fields — fetch the full conversation so the
-    // chip shows contact name and we can detect already-merged status.
-    const fullRes = await api.getConversation(match.uuid)
-    const fullConv = fullRes.data?.data
-    if (!fullConv) {
-      lookupError.value = t('conversation.merge.notFound', { num })
-      return
-    }
-
-    if (fullConv.merged_into_id) {
+    if (conv.merged_into_id) {
       lookupError.value = t('conversation.merge.alreadyMerged', { num })
       return
     }
 
-    mergeTickets.value.push(fullConv)
+    mergeTickets.value.push(conv)
     ticketNumber.value = ''
 
     if (!primaryUUID.value) {
-      primaryUUID.value = fullConv.uuid
+      primaryUUID.value = conv.uuid
     }
   } catch (err) {
     lookupError.value = handleHTTPError(err).message
@@ -203,7 +191,7 @@ async function lookupTicket() {
 }
 
 function removeTicket(uuid) {
-  mergeTickets.value = mergeTickets.value.filter(t => t.uuid !== uuid)
+  mergeTickets.value = mergeTickets.value.filter(tk => tk.uuid !== uuid)
   if (primaryUUID.value === uuid) {
     primaryUUID.value = mergeTickets.value.length > 0 ? mergeTickets.value[0].uuid : ''
   }
@@ -217,7 +205,7 @@ async function handleMerge() {
       .map(c => c.uuid)
       .filter(uuid => uuid !== primaryUUID.value)
 
-    await api.mergeConversations({
+    const res = await api.mergeConversations({
       primary_uuid: primaryUUID.value,
       secondary_uuids: secondaryUUIDs
     })
@@ -225,6 +213,16 @@ async function handleMerge() {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       description: t('conversation.merge.success', { count: mergeTickets.value.length })
     })
+
+    // Surface partial-failure warnings (messages moved but some status
+    // updates failed). The agent should refresh to see the current state.
+    const warnings = res.data?.data?.warnings
+    if (warnings && warnings.length > 0) {
+      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+        variant: 'destructive',
+        description: `Merge succeeded but some status updates failed: ${warnings.join(', ')}. Please refresh.`
+      })
+    }
 
     emit('merged', { primary_uuid: primaryUUID.value, secondary_uuids: secondaryUUIDs })
     emit('update:open', false)
