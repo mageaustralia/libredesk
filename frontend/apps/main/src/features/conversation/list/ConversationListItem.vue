@@ -48,12 +48,6 @@
                     {{ conversation.inbox_name }}
                   </span>
                 </div>
-                <span
-                  class="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums"
-                  v-if="conversation.last_message_at"
-                >
-                  {{ relativeLastMessageTime }}
-                </span>
               </div>
 
               <!-- Subject -->
