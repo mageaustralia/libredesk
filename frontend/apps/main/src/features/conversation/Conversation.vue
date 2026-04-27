@@ -94,10 +94,43 @@
               <ShieldCheck class="w-4 h-4 mr-2" />
               {{ t('conversation.markAsNotSpam') }}
             </DropdownMenuItem>
+            <DropdownMenuSeparator
+              v-if="!conversationStore.current?.merged_into_id"
+            />
+            <DropdownMenuItem
+              v-if="!conversationStore.current?.merged_into_id"
+              @click="showMergeDialog = true"
+            >
+              <GitMerge class="w-4 h-4 mr-2" />
+              {{ t('conversation.merge.action') }}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </div>
+
+    <!-- Merge banner: shown on a secondary that has been merged into a primary. -->
+    <div
+      v-if="conversationStore.current?.merged_into_id"
+      class="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
+    >
+      <GitMerge class="w-4 h-4 shrink-0" />
+      <span>
+        {{ t('conversation.merge.mergedIntoBanner') }}
+        <router-link
+          v-if="conversationStore.current?.merged_into_uuid"
+          :to="mergedIntoLink"
+          class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+        >#{{ conversationStore.current.merged_into_ref }}</router-link>
+      </span>
+    </div>
+
+    <!-- Merge dialog -->
+    <MergeDialog
+      v-model:open="showMergeDialog"
+      :initial-conversation="conversationStore.conversation.data"
+      @merged="handleMerged"
+    />
 
     <!-- Messages & reply box -->
     <div class="flex flex-col flex-grow overflow-hidden">
@@ -108,7 +141,7 @@
 </template>
 
 <script setup>
-import { computed, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useConversationStore } from '../../stores/conversation'
 import { usePresenceStore } from '../../stores/presence'
 import { useUserStore } from '../../stores/user'
@@ -122,12 +155,13 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
+import MergeDialog from './MergeDialog.vue'
 import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
 import { handleHTTPError } from '@shared-ui/utils/http.js'
@@ -137,8 +171,31 @@ const conversationStore = useConversationStore()
 const presenceStore = usePresenceStore()
 const userStore = useUserStore()
 const emitter = useEmitter()
+const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+
+const showMergeDialog = ref(false)
+
+// Build a link to the primary the current secondary was merged into. Reuse the
+// current route's `type` (assigned/unassigned/etc) so the navigation lands the
+// agent in the same inbox view.
+const mergedIntoLink = computed(() => ({
+  name: 'inbox-conversation',
+  params: {
+    uuid: conversationStore.current?.merged_into_uuid,
+    type: route.params.type || 'assigned'
+  }
+}))
+
+function handleMerged ({ primary_uuid }) {
+  // Navigate to the primary so the agent immediately sees the unified thread.
+  if (!primary_uuid) return
+  router.push({
+    name: 'inbox-conversation',
+    params: { uuid: primary_uuid, type: route.params.type || 'assigned' }
+  })
+}
 
 // Presence tracking
 const otherViewers = computed(() => {
