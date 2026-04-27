@@ -7,9 +7,12 @@ export const WS_EVENT = {
     CONVERSATION_SUBSCRIBED: 'conversation_subscribed',
     TYPING: 'typing',
     NEW_NOTIFICATION: 'new_notification',
+    PRESENCE_UPDATE: 'presence_update',
+    VIEW_CONVERSATION: 'view_conversation',
 }
 
 // Message types that should not be queued because they become stale quickly
 export const WS_EPHEMERAL_TYPES = [
     WS_EVENT.TYPING,
+    WS_EVENT.VIEW_CONVERSATION,
 ]

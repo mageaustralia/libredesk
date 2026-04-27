@@ -61,10 +61,11 @@ func handleWS(r *fastglue.Request, hub *ws.Hub) error {
 	)
 	err := agentUpgrader.Upgrade(r.RequestCtx, func(conn *websocket.Conn) {
 		c := ws.Client{
-			ID:   auser.ID,
-			Hub:  hub,
-			Conn: conn,
-			Send: make(chan wsmodels.WSMessage, 10000),
+			ID:        auser.ID,
+			FirstName: auser.FirstName,
+			Hub:       hub,
+			Conn:      conn,
+			Send:      make(chan wsmodels.WSMessage, 10000),
 		}
 		hub.AddClient(&c)
 		go c.Listen()

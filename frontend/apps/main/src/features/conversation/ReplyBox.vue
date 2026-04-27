@@ -58,7 +58,35 @@
     </DialogContent>
   </Dialog>
 
+  <!-- Collision confirmation dialog -->
+  <AlertDialog :open="showCollisionConfirm" @update:open="showCollisionConfirm = false">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{{ $t('replyBox.collision.title') }}</AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ $t('replyBox.collision.description', { name: collisionAgentName }) }}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>{{ $t('globals.messages.cancel') }}</AlertDialogCancel>
+        <AlertDialogAction @click="confirmSend">{{ $t('replyBox.sendAnyway') }}</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
   <div class="text-foreground bg-background">
+    <!-- Collision warning banner -->
+    <div
+      v-if="collisionWarning"
+      class="flex items-center gap-2 px-3 py-2 mx-2 mt-2 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-sm border border-amber-200 dark:border-amber-800"
+    >
+      <AlertTriangle class="w-4 h-4 shrink-0" />
+      <span class="flex-1">{{ $t('replyBox.collision.banner', { name: collisionAgentName }) }}</span>
+      <button @click="dismissCollisionWarning" class="text-amber-600 hover:text-amber-800 dark:hover:text-amber-200">
+        <X class="w-3.5 h-3.5" />
+      </button>
+    </div>
+
     <!-- Fullscreen editor -->
     <Dialog :open="isEditorFullscreen" @update:open="isEditorFullscreen = false">
       <DialogContent
@@ -172,6 +200,7 @@ import {
 } from '@shared-ui/components/ui/form'
 import { toTypedSchema } from '@vee-validate/zod'
 import * as z from 'zod'
+import { AlertTriangle, X } from 'lucide-vue-next'
 
 const formSchema = toTypedSchema(
   z.object({
@@ -222,6 +251,13 @@ const aiPrompts = ref([])
 const replyBoxContentRef = ref(null)
 const showContactEmailWarning = ref(false)
 const mentions = ref([])
+
+// Collision detection state
+const composingStartedAt = ref(null)
+const collisionWarning = ref(false)
+const collisionAgentName = ref('')
+const showCollisionConfirm = ref(false)
+let pendingSendAction = null
 
 /**
  * Fetches AI prompts from the server.
@@ -296,8 +332,14 @@ const hasTextContent = computed(() => {
 
 /**
  * Processes the send action.
+ * If another agent replied while composing, show a confirmation dialog first.
  */
 const processSend = async (skipContactEmailCheck = false) => {
+  if (!skipContactEmailCheck && collisionWarning.value) {
+    pendingSendAction = 'send'
+    showCollisionConfirm.value = true
+    return
+  }
   let hasMessageSendingErrored = false
   isEditorFullscreen.value = false
 
@@ -446,6 +488,10 @@ const processSend = async (skipContactEmailCheck = false) => {
     clearMediaFiles()
     emailErrors.value = []
     mentions.value = []
+    // Reset collision state.
+    composingStartedAt.value = null
+    collisionWarning.value = false
+    collisionAgentName.value = ''
   }
   isSending.value = false
 }
@@ -604,8 +650,48 @@ function handleForwardMessage (message) {
 // fires the handler N times.
 onMounted(() => {
   emitter.on(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)
+  emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
 })
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)
+  emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+})
+
+/**
+ * Handles collision detection when a new message arrives while composing.
+ * Only triggers for outgoing (agent) replies from other agents on the current conversation.
+ */
+function handleNewMessageCollision({ conversation_uuid, message }) {
+  if (!composingStartedAt.value) return
+  if (conversation_uuid !== conversationStore.current?.uuid) return
+  // Only care about outgoing agent replies, not private notes or customer messages.
+  if (message?.type !== 'outgoing' || message?.private) return
+  // Ignore messages from the current user.
+  if (message?.sender_id === userStore.userID) return
+
+  collisionWarning.value = true
+  collisionAgentName.value = message?.author?.first_name || message?.sender?.first_name || t('replyBox.collision.anotherAgent')
+}
+
+function dismissCollisionWarning() {
+  collisionWarning.value = false
+}
+
+function confirmSend() {
+  showCollisionConfirm.value = false
+  collisionWarning.value = false
+  if (pendingSendAction === 'send') {
+    processSend(false)
+  }
+  pendingSendAction = null
+}
+
+// Track when the agent starts composing (used to detect collision window).
+watch(textContent, (newVal) => {
+  if (newVal && newVal.trim().length > 0 && !composingStartedAt.value) {
+    composingStartedAt.value = new Date()
+  } else if (!newVal || newVal.trim().length === 0) {
+    composingStartedAt.value = null
+  }
 })
 </script>

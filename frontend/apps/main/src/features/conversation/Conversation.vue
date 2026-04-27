@@ -2,11 +2,33 @@
   <div class="flex flex-col h-full">
     <!-- Header -->
     <div class="h-12 flex-shrink-0 px-2 border-b flex items-center justify-between">
-      <div>
+      <div class="flex items-center gap-2">
         <span v-if="!conversationStore.conversation.loading">
           {{ conversationStore.currentContactName }}
         </span>
         <Skeleton class="w-[130px] h-6" v-else />
+        <!-- Presence: other agents currently viewing this conversation -->
+        <div v-if="otherViewers.length > 0" class="flex items-center gap-1 ml-2">
+          <Eye class="w-3.5 h-3.5 text-blue-500 animate-blink" />
+          <TooltipProvider :delay-duration="200">
+            <div class="flex -space-x-1.5">
+              <Tooltip v-for="viewer in otherViewers.slice(0, 3)" :key="viewer.user_id">
+                <TooltipTrigger asChild>
+                  <span
+                    class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-background bg-muted text-[8px] font-medium cursor-default"
+                    :title="viewer.first_name || 'Agent'"
+                  >
+                    {{ (viewer.first_name || '?').substring(0, 1) }}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="text-xs">
+                  {{ viewer.first_name || 'Unknown' }}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+          <span v-if="otherViewers.length > 3" class="text-[10px] text-muted-foreground">+{{ otherViewers.length - 3 }}</span>
+        </div>
       </div>
       <div class="flex items-center">
         <DropdownMenu>
@@ -86,7 +108,10 @@
 </template>
 
 <script setup>
+import { computed, watch, onBeforeUnmount } from 'vue'
 import { useConversationStore } from '../../stores/conversation'
+import { usePresenceStore } from '../../stores/presence'
+import { useUserStore } from '../../stores/user'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,22 +119,50 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@shared-ui/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
 import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
 import { handleHTTPError } from '@shared-ui/utils/http.js'
+import { sendViewConversation } from '@/websocket'
 
 const conversationStore = useConversationStore()
+const presenceStore = usePresenceStore()
+const userStore = useUserStore()
 const emitter = useEmitter()
 const router = useRouter()
 const { t } = useI18n()
+
+// Presence tracking
+const otherViewers = computed(() => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) return []
+  return presenceStore.getViewers(uuid, userStore.userID)
+})
+
+// Send presence when conversation changes
+watch(
+  () => conversationStore.current?.uuid,
+  (newUUID, oldUUID) => {
+    if (newUUID) {
+      sendViewConversation(newUUID)
+    } else if (oldUUID) {
+      sendViewConversation('')
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  sendViewConversation('')
+})
 
 const showToast = (description, variant) => {
   emitter.emit(EMITTER_EVENTS.SHOW_TOAST, variant ? { variant, description } : { description })
@@ -147,3 +200,14 @@ const handleUpdateStatus = (status) => {
   conversationStore.updateStatus(status)
 }
 </script>
+
+<style scoped>
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+.animate-blink {
+  animation: blink 3s ease-in-out infinite;
+  transform-origin: center;
+}
+</style>

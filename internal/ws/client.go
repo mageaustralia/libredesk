@@ -33,8 +33,11 @@ func (b *SafeBool) Get() bool {
 
 // Client is a single connected WS user.
 type Client struct {
-	// Client ID.
+	// Client ID (user ID).
 	ID int
+
+	// User display info for presence.
+	FirstName string
 
 	// Hub.
 	Hub *Hub
@@ -113,6 +116,8 @@ func (c *Client) processIncomingMessage(data []byte) {
 		c.handleConversationSubscribe(msg.Data)
 	case models.MessageTypeTyping:
 		c.handleTyping(msg.Data)
+	case models.MessageTypeViewConversation:
+		c.handleViewConversation(msg.Data)
 	default:
 		c.SendError("unknown message type")
 	}
@@ -185,6 +190,32 @@ func (c *Client) handleTyping(data interface{}) {
 	}
 
 	c.Hub.BroadcastTypingToConversation(typingMsg.ConversationUUID, typingMsg)
+}
+
+// viewConversationData is the payload for a view_conversation message.
+type viewConversationData struct {
+	ConversationUUID string `json:"conversation_uuid"`
+}
+
+// handleViewConversation handles presence tracking when an agent views a conversation.
+// An empty conversation_uuid means the agent stopped viewing any conversation.
+func (c *Client) handleViewConversation(data interface{}) {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		c.SendError("invalid view_conversation data")
+		return
+	}
+
+	var viewData viewConversationData
+	if err := json.Unmarshal(dataBytes, &viewData); err != nil {
+		c.SendError("invalid view_conversation format")
+		return
+	}
+
+	c.Hub.SetViewing(c, viewData.ConversationUUID, &PresenceInfo{
+		UserID:    c.ID,
+		FirstName: c.FirstName,
+	})
 }
 
 // close closes the client connection.
