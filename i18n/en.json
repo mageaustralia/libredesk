@@ -779,6 +779,7 @@
   "globals.terms.myInbox": "My Inbox | My Inboxes",
   "globals.terms.name": "Name | Names",
   "globals.terms.none": "None",
+  "globals.terms.noTeam": "No team",
   "globals.terms.note": "Note | Notes",
   "globals.terms.notification": "Notification | Notifications",
   "globals.terms.off": "OFF",
