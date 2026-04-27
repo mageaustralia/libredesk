@@ -558,6 +558,63 @@
       </FormField>
     </div>
 
+    <!-- Test Connection Section -->
+    <div v-show="setupMethod === 'manual' || isOAuthInbox" class="border-t pt-6 mt-6 space-y-6">
+      <h3 class="text-base font-semibold">{{ $t('admin.inbox.testConnection') }}</h3>
+
+      <!-- IMAP Test -->
+      <div v-show="!isOAuthInbox" class="space-y-3">
+        <div class="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            @click="runIMAPTest"
+            :disabled="isTestingIMAP"
+          >
+            <Loader2 v-if="isTestingIMAP" class="w-4 h-4 mr-2 animate-spin" />
+            {{ isTestingIMAP ? $t('admin.inbox.testConnection.testing') : $t('admin.inbox.testConnection.testIMAP') }}
+          </Button>
+        </div>
+        <div v-if="imapTestLogs.length > 0" class="space-y-2">
+          <div
+            class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
+            :class="imapTestSuccess === true ? 'border-green-500 border' : imapTestSuccess === false ? 'border-red-500 border' : ''"
+          >
+            <div v-for="(log, index) in imapTestLogs" :key="index" class="py-0.5">{{ log }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SMTP Test -->
+      <div class="space-y-3">
+        <div class="flex items-center gap-2">
+          <Input
+            v-model="smtpTestEmail"
+            type="email"
+            :placeholder="$t('admin.inbox.testConnection.emailPlaceholder')"
+            class="flex-1 max-w-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            @click="runSMTPTest"
+            :disabled="isTestingSMTP"
+          >
+            <Loader2 v-if="isTestingSMTP" class="w-4 h-4 mr-2 animate-spin" />
+            {{ isTestingSMTP ? $t('admin.inbox.testConnection.testing') : $t('admin.inbox.testConnection.testSMTP') }}
+          </Button>
+        </div>
+        <div v-if="smtpTestLogs.length > 0" class="space-y-2">
+          <div
+            class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
+            :class="smtpTestSuccess === true ? 'border-green-500 border' : smtpTestSuccess === false ? 'border-red-500 border' : ''"
+          >
+            <div v-for="(log, index) in smtpTestLogs" :key="index" class="py-0.5">{{ log }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <Button type="submit" :is-loading="isLoading" :disabled="isLoading">
       {{ submitLabel }}
     </Button>
@@ -700,7 +757,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@shared-ui/components/ui/dialog'
-import { CheckCircle2, RefreshCw, Mail, Lightbulb } from 'lucide-vue-next'
+import { CheckCircle2, Loader2, Lightbulb, Mail, RefreshCw } from 'lucide-vue-next'
 import MenuCard from '@main/components/layout/MenuCard.vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
@@ -910,6 +967,56 @@ const copyToClipboard = async (text) => {
       variant: 'destructive',
       description: t('globals.messages.somethingWentWrong')
     })
+  }
+}
+
+// Test connection state
+const isTestingIMAP = ref(false)
+const isTestingSMTP = ref(false)
+const imapTestLogs = ref([])
+const smtpTestLogs = ref([])
+const imapTestSuccess = ref(null)
+const smtpTestSuccess = ref(null)
+const smtpTestEmail = ref('')
+
+const runIMAPTest = async () => {
+  isTestingIMAP.value = true
+  imapTestLogs.value = []
+  imapTestSuccess.value = null
+  try {
+    const values = form.values
+    const response = await api.testInboxConnection({
+      imap: values.imap,
+      auth_type: values.auth_type
+    })
+    imapTestLogs.value = response.data.data.imap_logs || []
+    imapTestSuccess.value = response.data.data.success
+  } catch (error) {
+    imapTestLogs.value = [handleHTTPError(error).message]
+    imapTestSuccess.value = false
+  } finally {
+    isTestingIMAP.value = false
+  }
+}
+
+const runSMTPTest = async () => {
+  isTestingSMTP.value = true
+  smtpTestLogs.value = []
+  smtpTestSuccess.value = null
+  try {
+    const values = form.values
+    const response = await api.testInboxConnection({
+      smtp: values.smtp,
+      auth_type: values.auth_type,
+      test_email: smtpTestEmail.value
+    })
+    smtpTestLogs.value = response.data.data.smtp_logs || []
+    smtpTestSuccess.value = response.data.data.success
+  } catch (error) {
+    smtpTestLogs.value = [handleHTTPError(error).message]
+    smtpTestSuccess.value = false
+  } finally {
+    isTestingSMTP.value = false
   }
 }
 

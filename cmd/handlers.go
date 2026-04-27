@@ -40,6 +40,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/settings/general", perm(handleUpdateGeneralSettings, "general_settings:manage"))
 	g.GET("/api/v1/settings/notifications/email", perm(handleGetEmailNotificationSettings, "notification_settings:manage"))
 	g.PUT("/api/v1/settings/notifications/email", perm(handleUpdateEmailNotificationSettings, "notification_settings:manage"))
+	g.POST("/api/v1/settings/notifications/email/test", perm(handleTestEmailNotificationSettings, "notification_settings:manage"))
 	g.GET("/api/v1/settings/trash", perm(handleGetTrashSettings, "general_settings:manage"))
 	g.PUT("/api/v1/settings/trash", perm(handleUpdateTrashSettings, "general_settings:manage"))
 
@@ -187,6 +188,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/inboxes/{id}/toggle", perm(handleToggleInbox, "inboxes:manage"))
 	g.PUT("/api/v1/inboxes/{id}", perm(handleUpdateInbox, "inboxes:manage"))
 	g.DELETE("/api/v1/inboxes/{id}", perm(handleDeleteInbox, "inboxes:manage"))
+	g.POST("/api/v1/inboxes/test-connection", perm(handleTestInboxConnection, "inboxes:manage"))
 
 	// OAuth endpoints for email inboxes.
 	g.POST("/api/v1/inboxes/oauth/{provider}/authorize", perm(handleOAuthAuthorize, "inboxes:manage"))
