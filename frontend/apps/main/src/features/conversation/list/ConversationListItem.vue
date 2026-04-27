@@ -19,7 +19,7 @@
           </div>
 
           <!-- Avatar with channel indicator -->
-          <div class="relative flex-shrink-0 shrink-0">
+          <div class="relative flex-shrink-0">
             <Avatar class="w-10 h-10 rounded-full">
               <AvatarImage
                 :src="conversation.contact.avatar_url || ''"
@@ -117,7 +117,7 @@
           <!-- Right column: 2x2 grid — assignments left, time+unread right -->
           <div
             v-if="canAssignAgent || canAssignTeam"
-            class="shrink-0 grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 items-center pt-1"
+            class="flex-shrink-0 grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 items-center pt-1"
             @click.prevent.stop
           >
             <!-- Row 1: Agent | Time -->
@@ -153,7 +153,7 @@
             </DropdownMenu>
             <span v-else />
             <span class="text-xs text-gray-400 whitespace-nowrap text-right">
-              {{ conversation.last_message_at ? relativeLastMessageTime : '' }}
+              {{ relativeLastMessageTime }}
             </span>
 
             <!-- Row 2: Team | Unread -->

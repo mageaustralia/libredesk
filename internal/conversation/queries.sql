@@ -96,7 +96,7 @@ SELECT
         LIMIT 1
     ) ELSE NULL END as mentioned_message_uuid,
     CASE WHEN conversations.assigned_user_id IS NOT NULL
-         THEN (SELECT CONCAT(u2.first_name, ' ', u2.last_name) FROM users u2 WHERE u2.id = conversations.assigned_user_id)
+         THEN assigned_users.first_name || ' ' || assigned_users.last_name
          ELSE NULL END as assigned_user_name,
     assigned_teams.name as assigned_team_name
     FROM conversations
@@ -105,6 +105,7 @@ SELECT
     LEFT JOIN conversation_statuses ON status_id = conversation_statuses.id
     LEFT JOIN conversation_priorities ON priority_id = conversation_priorities.id
     LEFT JOIN teams assigned_teams ON conversations.assigned_team_id = assigned_teams.id
+    LEFT JOIN users assigned_users ON conversations.assigned_user_id = assigned_users.id
     LEFT JOIN LATERAL (
         SELECT id, first_response_deadline_at, resolution_deadline_at
         FROM applied_slas 
