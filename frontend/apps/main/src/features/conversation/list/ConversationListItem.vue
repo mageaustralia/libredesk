@@ -19,7 +19,7 @@
           </div>
 
           <!-- Avatar with channel indicator -->
-          <div class="relative flex-shrink-0">
+          <div class="relative flex-shrink-0 shrink-0">
             <Avatar class="w-10 h-10 rounded-full">
               <AvatarImage
                 :src="conversation.contact.avatar_url || ''"
@@ -81,7 +81,7 @@
                 </template>
               </p>
               <div
-                v-if="conversation.unread_message_count > 0"
+                v-if="conversation.unread_message_count > 0 && !canAssignAgent && !canAssignTeam"
                 class="flex items-center justify-center w-5 h-5 bg-green-600 text-white text-xs font-medium rounded-full flex-shrink-0"
               >
                 {{ conversation.unread_message_count }}
@@ -119,6 +119,90 @@
               />
             </div>
           </div>
+
+          <!-- Right column: 2x2 grid — assignments left, time+unread right -->
+          <div
+            v-if="canAssignAgent || canAssignTeam"
+            class="shrink-0 grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 items-center pt-1"
+            @click.prevent.stop
+          >
+            <!-- Row 1: Agent | Time -->
+            <DropdownMenu v-if="canAssignAgent">
+              <DropdownMenuTrigger asChild>
+                <button
+                  class="text-xs flex items-center gap-1 py-1 px-1 justify-end hover:text-foreground transition-colors cursor-pointer"
+                  :class="conversation.assigned_user_name ? 'text-muted-foreground' : 'text-orange-500 dark:text-orange-400'"
+                >
+                  <User class="w-3 h-3" />
+                  {{ conversation.assigned_user_name || t('globals.terms.unassigned') }}
+                  <ChevronDown class="w-2.5 h-2.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="max-h-60 overflow-y-auto">
+                <DropdownMenuItem
+                  v-if="conversation.assigned_user_name"
+                  @click="unassignAgent"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ t('globals.terms.none') }}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator v-if="conversation.assigned_user_name" />
+                <DropdownMenuItem
+                  v-for="agent in usersStore.options"
+                  :key="'agent-' + agent.value"
+                  @click="assignAgent(agent)"
+                  class="text-xs"
+                >
+                  {{ agent.label }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <span v-else />
+            <span class="text-xs text-gray-400 whitespace-nowrap text-right">
+              {{ conversation.last_message_at ? relativeLastMessageTime : '' }}
+            </span>
+
+            <!-- Row 2: Team | Unread -->
+            <DropdownMenu v-if="canAssignTeam">
+              <DropdownMenuTrigger asChild>
+                <button
+                  class="text-xs flex items-center gap-1 py-1 px-1 justify-end hover:text-foreground transition-colors cursor-pointer text-muted-foreground"
+                  :class="conversation.assigned_team_name ? '' : 'opacity-50'"
+                >
+                  <Users class="w-3 h-3" />
+                  {{ conversation.assigned_team_name || t('globals.terms.noTeam') }}
+                  <ChevronDown class="w-2.5 h-2.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="max-h-60 overflow-y-auto">
+                <DropdownMenuItem
+                  v-if="conversation.assigned_team_name"
+                  @click="unassignTeam"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ t('globals.terms.none') }}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator v-if="conversation.assigned_team_name" />
+                <DropdownMenuItem
+                  v-for="team in teamsStore.options"
+                  :key="'team-' + team.value"
+                  @click="assignTeam(team)"
+                  class="text-xs"
+                >
+                  {{ team.label }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <span v-else />
+            <div class="flex justify-end">
+              <div
+                v-if="conversation.unread_message_count > 0"
+                class="flex items-center justify-center w-5 h-5 bg-green-600 text-white text-xs font-medium rounded-full"
+              >
+                {{ conversation.unread_message_count }}
+              </div>
+            </div>
+          </div>
         </div>
       </router-link>
     </ContextMenuTrigger>
@@ -134,7 +218,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getRelativeTime } from '@shared-ui/utils/datetime.js'
-import { Mail, MessageSquare, Reply, MailOpen } from 'lucide-vue-next'
+import { Mail, MessageSquare, Reply, MailOpen, User, Users, ChevronDown } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@shared-ui/components/ui/avatar'
 import {
   ContextMenu,
@@ -142,15 +226,34 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from '@shared-ui/components/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@shared-ui/components/ui/dropdown-menu'
 import SlaBadge from '@main/features/sla/SlaBadge.vue'
 import { Checkbox } from '@shared-ui/components/ui/checkbox'
 import { useConversationStore } from '@main/stores/conversation'
 import { useConversationRoute } from '@main/composables/useConversationRoute'
+import { useUsersStore } from '@/stores/users'
+import { useTeamStore } from '@/stores/team'
+import { useUserStore } from '@/stores/user'
+import { handleHTTPError } from '@shared-ui/utils/http.js'
+import { useEmitter } from '@/composables/useEmitter'
+import { EMITTER_EVENTS } from '@/constants/emitterEvents'
+import { permissions as p } from '@/constants/permissions'
+import api from '@/api'
 import { useI18n } from 'vue-i18n'
 
 let timer = null
 const now = ref(new Date())
 const conversationStore = useConversationStore()
+const usersStore = useUsersStore()
+const teamsStore = useTeamStore()
+const userStore = useUserStore()
+const emitter = useEmitter()
 const { t } = useI18n()
 const frdStatus = ref('')
 const rdStatus = ref('')
@@ -212,5 +315,56 @@ const isItemSelected = computed(() => {
 
 const handleCheckboxClick = (event) => {
   conversationStore.toggleSelect(props.conversation.uuid, event.shiftKey)
+}
+
+const canAssignAgent = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_USER_ASSIGNEE))
+const canAssignTeam = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_TEAM_ASSIGNEE))
+
+const assignAgent = async (agent) => {
+  try {
+    await api.updateAssignee(props.conversation.uuid, 'user', { assignee_id: parseInt(agent.value) })
+    props.conversation.assigned_user_name = agent.label
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
+
+const unassignAgent = async () => {
+  try {
+    await api.removeAssignee(props.conversation.uuid, 'user')
+    props.conversation.assigned_user_name = null
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
+
+const assignTeam = async (team) => {
+  try {
+    await api.updateAssignee(props.conversation.uuid, 'team', { assignee_id: parseInt(team.value) })
+    props.conversation.assigned_team_name = team.label
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
+}
+
+const unassignTeam = async () => {
+  try {
+    await api.removeAssignee(props.conversation.uuid, 'team')
+    props.conversation.assigned_team_name = null
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  }
 }
 </script>
