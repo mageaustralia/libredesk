@@ -19,14 +19,9 @@ export const usePresenceStore = defineStore('presence', () => {
     return list.filter(v => v.user_id !== excludeUserID)
   }
 
-  function getViewerCount(convUUID, excludeUserID) {
-    return getViewers(convUUID, excludeUserID).length
-  }
-
   return {
     viewers,
     updatePresence,
-    getViewers,
-    getViewerCount
+    getViewers
   }
 })

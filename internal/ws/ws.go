@@ -16,6 +16,14 @@ type PresenceInfo struct {
 }
 
 // Hub maintains the set of registered websockets clients.
+//
+// Lock ordering invariant:
+//
+//	presenceMu → clientsMutex.RLock — safe.
+//	clientsMutex.Lock → presenceMu   — DEADLOCK. Never do this.
+//
+// RemoveClient deliberately releases presenceMu before acquiring
+// clientsMutex.Lock to honour this invariant.
 type Hub struct {
 	// Client ID to WS Client map, user can connect from multiple devices and each device will have a separate client.
 	clients      map[int][]*Client

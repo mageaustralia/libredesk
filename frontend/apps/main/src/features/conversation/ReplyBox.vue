@@ -253,7 +253,7 @@ const showContactEmailWarning = ref(false)
 const mentions = ref([])
 
 // Collision detection state
-const composingStartedAt = ref(null)
+const isComposing = ref(false)
 const collisionWarning = ref(false)
 const collisionAgentName = ref('')
 const showCollisionConfirm = ref(false)
@@ -489,7 +489,7 @@ const processSend = async (skipContactEmailCheck = false) => {
     emailErrors.value = []
     mentions.value = []
     // Reset collision state.
-    composingStartedAt.value = null
+    isComposing.value = false
     collisionWarning.value = false
     collisionAgentName.value = ''
   }
@@ -662,12 +662,14 @@ onBeforeUnmount(() => {
  * Only triggers for outgoing (agent) replies from other agents on the current conversation.
  */
 function handleNewMessageCollision({ conversation_uuid, message }) {
-  if (!composingStartedAt.value) return
+  if (!isComposing.value) return
   if (conversation_uuid !== conversationStore.current?.uuid) return
   // Only care about outgoing agent replies, not private notes or customer messages.
   if (message?.type !== 'outgoing' || message?.private) return
-  // Ignore messages from the current user.
-  if (message?.sender_id === userStore.userID) return
+  // Ignore messages from the current user. Fall back to author.id because the
+  // WS-broadcast payload may not carry a top-level sender_id.
+  const senderId = message?.sender_id ?? message?.author?.id
+  if (senderId === userStore.userID) return
 
   collisionWarning.value = true
   collisionAgentName.value = message?.author?.first_name || message?.sender?.first_name || t('replyBox.collision.anotherAgent')
@@ -688,10 +690,10 @@ function confirmSend() {
 
 // Track when the agent starts composing (used to detect collision window).
 watch(textContent, (newVal) => {
-  if (newVal && newVal.trim().length > 0 && !composingStartedAt.value) {
-    composingStartedAt.value = new Date()
+  if (newVal && newVal.trim().length > 0 && !isComposing.value) {
+    isComposing.value = true
   } else if (!newVal || newVal.trim().length === 0) {
-    composingStartedAt.value = null
+    isComposing.value = false
   }
 })
 </script>
