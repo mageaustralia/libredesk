@@ -563,7 +563,7 @@
       <h3 class="text-base font-semibold">{{ $t('admin.inbox.testConnection') }}</h3>
 
       <!-- IMAP Test -->
-      <div v-show="!isOAuthInbox" class="space-y-3">
+      <div class="space-y-3">
         <div class="flex items-center gap-2">
           <Button
             type="button"
@@ -576,6 +576,7 @@
           </Button>
         </div>
         <div v-if="imapTestLogs.length > 0" class="space-y-2">
+          <Label>{{ t('admin.inbox.imapLog') }}</Label>
           <div
             class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
             :class="imapTestSuccess === true ? 'border-green-500 border' : imapTestSuccess === false ? 'border-red-500 border' : ''"
@@ -605,6 +606,7 @@
           </Button>
         </div>
         <div v-if="smtpTestLogs.length > 0" class="space-y-2">
+          <Label>{{ t('admin.inbox.smtpLog') }}</Label>
           <div
             class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
             :class="smtpTestSuccess === true ? 'border-green-500 border' : smtpTestSuccess === false ? 'border-red-500 border' : ''"
@@ -739,6 +741,7 @@ import {
   FormMessage,
   FormDescription
 } from '@shared-ui/components/ui/form/index.js'
+import { Label } from '@shared-ui/components/ui/label'
 import { Input } from '@shared-ui/components/ui/input/index.js'
 import SwitchField from '@shared-ui/components/SwitchField.vue'
 import { Button } from '@shared-ui/components/ui/button/index.js'
