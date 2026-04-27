@@ -322,7 +322,6 @@ type queries struct {
 	MoveConversationMessages      *sqlx.Stmt `query:"move-conversation-messages"`
 	CopyConversationTags          *sqlx.Stmt `query:"copy-conversation-tags"`
 	MarkConversationMergedInto    *sqlx.Stmt `query:"mark-conversation-merged-into"`
-	ReopenConversationByID        *sqlx.Stmt `query:"reopen-conversation-by-id"`
 	AnyConversationOpen           *sqlx.Stmt `query:"any-conversation-open"`
 
 	// Broadcast queries.

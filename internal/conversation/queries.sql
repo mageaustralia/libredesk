@@ -993,15 +993,6 @@ UPDATE conversations SET
     updated_at = NOW()
 WHERE id = $1;
 
--- name: reopen-conversation-by-id
--- Used by merge: reopens a primary that was closed when at least one secondary
--- was open at merge time. $1 = primary conversation_id.
-UPDATE conversations SET
-    status_id = (SELECT id FROM conversation_statuses WHERE name = 'Open'),
-    closed_at = NULL,
-    updated_at = NOW()
-WHERE id = $1;
-
 -- name: any-conversation-open
 -- Returns true if any conversation in $1 (UUID array) currently has a status
 -- other than Closed/Trashed. Run BEFORE the merge transaction so the result
