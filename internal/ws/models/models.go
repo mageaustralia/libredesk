@@ -11,6 +11,8 @@ const (
 	MessageTypeConversationSubscribe  = "conversation_subscribe"
 	MessageTypeConversationSubscribed = "conversation_subscribed"
 	MessageTypeTyping                 = "typing"
+	MessageTypePresenceUpdate         = "presence_update"
+	MessageTypeViewConversation       = "view_conversation"
 )
 
 // WSMessage represents a WS message.

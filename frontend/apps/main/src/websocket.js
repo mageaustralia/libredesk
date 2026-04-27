@@ -1,5 +1,6 @@
 import { useConversationStore } from './stores/conversation'
 import { useNotificationStore } from './stores/notification'
+import { usePresenceStore } from './stores/presence'
 import { WS_EVENT, WS_EPHEMERAL_TYPES } from './constants/websocket'
 import { playNotificationSound } from '@shared-ui/composables/useNotificationSound'
 
@@ -16,6 +17,7 @@ export class WebSocketClient {
     this.lastPong = Date.now()
     this.convStore = useConversationStore()
     this.notificationStore = useNotificationStore()
+    this.presenceStore = usePresenceStore()
     this.messageQueue = []
     this.maxQueueSize = 50
     // 30 sec.
@@ -89,7 +91,9 @@ export class WebSocketClient {
           this.convStore.updateTypingStatus(data.data)
         },
         // New notification.
-        [WS_EVENT.NEW_NOTIFICATION]: () => this.notificationStore.addNotification(data.data)
+        [WS_EVENT.NEW_NOTIFICATION]: () => this.notificationStore.addNotification(data.data),
+        // Presence update: who's viewing this conversation.
+        [WS_EVENT.PRESENCE_UPDATE]: () => this.presenceStore.updatePresence(data.data.conversation_uuid, data.data.viewers || [])
       }
 
       const handler = handlers[data.type]
@@ -280,4 +284,5 @@ export function initWS () {
 export const sendMessage = message => wsClient?.send(message)
 export const subscribeToConversation = conversationUUID => wsClient?.subscribeToConversation(conversationUUID)
 export const sendTypingIndicator = (conversationUUID, isTyping, isPrivateMessage) => wsClient?.sendTypingIndicator(conversationUUID, isTyping, isPrivateMessage)
+export const sendViewConversation = (conversationUUID) => wsClient?.send({ type: WS_EVENT.VIEW_CONVERSATION, data: { conversation_uuid: conversationUUID || '' } })
 export const closeWebSocket = () => wsClient?.close()
