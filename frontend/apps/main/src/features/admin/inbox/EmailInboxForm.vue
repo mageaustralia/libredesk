@@ -515,7 +515,7 @@
 
       <FormField v-slot="{ componentField }" name="smtp.tls_type">
         <FormItem>
-          <FormLabel>{{ t('globals.terms.tls') }}</FormLabel>
+          <FormLabel>{{ $t('globals.terms.tls') }}</FormLabel>
           <FormControl>
             <Select v-bind="componentField">
               <SelectTrigger>
@@ -576,7 +576,7 @@
           </Button>
         </div>
         <div v-if="imapTestLogs.length > 0" class="space-y-2">
-          <Label>{{ t('admin.inbox.imapLog') }}</Label>
+          <Label>{{ $t('admin.inbox.imapLog') }}</Label>
           <div
             class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
             :class="imapTestSuccess === true ? 'border-green-500 border' : imapTestSuccess === false ? 'border-red-500 border' : ''"
@@ -606,7 +606,7 @@
           </Button>
         </div>
         <div v-if="smtpTestLogs.length > 0" class="space-y-2">
-          <Label>{{ t('admin.inbox.smtpLog') }}</Label>
+          <Label>{{ $t('admin.inbox.smtpLog') }}</Label>
           <div
             class="bg-muted p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto"
             :class="smtpTestSuccess === true ? 'border-green-500 border' : smtpTestSuccess === false ? 'border-red-500 border' : ''"
@@ -988,10 +988,16 @@ const runIMAPTest = async () => {
   imapTestSuccess.value = null
   try {
     const values = form.values
-    const response = await api.testInboxConnection({
+    const payload = {
       imap: values.imap,
       auth_type: values.auth_type
-    })
+    }
+    // Pass inbox_id when editing an existing inbox so the backend can substitute
+    // the stored password when the frontend has only a masked dummy.
+    if (props.initialValues?.id) {
+      payload.inbox_id = props.initialValues.id
+    }
+    const response = await api.testInboxConnection(payload)
     imapTestLogs.value = response.data.data.imap_logs || []
     imapTestSuccess.value = response.data.data.success
   } catch (error) {
@@ -1008,11 +1014,17 @@ const runSMTPTest = async () => {
   smtpTestSuccess.value = null
   try {
     const values = form.values
-    const response = await api.testInboxConnection({
+    const payload = {
       smtp: values.smtp,
       auth_type: values.auth_type,
       test_email: smtpTestEmail.value
-    })
+    }
+    // Pass inbox_id when editing an existing inbox so the backend can substitute
+    // the stored password when the frontend has only a masked dummy.
+    if (props.initialValues?.id) {
+      payload.inbox_id = props.initialValues.id
+    }
+    const response = await api.testInboxConnection(payload)
     smtpTestLogs.value = response.data.data.smtp_logs || []
     smtpTestSuccess.value = response.data.data.success
   } catch (error) {

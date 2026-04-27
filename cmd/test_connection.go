@@ -1,26 +1,32 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/mail"
 	smtplib "net/smtp"
 	"strings"
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/envelope"
+	emailchan "github.com/abhinavxd/libredesk/internal/inbox/channel/email"
+	emailoauth "github.com/abhinavxd/libredesk/internal/inbox/channel/email/oauth"
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	"github.com/abhinavxd/libredesk/internal/setting/models"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/knadh/smtppool"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
 
 // testInboxRequest is the body for POST /api/v1/inboxes/test-connection.
 type testInboxRequest struct {
+	InboxID   int                 `json:"inbox_id"`
 	IMAP      *imodels.IMAPConfig `json:"imap"`
 	SMTP      *imodels.SMTPConfig `json:"smtp"`
 	AuthType  string              `json:"auth_type"`
@@ -57,11 +63,43 @@ func handleTestInboxConnection(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
 	}
 
+	// When an existing inbox ID is provided, fetch the stored config so we can
+	// substitute dummy placeholders the frontend can't know the real values of
+	// (masked passwords, OAuth tokens).
+	var storedCfg *imodels.Config
+	if req.InboxID != 0 {
+		dbInbox, err := app.inbox.GetDBRecord(req.InboxID)
+		if err == nil {
+			var cfg imodels.Config
+			if jsonErr := json.Unmarshal(dbInbox.Config, &cfg); jsonErr == nil {
+				storedCfg = &cfg
+			}
+		}
+	}
+
+	// Substitute dummy passwords / OAuth tokens from stored config when present.
+	if storedCfg != nil {
+		if req.IMAP != nil && len(storedCfg.IMAP) > 0 {
+			if req.IMAP.Password == "" || strings.Contains(req.IMAP.Password, stringutil.PasswordDummy) {
+				req.IMAP.Password = storedCfg.IMAP[0].Password
+			}
+		}
+		if req.SMTP != nil && len(storedCfg.SMTP) > 0 {
+			if req.SMTP.Password == "" || strings.Contains(req.SMTP.Password, stringutil.PasswordDummy) {
+				req.SMTP.Password = storedCfg.SMTP[0].Password
+			}
+		}
+		// Use the stored auth_type when caller didn't set one.
+		if req.AuthType == "" {
+			req.AuthType = storedCfg.AuthType
+		}
+	}
+
 	resp := testInboxResponse{Success: true}
 
 	// Test IMAP if config provided.
 	if req.IMAP != nil && req.IMAP.Host != "" {
-		imapLogs, imapOK := testIMAPConnection(req.IMAP)
+		imapLogs, imapOK := testIMAPConnection(req.IMAP, req.AuthType, storedCfg)
 		resp.IMAPLogs = imapLogs
 		if !imapOK {
 			resp.Success = false
@@ -70,7 +108,7 @@ func handleTestInboxConnection(r *fastglue.Request) error {
 
 	// Test SMTP if config provided.
 	if req.SMTP != nil && req.SMTP.Host != "" {
-		smtpLogs, smtpOK := testSMTPConn(req.SMTP, req.TestEmail)
+		smtpLogs, smtpOK := testSMTPConn(req.SMTP, req.TestEmail, storedCfg)
 		resp.SMTPLogs = smtpLogs
 		if !smtpOK {
 			resp.Success = false
@@ -89,8 +127,8 @@ func handleTestEmailNotificationSettings(r *fastglue.Request) error {
 		logs = []string{}
 	)
 
-	addLog := func(msg string) {
-		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg))
+	addLog := func(msg string, args ...any) {
+		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), fmt.Sprintf(msg, args...)))
 	}
 
 	if err := r.Decode(&req, "json"); err != nil {
@@ -105,16 +143,16 @@ func handleTestEmailNotificationSettings(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid test email address", nil, envelope.InputError)
 	}
 
-	addLog(fmt.Sprintf("Starting SMTP test to %s", req.TestEmail))
+	addLog("Starting SMTP test to %s", req.TestEmail)
 
 	// Fetch current stored settings to retrieve password when dummy is passed.
 	out, err := app.setting.GetByPrefix("notification.email")
 	if err != nil {
-		addLog(fmt.Sprintf("Error fetching current settings: %v", err))
+		addLog("Error fetching current settings: %v", err)
 		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
 	}
 	if err := json.Unmarshal(out, &cur); err != nil {
-		addLog(fmt.Sprintf("Error parsing current settings: %v", err))
+		addLog("Error parsing current settings: %v", err)
 		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
 	}
 
@@ -124,154 +162,184 @@ func handleTestEmailNotificationSettings(r *fastglue.Request) error {
 		password = cur.Password
 	}
 
-	serverAddr := fmt.Sprintf("%s:%d", req.Host, req.Port)
-	addLog(fmt.Sprintf("Connecting to SMTP server: %s", serverAddr))
+	ok := runSMTPSession(
+		req.Host, req.Port,
+		req.Username, password,
+		req.AuthProtocol, req.TLSType,
+		req.EmailAddress, req.TestEmail,
+		req.HelloHostname,
+		req.TLSSkipVerify,
+		addLog,
+	)
+	return r.SendEnvelope(testEmailResponse{Success: ok, Logs: logs})
+}
+
+// runSMTPSession dials an SMTP server, authenticates, optionally sends a test
+// message, and returns whether the session succeeded. All diagnostic output is
+// written via addLog. Both handleTestEmailNotificationSettings and testSMTPConn
+// use this helper so TLS-type validation, timeout handling, and auth are
+// applied uniformly.
+func runSMTPSession(
+	host string, port int,
+	username, password string,
+	authProtocol, tlsType string,
+	fromAddress, testEmail string,
+	helloHostname string,
+	tlsSkipVerify bool,
+	addLog func(string, ...any),
+) bool {
+	serverAddr := fmt.Sprintf("%s:%d", host, port)
+	addLog("Connecting to SMTP server: %s", serverAddr)
 
 	tlsConfig := &tls.Config{
-		ServerName:         req.Host,
-		InsecureSkipVerify: req.TLSSkipVerify,
+		ServerName:         host,
+		InsecureSkipVerify: tlsSkipVerify,
 	}
+
+	// Dial with a 30-second client-side timeout so slow servers fail fast
+	// rather than blowing past the frontend axios timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	var client *smtplib.Client
 
-	switch req.TLSType {
+	switch tlsType {
 	case "tls":
 		addLog("Using SSL/TLS connection")
-		conn, err := tls.Dial("tcp", serverAddr, tlsConfig)
+		tlsDialer := tls.Dialer{NetDialer: &net.Dialer{}, Config: tlsConfig}
+		conn, err := tlsDialer.DialContext(ctx, "tcp", serverAddr)
 		if err != nil {
-			addLog(fmt.Sprintf("TLS connection failed: %v", err))
-			return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
+			addLog("TLS connection failed: %v", err)
+			return false
 		}
 		defer conn.Close()
-		client, err = smtplib.NewClient(conn, req.Host)
+		var clientErr error
+		client, clientErr = smtplib.NewClient(conn, host)
+		if clientErr != nil {
+			addLog("Failed to create SMTP client: %v", clientErr)
+			return false
+		}
+	case "none", "starttls":
+		d := net.Dialer{}
+		conn, err := d.DialContext(ctx, "tcp", serverAddr)
 		if err != nil {
-			addLog(fmt.Sprintf("Failed to create SMTP client: %v", err))
-			return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
+			addLog("Connection failed: %v", err)
+			return false
+		}
+		var clientErr error
+		client, clientErr = smtplib.NewClient(conn, host)
+		if clientErr != nil {
+			addLog("Failed to create SMTP client: %v", clientErr)
+			conn.Close()
+			return false
 		}
 	default:
-		addLog("Using plain/STARTTLS connection")
-		client, err = smtplib.Dial(serverAddr)
-		if err != nil {
-			addLog(fmt.Sprintf("Connection failed: %v", err))
-			return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-		}
+		addLog("Unknown TLS type: %s — must be one of: none, starttls, tls", tlsType)
+		return false
 	}
 	defer client.Close()
 	addLog("Connected successfully")
 
 	// EHLO.
-	hostname := req.HelloHostname
+	hostname := helloHostname
 	if hostname == "" {
 		hostname = "localhost"
 	}
-	addLog(fmt.Sprintf("Sending EHLO %s", hostname))
+	addLog("Sending EHLO %s", hostname)
 	if err := client.Hello(hostname); err != nil {
-		addLog(fmt.Sprintf("EHLO failed: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
+		addLog("EHLO failed: %v", err)
+		return false
 	}
 
 	// STARTTLS if required.
-	if req.TLSType == "starttls" {
+	if tlsType == "starttls" {
 		addLog("Starting TLS (STARTTLS)")
 		if err := client.StartTLS(tlsConfig); err != nil {
-			addLog(fmt.Sprintf("STARTTLS failed: %v", err))
-			return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
+			addLog("STARTTLS failed: %v", err)
+			return false
 		}
 		addLog("TLS connection established")
 	}
 
 	// Authenticate if credentials provided.
-	if req.Username != "" && password != "" {
-		addLog(fmt.Sprintf("Authenticating as %s using %s", req.Username, req.AuthProtocol))
+	if username != "" && password != "" {
+		addLog("Authenticating as %s using %s", username, authProtocol)
 		var auth smtplib.Auth
-		switch req.AuthProtocol {
+		switch authProtocol {
 		case "plain":
-			auth = smtplib.PlainAuth("", req.Username, password, req.Host)
+			auth = smtplib.PlainAuth("", username, password, host)
 		case "login":
-			auth = &loginAuth{username: req.Username, password: password}
+			auth = &smtppool.LoginAuth{Username: username, Password: password}
 		case "cram":
-			auth = smtplib.CRAMMD5Auth(req.Username, password)
+			auth = smtplib.CRAMMD5Auth(username, password)
 		case "none", "":
 			addLog("No authentication required")
 		default:
-			auth = smtplib.PlainAuth("", req.Username, password, req.Host)
+			auth = smtplib.PlainAuth("", username, password, host)
 		}
 		if auth != nil {
 			if err := client.Auth(auth); err != nil {
-				addLog(fmt.Sprintf("Authentication failed: %v", err))
-				return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
+				addLog("Authentication failed: %v", err)
+				return false
 			}
 			addLog("Authentication successful")
 		}
 	}
 
-	// Send test email.
-	fromAddr := req.EmailAddress
-	if fromAddr == "" {
-		fromAddr = req.Username
-	}
-	addLog(fmt.Sprintf("Setting sender: %s", fromAddr))
-	if err := client.Mail(fromAddr); err != nil {
-		addLog(fmt.Sprintf("MAIL FROM failed: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-	}
-	addLog(fmt.Sprintf("Setting recipient: %s", req.TestEmail))
-	if err := client.Rcpt(req.TestEmail); err != nil {
-		addLog(fmt.Sprintf("RCPT TO failed: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-	}
-	addLog("Sending test message")
-	w, err := client.Data()
-	if err != nil {
-		addLog(fmt.Sprintf("DATA command failed: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-	}
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: LibreDesk SMTP Test\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nThis is a test email from LibreDesk to verify your SMTP notification settings are working correctly.\r\n\r\nSent at: %s",
-		fromAddr, req.TestEmail, time.Now().Format(time.RFC1123))
-	if _, err := w.Write([]byte(msg)); err != nil {
-		addLog(fmt.Sprintf("Failed to write message: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-	}
-	if err := w.Close(); err != nil {
-		addLog(fmt.Sprintf("Failed to close message: %v", err))
-		return r.SendEnvelope(testEmailResponse{Success: false, Logs: logs})
-	}
-	addLog("Test email sent successfully!")
-	client.Quit()
-	return r.SendEnvelope(testEmailResponse{Success: true, Logs: logs})
-}
-
-// loginAuth implements smtp.Auth for LOGIN authentication.
-type loginAuth struct {
-	username, password string
-}
-
-func (a *loginAuth) Start(server *smtplib.ServerInfo) (string, []byte, error) {
-	return "LOGIN", []byte{}, nil
-}
-
-func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
-	if more {
-		switch string(fromServer) {
-		case "Username:":
-			return []byte(a.username), nil
-		case "Password:":
-			return []byte(a.password), nil
+	// Send test email if address provided.
+	if testEmail != "" {
+		fromAddr := fromAddress
+		if fromAddr == "" {
+			fromAddr = username
 		}
+		addLog("Setting sender: %s", fromAddr)
+		if err := client.Mail(fromAddr); err != nil {
+			addLog("MAIL FROM failed: %v", err)
+			return false
+		}
+		addLog("Setting recipient: %s", testEmail)
+		if err := client.Rcpt(testEmail); err != nil {
+			addLog("RCPT TO failed: %v", err)
+			return false
+		}
+		addLog("Sending test message")
+		w, err := client.Data()
+		if err != nil {
+			addLog("DATA command failed: %v", err)
+			return false
+		}
+		msg := fmt.Sprintf(
+			"From: %s\r\nTo: %s\r\nSubject: LibreDesk SMTP Test\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"+
+				"This is a test email from LibreDesk to verify your SMTP settings are working correctly.\r\n\r\nSent at: %s",
+			fromAddr, testEmail, time.Now().Format(time.RFC1123),
+		)
+		if _, err := w.Write([]byte(msg)); err != nil {
+			addLog("Failed to write message: %v", err)
+			return false
+		}
+		if err := w.Close(); err != nil {
+			addLog("Failed to close message: %v", err)
+			return false
+		}
+		addLog("Test email sent successfully!")
 	}
-	return nil, nil
+
+	addLog("SMTP test completed successfully!")
+	client.Quit()
+	return true
 }
 
 // testIMAPConnection dials the IMAP server and tries to authenticate.
-// Credentials are never echoed in logs.
-func testIMAPConnection(cfg *imodels.IMAPConfig) ([]string, bool) {
+// When authType is "oauth2" and storedCfg contains a valid OAuth config,
+// XOAUTH2 is used instead of basic Login. Credentials are never echoed in logs.
+func testIMAPConnection(cfg *imodels.IMAPConfig, authType string, storedCfg *imodels.Config) ([]string, bool) {
 	logs := []string{}
-	addLog := func(msg string) {
-		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg))
+	addLog := func(msg string, args ...any) {
+		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), fmt.Sprintf(msg, args...)))
 	}
 
 	address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	addLog(fmt.Sprintf("Connecting to IMAP server: %s", address))
+	addLog("Connecting to IMAP server: %s", address)
 
 	imapOptions := &imapclient.Options{
 		TLSConfig: &tls.Config{
@@ -295,33 +363,59 @@ func testIMAPConnection(cfg *imodels.IMAPConfig) ([]string, bool) {
 		addLog("Using SSL/TLS connection")
 		client, err = imapclient.DialTLS(address, imapOptions)
 	default:
-		addLog(fmt.Sprintf("Unknown TLS type: %s", cfg.TLSType))
+		addLog("Unknown TLS type: %s — must be one of: none, starttls, tls", cfg.TLSType)
 		return logs, false
 	}
 
 	if err != nil {
-		addLog(fmt.Sprintf("Connection failed: %v", err))
+		addLog("Connection failed: %v", err)
 		return logs, false
 	}
 	defer client.Logout()
 	addLog("Connected successfully")
 
-	// Authenticate.
-	addLog(fmt.Sprintf("Authenticating as: %s", cfg.Username))
-	if err := client.Login(cfg.Username, cfg.Password).Wait(); err != nil {
-		addLog(fmt.Sprintf("Authentication failed: %v", err))
-		return logs, false
+	// Authenticate: use XOAUTH2 for OAuth inboxes, basic Login otherwise.
+	if authType == imodels.AuthTypeOAuth2 && storedCfg != nil && storedCfg.OAuth != nil {
+		addLog("Authenticating as %s using XOAUTH2", cfg.Username)
+
+		// Refresh the token if needed before authenticating.
+		oauthCfg := storedCfg.OAuth
+		if emailoauth.IsTokenExpired(oauthCfg.ExpiresAt) {
+			addLog("OAuth token expired — attempting refresh")
+			refreshed, err := emailchan.RefreshOAuthConfig(oauthCfg)
+			if err != nil {
+				addLog("OAuth token refresh failed: %v", err)
+				return logs, false
+			}
+			oauthCfg = refreshed
+			addLog("OAuth token refreshed successfully")
+		}
+
+		saslClient := &xoauth2IMAPSASLClient{
+			username: cfg.Username,
+			token:    oauthCfg.AccessToken,
+		}
+		if err := client.Authenticate(saslClient); err != nil {
+			addLog("XOAUTH2 authentication failed: %v", err)
+			return logs, false
+		}
+	} else {
+		addLog("Authenticating as %s using basic login", cfg.Username)
+		if err := client.Login(cfg.Username, cfg.Password).Wait(); err != nil {
+			addLog("Authentication failed: %v", err)
+			return logs, false
+		}
 	}
 	addLog("Authentication successful")
 
 	// Select mailbox.
-	addLog(fmt.Sprintf("Selecting mailbox: %s", cfg.Mailbox))
+	addLog("Selecting mailbox: %s", cfg.Mailbox)
 	mbox, err := client.Select(cfg.Mailbox, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
-		addLog(fmt.Sprintf("Failed to select mailbox: %v", err))
+		addLog("Failed to select mailbox: %v", err)
 		return logs, false
 	}
-	addLog(fmt.Sprintf("Mailbox selected — %d messages", mbox.NumMessages))
+	addLog("Mailbox selected — %d messages", mbox.NumMessages)
 	addLog("IMAP test completed successfully!")
 	return logs, true
 }
@@ -329,125 +423,37 @@ func testIMAPConnection(cfg *imodels.IMAPConfig) ([]string, bool) {
 // testSMTPConn dials the SMTP server and tries to authenticate.
 // A test email is sent only when testEmail is non-empty.
 // Credentials are never echoed in logs.
-func testSMTPConn(cfg *imodels.SMTPConfig, testEmail string) ([]string, bool) {
+func testSMTPConn(cfg *imodels.SMTPConfig, testEmail string, storedCfg *imodels.Config) ([]string, bool) {
 	logs := []string{}
-	addLog := func(msg string) {
-		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg))
+	addLog := func(msg string, args ...any) {
+		logs = append(logs, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), fmt.Sprintf(msg, args...)))
 	}
 
-	serverAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	addLog(fmt.Sprintf("Connecting to SMTP server: %s", serverAddr))
-
-	tlsConfig := &tls.Config{
-		ServerName:         cfg.Host,
-		InsecureSkipVerify: cfg.TLSSkipVerify,
-	}
-
-	var (
-		client *smtplib.Client
-		err    error
+	ok := runSMTPSession(
+		cfg.Host, cfg.Port,
+		cfg.Username, cfg.Password,
+		cfg.AuthProtocol, cfg.TLSType,
+		"", testEmail,
+		cfg.HelloHostname,
+		cfg.TLSSkipVerify,
+		addLog,
 	)
+	return logs, ok
+}
 
-	switch cfg.TLSType {
-	case "tls":
-		addLog("Using SSL/TLS connection")
-		conn, connErr := tls.Dial("tcp", serverAddr, tlsConfig)
-		if connErr != nil {
-			addLog(fmt.Sprintf("TLS connection failed: %v", connErr))
-			return logs, false
-		}
-		defer conn.Close()
-		client, err = smtplib.NewClient(conn, cfg.Host)
-		if err != nil {
-			addLog(fmt.Sprintf("Failed to create SMTP client: %v", err))
-			return logs, false
-		}
-	default:
-		addLog("Using plain/STARTTLS connection")
-		client, err = smtplib.Dial(serverAddr)
-		if err != nil {
-			addLog(fmt.Sprintf("Connection failed: %v", err))
-			return logs, false
-		}
-	}
-	defer client.Close()
-	addLog("Connected successfully")
+// xoauth2IMAPSASLClient is a local SASL client for IMAP XOAUTH2 testing.
+// It mirrors the unexported xoauth2IMAPClient in internal/inbox/channel/email/xoauth2.go
+// but lives here so cmd/ can use it without importing the email package's internal type.
+type xoauth2IMAPSASLClient struct {
+	username string
+	token    string
+}
 
-	// EHLO.
-	hostname := cfg.HelloHostname
-	if hostname == "" {
-		hostname = "localhost"
-	}
-	addLog(fmt.Sprintf("Sending EHLO %s", hostname))
-	if err := client.Hello(hostname); err != nil {
-		addLog(fmt.Sprintf("EHLO failed: %v", err))
-		return logs, false
-	}
+func (c *xoauth2IMAPSASLClient) Start() (string, []byte, error) {
+	authString := fmt.Sprintf("user=%s\x01auth=Bearer %s\x01\x01", c.username, c.token)
+	return "XOAUTH2", []byte(authString), nil
+}
 
-	// STARTTLS if required.
-	if cfg.TLSType == "starttls" {
-		addLog("Starting TLS (STARTTLS)")
-		if err := client.StartTLS(tlsConfig); err != nil {
-			addLog(fmt.Sprintf("STARTTLS failed: %v", err))
-			return logs, false
-		}
-		addLog("TLS connection established")
-	}
-
-	// Authenticate if credentials provided.
-	if cfg.Username != "" && cfg.Password != "" {
-		addLog(fmt.Sprintf("Authenticating as %s using %s", cfg.Username, cfg.AuthProtocol))
-		var auth smtplib.Auth
-		switch cfg.AuthProtocol {
-		case "plain":
-			auth = smtplib.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
-		case "login":
-			auth = &loginAuth{username: cfg.Username, password: cfg.Password}
-		case "cram":
-			auth = smtplib.CRAMMD5Auth(cfg.Username, cfg.Password)
-		case "none", "":
-			addLog("No authentication required")
-		}
-		if auth != nil {
-			if err := client.Auth(auth); err != nil {
-				addLog(fmt.Sprintf("Authentication failed: %v", err))
-				return logs, false
-			}
-			addLog("Authentication successful")
-		}
-	}
-
-	// Optionally send a test email.
-	if testEmail != "" {
-		fromAddr := cfg.Username
-		addLog(fmt.Sprintf("Sending test email to %s", testEmail))
-		if err := client.Mail(fromAddr); err != nil {
-			addLog(fmt.Sprintf("MAIL FROM failed: %v", err))
-			return logs, false
-		}
-		if err := client.Rcpt(testEmail); err != nil {
-			addLog(fmt.Sprintf("RCPT TO failed: %v", err))
-			return logs, false
-		}
-		w, err := client.Data()
-		if err != nil {
-			addLog(fmt.Sprintf("DATA command failed: %v", err))
-			return logs, false
-		}
-		msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: LibreDesk Inbox SMTP Test\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nThis is a test email from LibreDesk inbox SMTP configuration.\r\nSent at: %s",
-			fromAddr, testEmail, time.Now().Format(time.RFC1123))
-		if _, err := w.Write([]byte(msg)); err != nil {
-			addLog(fmt.Sprintf("Failed to write message: %v", err))
-			return logs, false
-		}
-		if err := w.Close(); err != nil {
-			addLog(fmt.Sprintf("Failed to close message: %v", err))
-			return logs, false
-		}
-		addLog("Test email sent successfully!")
-	}
-
-	addLog("SMTP test completed successfully!")
-	client.Quit()
-	return logs, true
+func (c *xoauth2IMAPSASLClient) Next(challenge []byte) ([]byte, error) {
+	return nil, nil
 }
