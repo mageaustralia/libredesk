@@ -2,11 +2,19 @@
   <div v-if="!isSearchRoute" class="h-screen w-full flex flex-col">
     <!-- Table view: show one panel at a time (list OR detail) for full-width tables -->
     <template v-if="viewMode === 'table'">
-      <!-- Back button when viewing a conversation -->
+      <!--
+        EC6: Back button + sidebar toggle when viewing a conversation.
+        In split-panel (card) view the SidebarTrigger lives in
+        ConversationList.vue and is always reachable. In table view the list
+        is hidden when a conversation is open, so we surface a trigger here
+        too — otherwise agents lose the ability to collapse the nav sidebar
+        for more horizontal screen space while reading a thread.
+      -->
       <div
         v-if="hasConversationOpen"
         class="flex items-center gap-2 px-3 py-1.5 border-b bg-background shrink-0"
       >
+        <SidebarTrigger class="cursor-pointer" />
         <Button variant="ghost" size="sm" class="h-8 gap-1.5" @click="goBack">
           <ArrowLeft class="h-4 w-4" />
           {{ t('conversation.list.backToList') }}
@@ -60,6 +68,7 @@ import { useI18n } from 'vue-i18n'
 import { useStorage } from '@vueuse/core'
 import { ArrowLeft } from 'lucide-vue-next'
 import { Button } from '@shared-ui/components/ui/button'
+import { SidebarTrigger } from '@shared-ui/components/ui/sidebar'
 import {
   ResizablePanelGroup,
   ResizablePanel,

@@ -104,10 +104,19 @@
       </button>
     </div>
 
-    <!-- Fullscreen editor -->
+    <!--
+      EC6: Fullscreen reply editor.
+      Sized at 92% width / 88% height to match the Freshdesk-style "almost
+      fullscreen" overlay agents are used to. The Radix Dialog renders via a
+      portal at body-level with a backdrop, so the underlying conversation
+      (including the EC4 sticky subject bar and EC3 undo-send banner) is
+      visually obscured automatically — distraction-free composition without
+      having to teleport siblings or unmount them. Per-session state only;
+      not persisted (a fresh reload should always start in compact mode).
+    -->
     <Dialog :open="isEditorFullscreen" @update:open="isEditorFullscreen = false">
       <DialogContent
-        class="max-w-[60%] max-h-[75%] h-[70%] bg-card text-card-foreground p-4 flex flex-col"
+        class="max-w-[92%] w-[92%] max-h-[90%] h-[88%] bg-card text-card-foreground p-4 flex flex-col"
         :class="{ '!bg-private': messageType === 'private_note' }"
         @escapeKeyDown="isEditorFullscreen = false"
         :hide-close-button="true"
