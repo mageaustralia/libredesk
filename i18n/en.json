@@ -999,6 +999,7 @@
   "placeholders.selectValue": "Select value",
   "placeholders.startConversation": "Start conversation",
   "placeholders.tellUsAboutYourself": "Tell us about yourself",
+  "replyBox.applyMacro": "Apply macro",
   "replyBox.bcc": "BCC",
   "replyBox.collision.anotherAgent": "Another agent",
   "replyBox.collision.banner": "{name} just sent a reply. Check before sending yours.",

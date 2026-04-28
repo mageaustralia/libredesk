@@ -274,6 +274,7 @@
               @emojiSelect="handleEmojiSelect"
               @editorCommand="(cmd) => createEditorRef?.runCommand(cmd)"
               :showSendButton="false"
+              macroPickerCommand="apply-macro-to-new-conversation"
             />
             <Button type="submit" :disabled="isDisabled" :isLoading="loading">
               {{ $t('globals.messages.submit') }}
@@ -319,6 +320,7 @@ import { handleHTTPError } from '@shared-ui/utils/http.js'
 import { useInboxStore } from '@main/stores/inbox'
 import { useUsersStore } from '@main/stores/users'
 import { useTeamStore } from '@main/stores/team'
+import { useUserStore } from '@main/stores/user'
 import {
   Select,
   SelectContent,
@@ -345,6 +347,7 @@ const inboxStore = useInboxStore()
 const { t } = useI18n()
 const uStore = useUsersStore()
 const teamStore = useTeamStore()
+const userStore = useUserStore()
 const emitter = useEmitter()
 const loading = ref(false)
 // EC7: emailQuery is the chip-input model — a comma-joined string of TO
@@ -435,6 +438,28 @@ const form = useForm({
     last_name: ''
   }
 })
+
+// EC16: Smart new-conversation defaults. When the dialog opens, prefill the
+// assignee with the current agent — the typical case is "I'm starting this
+// conversation, so I own it". Only sets when empty so reopening the dialog
+// after the agent explicitly cleared the field doesn't undo their choice.
+//
+// Adaptation delta vs v1.0.3: the source commit (c7b60817) also auto-selected
+// the agent's team default inbox via team.default_inbox_id. v2 has no
+// default_inbox_id column on the team model (MP-class data migration not
+// ported), so the inbox-defaulting half is dropped here. The existing
+// auto-select-first-inbox logic in T2h still picks a sensible inbox; this
+// commit only adds the agent-assign half.
+watch(
+  dialogOpen,
+  (open) => {
+    if (!open) return
+    if (!form.values.agent_id && userStore.userID) {
+      form.setFieldValue('agent_id', String(userStore.userID))
+    }
+  },
+  { immediate: true }
+)
 
 // Keep the validated contact_email field in sync with the FIRST chip.
 // If the agent erases the chip that matches the picked contact, clear the

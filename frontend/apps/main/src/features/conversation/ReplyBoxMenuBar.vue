@@ -84,6 +84,26 @@
         <ChevronUp v-if="isToolbarVisible" class="h-4 w-4" />
         <ALargeSmall v-else class="h-4 w-4" />
       </Toggle>
+      <!--
+        EC15: One-click macro picker. Opens the same nested command the
+        Ctrl+K → Apply macro flow uses, so agents who don't know the
+        shortcut can still reach canned responses. Lives next to the
+        Aa formatting toggle (top-level menu bar, not inside the
+        formatting toolbar) since macros are an editor-level action,
+        not a typography one. The `macroPickerCommand` prop lets the
+        new-conversation dialog target the `apply-macro-to-new-
+        conversation` flow instead of the existing-conversation one.
+      -->
+      <Toggle
+        class="px-2 py-2 border-0"
+        variant="outline"
+        @click="openMacroPicker"
+        :pressed="false"
+        :title="$t('replyBox.applyMacro')"
+        :aria-label="$t('replyBox.applyMacro')"
+      >
+        <Zap class="h-4 w-4" />
+      </Toggle>
     </div>
     <div class="flex items-center" v-if="showSendButton">
       <!-- Delete-draft button. Only surfaces when there's something to discard
@@ -160,8 +180,13 @@ import {
   ListOrdered,
   Link as LinkIcon,
   Image as ImageIcon,
-  Trash2
+  Trash2,
+  Zap
 } from 'lucide-vue-next'
+import { useEmitter } from '@main/composables/useEmitter'
+import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
+
+const emitter = useEmitter()
 
 const EmojiPicker = defineAsyncComponent(async () => {
   const [mod] = await Promise.all([
@@ -182,7 +207,7 @@ const emojiPickerRef = ref(null)
 const emit = defineEmits(['emojiSelect', 'sendWithStatus', 'deleteDraft', 'editorCommand'])
 
 // Using defineProps for props that don't need two-way binding
-defineProps({
+const props = defineProps({
   isFullscreen: Boolean,
   isSending: Boolean,
   enableSend: Boolean,
@@ -205,6 +230,14 @@ defineProps({
   sendStatuses: {
     type: Array,
     default: () => []
+  },
+  // EC15: Which nested command the Zap button fires. Reply box defaults to
+  // the existing-conversation flow; CreateConversation overrides this with
+  // 'apply-macro-to-new-conversation' so its macro picker hits the right
+  // CommandBox branch.
+  macroPickerCommand: {
+    type: String,
+    default: 'apply-macro-to-existing-conversation'
   }
 })
 
@@ -233,5 +266,16 @@ function onSelectEmoji(emoji) {
 // it doesn't need a ref to the editor.
 function emitCommand(command) {
   emit('editorCommand', command)
+}
+
+// EC15: Open the macro picker via the command bus the Ctrl+K flow already
+// listens on (CommandBox.vue subscribes to SET_NESTED_COMMAND). The default
+// 'apply-macro-to-existing-conversation' is the reply-box flow; the new-
+// conversation dialog overrides via the macroPickerCommand prop.
+function openMacroPicker() {
+  emitter.emit(EMITTER_EVENTS.SET_NESTED_COMMAND, {
+    command: props.macroPickerCommand,
+    open: true
+  })
 }
 </script>
