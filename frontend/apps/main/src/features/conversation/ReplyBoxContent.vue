@@ -176,6 +176,7 @@
       :handleSend="handleSend"
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
+      :macroPickerCommand="'apply-macro-to-existing-conversation'"
       @emojiSelect="handleEmojiSelect"
       @editorCommand="handleEditorCommand"
       @sendWithStatus="handleSendWithStatus"
