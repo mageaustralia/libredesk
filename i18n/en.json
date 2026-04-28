@@ -1004,6 +1004,7 @@
   "replyBox.sendAndSetAs": "Send and set as {status}",
   "replyBox.sendAndSetStatus": "Send and set status",
   "replyBox.sendAnyway": "Send anyway",
+  "replyBox.sentButSetStatusFailed": "Reply sent, but couldn't set status to {status}.",
   "replyBox.toRequired": "At least one recipient is required in the To field.",
   "report.agentStatus": "Agent Status",
   "report.chart.newConversations": "New conversations",

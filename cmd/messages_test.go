@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/abhinavxd/libredesk/internal/attachment"
@@ -79,6 +80,45 @@ func TestCheckMessageDedup(t *testing.T) {
 		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved")
 		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Closed") {
 			t.Error("different status variants should not collide")
+		}
+	})
+
+	// Race-condition guard: the dedup map is the bottleneck against
+	// double-sends from a flaky network. If two goroutines hit
+	// LoadOrStore at the same instant, exactly one must "win" (returns
+	// false = not a duplicate, gets to send) and all the others must
+	// be flagged as duplicates. sync.Map.LoadOrStore is documented as
+	// atomic, but if anyone refactors checkMessageDedup naively
+	// (Load + Store split) this test catches it immediately.
+	t.Run("concurrent identical calls: exactly one wins", func(t *testing.T) {
+		resetDedupMap()
+		const n = 100
+		var (
+			wg          sync.WaitGroup
+			start       = make(chan struct{})
+			notDupCount atomic.Int32
+			dupCount    atomic.Int32
+		)
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				<-start // align all goroutines on the same starting line
+				if checkMessageDedup(7, "conv-race", "race body", "Resolved") {
+					dupCount.Add(1)
+				} else {
+					notDupCount.Add(1)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		if got := notDupCount.Load(); got != 1 {
+			t.Errorf("expected exactly 1 non-duplicate (winner), got %d", got)
+		}
+		if got := dupCount.Load(); got != n-1 {
+			t.Errorf("expected %d duplicates, got %d", n-1, got)
 		}
 	})
 }

@@ -68,6 +68,7 @@
             <Button
               class="h-8 px-1.5 rounded-l-none border-l border-primary-foreground/20"
               :disabled="!enableSend || isSending"
+              :isLoading="isSending"
               :title="$t('replyBox.sendAndSetStatus')"
             >
               <ChevronDown class="h-3.5 w-3.5" />
