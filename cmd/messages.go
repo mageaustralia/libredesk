@@ -36,12 +36,17 @@ const messageDedupTTL = 60 * time.Second
 // the same body isn't conflated — they're different actions even though the
 // content matches. Without this, EC1's Send-and-Set-Status dropdown could
 // silently no-op the second click.
-func checkMessageDedup(userID int, convUUID, content, setStatus string) bool {
+//
+// `from` is also part of the key (EC14 follow-up): an agent who first sends
+// as support@ and then re-selects orders@ to re-send the same body — e.g.
+// the recipient asks them to use a different alias — must not be blocked
+// as a duplicate. Different From = different intent.
+func checkMessageDedup(userID int, convUUID, content, setStatus, from string) bool {
 	h := sha256.Sum256([]byte(content))
 	// Truncating to first 8 bytes (64 bits) is intentional — collision-safe
 	// at this scale (single agent's per-conv keyspace within a 60s window)
 	// and the per-user/per-conv namespace prevents cross-tenant collisions.
-	key := fmt.Sprintf("%d:%s:%s:%x", userID, convUUID, setStatus, h[:8])
+	key := fmt.Sprintf("%d:%s:%s:%s:%x", userID, convUUID, setStatus, from, h[:8])
 
 	if _, loaded := messageDedupMap.LoadOrStore(key, time.Now()); loaded {
 		return true
@@ -357,7 +362,7 @@ func handleSendMessage(r *fastglue.Request) error {
 	// the dedup key so EC1's dropdown variants don't collide with a
 	// preceding plain Send.
 	if req.SenderType == umodels.UserTypeAgent && !req.Private && len(req.ForwardedTo) == 0 {
-		if checkMessageDedup(user.ID, cuuid, req.Message, req.SetStatus) {
+		if checkMessageDedup(user.ID, cuuid, req.Message, req.SetStatus, req.From) {
 			app.lo.Warn("duplicate message rejected", "user_id", user.ID, "conversation_uuid", cuuid, "set_status", req.SetStatus)
 			return r.SendErrorEnvelope(fasthttp.StatusConflict, app.i18n.T("replyBox.duplicateMessage"), nil, envelope.InputError)
 		}
@@ -491,7 +496,10 @@ func validateInboxFromOverride(inbox imodels.Inbox, requested string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("invalid From address: %v", err)
 	}
-	requestedEmail := strings.ToLower(strings.TrimSpace(requestedAddr.Address))
+	// Don't lower-case here — the comparison below uses strings.EqualFold,
+	// which is case-insensitive on its own. Keeping the bare TrimSpace
+	// avoids a redundant allocation on the hot path.
+	requestedEmail := strings.TrimSpace(requestedAddr.Address)
 
 	// Build the allow-list: primary From + aliases. The primary From is on
 	// the inbox row; aliases live inside the JSONB config column.

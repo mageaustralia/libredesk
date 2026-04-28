@@ -19,39 +19,39 @@ func resetDedupMap() {
 func TestCheckMessageDedup(t *testing.T) {
 	t.Run("first call for a key returns false", func(t *testing.T) {
 		resetDedupMap()
-		if checkMessageDedup(1, "conv-uuid-a", "hello", "") {
+		if checkMessageDedup(1, "conv-uuid-a", "hello", "", "") {
 			t.Error("first call should not be flagged as duplicate")
 		}
 	})
 
 	t.Run("repeat of the same key returns true", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
-		if !checkMessageDedup(1, "conv-uuid-a", "hello", "") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "", "")
+		if !checkMessageDedup(1, "conv-uuid-a", "hello", "", "") {
 			t.Error("second identical call should be flagged as duplicate")
 		}
 	})
 
 	t.Run("different content does not collide", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
-		if checkMessageDedup(1, "conv-uuid-a", "different body", "") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "", "")
+		if checkMessageDedup(1, "conv-uuid-a", "different body", "", "") {
 			t.Error("distinct content should not collide")
 		}
 	})
 
 	t.Run("different conversation does not collide", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
-		if checkMessageDedup(1, "conv-uuid-b", "hello", "") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "", "")
+		if checkMessageDedup(1, "conv-uuid-b", "hello", "", "") {
 			t.Error("distinct conversation should not collide")
 		}
 	})
 
 	t.Run("different user does not collide", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
-		if checkMessageDedup(2, "conv-uuid-a", "hello", "") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "", "")
+		if checkMessageDedup(2, "conv-uuid-a", "hello", "", "") {
 			t.Error("distinct user should not collide")
 		}
 	})
@@ -59,27 +59,50 @@ func TestCheckMessageDedup(t *testing.T) {
 	// EC17: Send and Send-and-Resolve with the same body must NOT collide.
 	t.Run("send vs send-and-resolve does not collide", func(t *testing.T) {
 		resetDedupMap()
-		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "") {
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "", "") {
 			t.Fatal("plain Send should not be a duplicate on first call")
 		}
-		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved") {
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved", "") {
 			t.Error("Send-and-Resolve with the same body should NOT be flagged after a plain Send (EC17)")
 		}
 	})
 
 	t.Run("send-and-resolve repeated does collide", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved")
-		if !checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved", "")
+		if !checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved", "") {
 			t.Error("the same Send-and-Resolve call twice in a row IS a duplicate")
 		}
 	})
 
 	t.Run("send-and-resolve vs send-and-close does not collide", func(t *testing.T) {
 		resetDedupMap()
-		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved")
-		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Closed") {
+		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved", "")
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Closed", "") {
 			t.Error("different status variants should not collide")
+		}
+	})
+
+	// I1 (T2h follow-up): same agent re-sends the same body after switching
+	// the From alias (e.g. recipient asks them to use orders@ instead of
+	// support@). Different From = different intent — must not be flagged
+	// as a duplicate. Without `from` in the dedup key, the second click
+	// silently 409s and the agent's "Send" looks broken.
+	t.Run("different From alias does not collide", func(t *testing.T) {
+		resetDedupMap()
+		if checkMessageDedup(1, "conv-uuid-a", "Hi there", "", "support@example.com") {
+			t.Fatal("first send as support@ should not be a duplicate")
+		}
+		if checkMessageDedup(1, "conv-uuid-a", "Hi there", "", "orders@example.com") {
+			t.Error("re-send of same body as a different alias should NOT be flagged as duplicate (I1)")
+		}
+	})
+
+	t.Run("same From alias repeated does collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "Hi there", "", "orders@example.com")
+		if !checkMessageDedup(1, "conv-uuid-a", "Hi there", "", "orders@example.com") {
+			t.Error("identical resend with the same alias still IS a duplicate")
 		}
 	})
 
@@ -104,7 +127,7 @@ func TestCheckMessageDedup(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start // align all goroutines on the same starting line
-				if checkMessageDedup(7, "conv-race", "race body", "Resolved") {
+				if checkMessageDedup(7, "conv-race", "race body", "Resolved", "") {
 					dupCount.Add(1)
 				} else {
 					notDupCount.Add(1)

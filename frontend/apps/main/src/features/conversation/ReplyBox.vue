@@ -313,8 +313,11 @@ const fromOptions = computed(() => {
   const aliases = Array.isArray(inbox?.config?.aliases) ? inbox.config.aliases : []
   if (aliases.length === 0) return []
   // Primary first so it stays the default; aliases follow in admin order.
+  // Dedupe via Set so an admin who lists the primary inside aliases too (a
+  // common typo) doesn't surface the same address twice in the dropdown.
   const primary = inbox.from || ''
-  return primary ? [primary, ...aliases] : aliases
+  const combined = primary ? [primary, ...aliases] : aliases
+  return [...new Set(combined)]
 })
 
 /**
