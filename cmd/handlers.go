@@ -68,6 +68,11 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/conversations/{uuid}/assignee/team/remove", perm(handleRemoveTeamAssignee, "conversations:update_team_assignee"))
 	g.PUT("/api/v1/conversations/{uuid}/priority", perm(handleUpdateConversationPriority, "conversations:update_priority"))
 	g.PUT("/api/v1/conversations/{uuid}/status", perm(handleUpdateConversationStatus, "conversations:update_status"))
+	// Subject inline-edit (sticky header). Reuses conversations:update_status
+	// rather than introducing a new fork-only permission so we don't drift
+	// from upstream RBAC. Subject is closer in agent-discretion semantics to
+	// status/priority than to tags or assignee.
+	g.PUT("/api/v1/conversations/{uuid}/subject", perm(handleUpdateConversationSubject, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/trash", perm(handleMoveToTrash, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/restore", perm(handleRestoreFromTrash, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/spam", perm(handleMarkAsSpam, "conversations:update_status"))

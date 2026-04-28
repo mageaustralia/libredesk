@@ -275,6 +275,7 @@ type queries struct {
 	UpdateConversationCustomAttributes *sqlx.Stmt `query:"update-conversation-custom-attributes"`
 	UpdateConversationPriority         *sqlx.Stmt `query:"update-conversation-priority"`
 	UpdateConversationStatus           *sqlx.Stmt `query:"update-conversation-status"`
+	UpdateConversationSubject          *sqlx.Stmt `query:"update-conversation-subject"`
 	UpdateConversationLastMessage      *sqlx.Stmt `query:"update-conversation-last-message"`
 	InsertConversationParticipant      *sqlx.Stmt `query:"insert-conversation-participant"`
 	InsertConversation                 *sqlx.Stmt `query:"insert-conversation"`
@@ -862,6 +863,39 @@ func (c *Manager) UpdateConversationPriority(uuid string, priorityID int, priori
 		return envelope.NewError(envelope.GeneralError, c.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 	c.BroadcastConversationUpdate(uuid, map[string]any{"priority": priority})
+	return nil
+}
+
+// maxConversationSubjectLen caps inline-edited subjects. The DB column is
+// untyped TEXT but humans don't write 1MB Subject lines, and email RFC
+// guidance pegs Subject at "should not exceed 998 chars". We pick 500 as a
+// conservative ceiling that accommodates long localised prefixes (Re:, Fwd:,
+// auto-reply chains) while preventing pathological input.
+const maxConversationSubjectLen = 500
+
+// UpdateConversationSubject updates the subject of a conversation. Used by
+// the sticky-header inline-edit affordance. Trims whitespace, rejects empty
+// subjects (the column allows NULL but the UI treats subject as load-bearing
+// for the thread title), enforces a length cap, and broadcasts the change so
+// other connected agents see it live. The actor parameter is currently
+// unused — kept for signature symmetry with sibling Update* methods so
+// adding a future ActivitySubjectChange entry is a one-liner.
+func (c *Manager) UpdateConversationSubject(uuid, subject string, _ umodels.User) error {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return envelope.NewError(envelope.InputError, c.i18n.T("validation.subjectCannotBeEmpty"), nil)
+	}
+	if len(subject) > maxConversationSubjectLen {
+		subject = subject[:maxConversationSubjectLen]
+	}
+	if _, err := c.q.UpdateConversationSubject.Exec(uuid, subject); err != nil {
+		c.lo.Error("error updating conversation subject", "error", err)
+		return envelope.NewError(envelope.GeneralError, c.i18n.T("globals.messages.somethingWentWrong"), nil)
+	}
+	// Broadcast so other agents viewing the same conversation see the new
+	// subject without a refresh. The store-side mergeConversationUpdate
+	// shallow-merges this into conversation.data.
+	c.BroadcastConversationUpdate(uuid, map[string]any{"subject": subject})
 	return nil
 }
 
