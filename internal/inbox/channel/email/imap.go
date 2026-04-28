@@ -194,6 +194,7 @@ func (e *Email) fetchAndProcessMessages(ctx context.Context, client *imapclient.
 					headerAutoreply,
 					headerLibredeskLoopPrevention,
 					headerMessageID,
+					"Content-Type", // needed by isDSN to exempt bounces from the auto-reply filter
 				},
 			},
 		},
