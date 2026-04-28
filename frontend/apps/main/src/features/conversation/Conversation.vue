@@ -139,13 +139,48 @@
     <!-- Messages & reply box -->
     <div class="flex flex-col flex-grow overflow-hidden">
       <MessageList class="flex-1 overflow-y-auto" />
+
+      <!--
+        EC3: Undo-send banner. Sits between MessageList and ReplyBox while
+        a queued send is counting down. The pending message itself is
+        already rendered in MessageList via addPendingMessage, so the
+        banner is purely for the Undo affordance + countdown progress.
+      -->
+      <div
+        v-if="pendingSend"
+        class="flex-shrink-0 border-t bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800"
+      >
+        <div class="flex items-center justify-between px-4 py-2">
+          <div class="flex items-center gap-2 text-amber-900 dark:text-amber-200 text-sm">
+            <CheckCircle2 class="w-4 h-4" />
+            <span class="font-medium">
+              {{ pendingSend.isPrivate ? t('replyBox.undo.noteAdded') : t('replyBox.undo.replySent') }}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            class="font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100"
+            @click="undoSend"
+          >
+            {{ t('replyBox.undo.action') }}
+          </Button>
+        </div>
+        <div class="h-1 bg-amber-200 dark:bg-amber-800">
+          <div
+            class="h-full bg-amber-500 transition-all ease-linear"
+            :style="{ width: undoProgress + '%' }"
+          />
+        </div>
+      </div>
+
       <ReplyBox />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useConversationStore } from '../../stores/conversation'
 import { usePresenceStore } from '../../stores/presence'
 import { useUserStore } from '../../stores/user'
@@ -157,6 +192,7 @@ import {
   DropdownMenuTrigger
 } from '@shared-ui/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
+import { Button } from '@shared-ui/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from './ReplyBox.vue'
 import MergeDialog from './MergeDialog.vue'
@@ -164,7 +200,7 @@ import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown, CheckCircle2 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
@@ -212,6 +248,16 @@ const otherViewers = computed(() => {
 watch(
   () => conversationStore.current?.uuid,
   (newUUID, oldUUID) => {
+    // EC18: If a queued send is still counting down when the agent switches
+    // conversations, fire it now so the message lands in the conversation
+    // it was composed for. Without this guard, the timer keeps running and
+    // the POST eventually fires while we're already viewing a different
+    // conversation — opens the door to confusing UI states (banner from a
+    // conv we no longer have open) and, if the agent then sends another
+    // reply on the new conv, two queued sends racing.
+    if (oldUUID && pendingSend.value && pendingSend.value.uuid === oldUUID) {
+      executePendingSend()
+    }
     if (newUUID) {
       sendViewConversation(newUUID)
     } else if (oldUUID) {
@@ -223,7 +269,140 @@ watch(
 
 onBeforeUnmount(() => {
   sendViewConversation('')
+  // EC18 (sibling case): if the user closes the tab / navigates away while a
+  // send is queued, flush it to the server. Otherwise the optimistic message
+  // sits in cache and the customer never gets the reply.
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+  emitter.off(EMITTER_EVENTS.SEND_QUEUED, handleSendQueued)
 })
+
+// ---------------------------------------------------------------------------
+// EC3: Undo-send queue
+// ---------------------------------------------------------------------------
+// ReplyBox emits SEND_QUEUED with the prepared payload + restore data; we
+// hold a 5s timer here. If the agent clicks Undo before it fires, we cancel,
+// remove the optimistic pending message, and emit RESTORE_SEND back into
+// ReplyBox to repopulate the editor. If they switch conversations we flush
+// (EC18) so a stale send can't fire to the wrong customer.
+const UNDO_DELAY_MS = 5000
+const PROGRESS_TICK_MS = 50
+const pendingSend = ref(null)
+const undoProgress = ref(100)
+let undoTimer = null
+let undoProgressInterval = null
+
+function handleSendQueued (data) {
+  // If a previous send is still queued (rapid-fire Send clicks), flush it
+  // first so we don't lose it. Synchronously firing it with no delay is
+  // safe — the agent already chose to send it 5s ago.
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+
+  pendingSend.value = data
+  undoProgress.value = 100
+
+  const startTime = Date.now()
+  undoProgressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime
+    undoProgress.value = Math.max(0, 100 - (elapsed / UNDO_DELAY_MS) * 100)
+  }, PROGRESS_TICK_MS)
+
+  undoTimer = setTimeout(() => {
+    executePendingSend()
+  }, UNDO_DELAY_MS)
+}
+
+onMounted(() => {
+  emitter.on(EMITTER_EVENTS.SEND_QUEUED, handleSendQueued)
+})
+
+async function executePendingSend () {
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  undoTimer = null
+  undoProgressInterval = null
+  const send = pendingSend.value
+  if (!send) return
+  pendingSend.value = null
+
+  try {
+    const response = await api.sendMessage(send.uuid, send.payload)
+
+    // Private notes don't echo over WS, so swap the optimistic pending
+    // message for the real one immediately. Public replies wait for the WS
+    // echo (matched by echo_id == tempUUID) to do the swap.
+    if (send.isPrivate && response?.data?.data) {
+      conversationStore.replacePendingMessage(send.uuid, send.tempUUID, response.data.data)
+    }
+
+    // EC1: surface non-fatal status-transition failure. The reply itself
+    // landed; the post-send status change (Send & Resolve / Send & Close)
+    // didn't apply. Tell the agent so they don't think they resolved a
+    // conversation that's still open.
+    const setStatusError = response?.data?.data?.set_status_error
+    if (setStatusError && send.setStatus) {
+      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+        variant: 'destructive',
+        description: t('replyBox.sentButSetStatusFailed', { status: send.setStatus })
+      })
+    }
+
+    // Apply macro actions if any. Non-fatal — surface failure but don't
+    // re-throw, the reply itself succeeded.
+    if (send.macroID > 0 && send.macroActions?.length > 0) {
+      try {
+        await api.applyMacro(send.uuid, send.macroID, send.macroActions)
+      } catch (error) {
+        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+          variant: 'destructive',
+          description: handleHTTPError(error).message
+        })
+      }
+    }
+  } catch (error) {
+    // EC2: Restore the editor content + recipients on failure so the agent
+    // doesn't lose their work. Only restore if we're still on the same
+    // conversation — otherwise we'd hijack the agent's current draft on a
+    // different conversation. The pending message is removed in either
+    // case so the failed send doesn't visually persist in the thread.
+    conversationStore.removePendingMessage(send.uuid, send.tempUUID)
+    if (conversationStore.current?.uuid === send.uuid) {
+      emitter.emit(EMITTER_EVENTS.RESTORE_SEND, send.restoreData)
+    }
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: t('replyBox.messageFailedToSend', {
+        error: handleHTTPError(error).message
+      })
+    })
+  }
+}
+
+function undoSend () {
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  undoTimer = null
+  undoProgressInterval = null
+  const send = pendingSend.value
+  pendingSend.value = null
+  if (!send) return
+
+  // Pull the optimistic message back out of the thread.
+  conversationStore.removePendingMessage(send.uuid, send.tempUUID)
+
+  // Restore editor content only if we're still on the conversation the send
+  // was queued from. Edge case: agent switches conversations during the 5s
+  // window — EC18's flush should fire the send first, but defend against
+  // any future change to that policy.
+  if (conversationStore.current?.uuid === send.uuid) {
+    nextTick(() => {
+      emitter.emit(EMITTER_EVENTS.RESTORE_SEND, send.restoreData)
+    })
+  }
+}
 
 const showToast = (description, variant) => {
   emitter.emit(EMITTER_EVENTS.SHOW_TOAST, variant ? { variant, description } : { description })
