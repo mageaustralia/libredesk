@@ -588,7 +588,12 @@ const extractMentions = () => {
 
 const editor = useEditor({
   extensions: buildExtensions(),
-  autofocus: props.autoFocus,
+  // EC10: Drop cursor at the START of the editor so a freshly-loaded reply
+  // (or new-conversation editor with a signature) lands the caret above any
+  // pre-populated body / signature instead of at the end. Falsy passes
+  // through unchanged so callers can opt out (e.g. CreateConversation passes
+  // autoFocus=false to defer focus to the email field).
+  autofocus: props.autoFocus ? 'start' : false,
   content: htmlContent.value,
   editorProps: {
     attributes: { class: 'outline-none' },
@@ -635,7 +640,9 @@ watch(
     if (!isInternalUpdate.value && editor.value && newContent !== editor.value.getHTML()) {
       editor.value.commands.setContent(newContent || '', false)
       textContent.value = editor.value.getText()
-      editor.value.commands.focus()
+      // EC10: Cursor at start so the agent doesn't have to up-arrow past a
+      // pre-populated body (signature, draft, forwarded thread) to start typing.
+      editor.value.commands.focus('start')
     }
   },
   { immediate: true }
@@ -674,9 +681,13 @@ const unsetLink = () => {
   showLinkDialog.value = false
 }
 
-// Expose focus method for parent components
-const focus = () => {
-  editor.value?.commands.focus()
+// Expose focus method for parent components.
+// EC10: Default to focusing at the START of the document so caret-on-conv-switch
+// (T2c) and tab-change focus calls land above any pre-populated content
+// (signature / draft / forwarded thread). Callers can override by passing
+// 'end' if they ever need the previous behaviour.
+const focus = (position = 'start') => {
+  editor.value?.commands.focus(position)
 }
 
 defineExpose({ focus, extractMentions })

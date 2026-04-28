@@ -13,58 +13,89 @@
           <!-- Form Fields Section -->
           <div class="space-y-4 pb-2 flex-shrink-0">
             <div class="space-y-2">
-              <FormField name="contact_email">
-                <FormItem class="relative">
-                  <FormLabel>{{ $t('globals.terms.email') }}</FormLabel>
-                  <FormControl>
-                    <Input
-                      ref="emailInputRef"
-                      type="email"
-                      :placeholder="t('conversation.searchContact')"
-                      v-model="emailQuery"
-                      @input="handleSearchContacts"
-                      @keydown="handleSearchKeydown"
-                      autocomplete="off"
-                    />
-                  </FormControl>
-                  <FormMessage />
+              <!--
+                EC7: Gmail-style TO/CC/BCC composer for new conversation.
+                Replaces the single email field with a chip-input that supports
+                multiple recipients plus toggleable CC/BCC fields. The first
+                TO email is the primary contact (used to find/create the User
+                row); additional TO emails are accepted in the chip UI but the
+                backend currently only consumes the first (parity with v1.0.3
+                EC7). CC/BCC are sent through to QueueReply via new
+                createConversationRequest.CC / .BCC fields.
 
-                  <div
-                    v-if="searchResults.length"
-                    class="absolute w-full z-50 mt-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                contact_email (the form-validated field) is kept in sync with
+                the FIRST email of the chip-input via the watcher below.
+              -->
+              <div class="space-y-2">
+                <!-- TO field with Cc/Bcc toggles -->
+                <FormField name="contact_email">
+                  <FormItem class="relative">
+                    <div class="flex items-center space-x-2">
+                      <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">TO:</label>
+                      <FormControl class="flex-grow">
+                        <EmailTagInput
+                          v-model="emailQuery"
+                          :placeholder="t('conversation.searchContact')"
+                          class="flex-grow"
+                          @blur="handleToBlur"
+                          @contactSelected="selectContact"
+                        />
+                      </FormControl>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <button
+                          v-if="!showCc"
+                          type="button"
+                          @click="showCc = true"
+                          class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                        >{{ $t('conversation.cc') }}</button>
+                        <button
+                          v-if="!showBcc"
+                          type="button"
+                          @click="showBcc = true"
+                          class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                        >{{ $t('conversation.bcc') }}</button>
+                      </div>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                </FormField>
+                <!-- CC field -->
+                <div v-if="showCc" class="flex items-center space-x-2">
+                  <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">CC:</label>
+                  <EmailTagInput
+                    v-model="ccEmails"
+                    :placeholder="t('conversation.addCcRecipients')"
+                    class="flex-grow"
+                  />
+                  <button
+                    type="button"
+                    @click="showCc = false; ccEmails = ''"
+                    class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
+                    :title="$t('conversation.removeCc')"
+                    :aria-label="$t('conversation.removeCc')"
                   >
-                    <ul class="max-h-60 overflow-y-auto" role="listbox">
-                      <li
-                        v-for="(contact, index) in searchResults"
-                        :key="contact.email"
-                        @click="selectContact(contact)"
-                        role="option"
-                        :aria-selected="index === highlightedIndex"
-                        class="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors duration-200"
-                        :class="
-                          index === highlightedIndex
-                            ? 'bg-accent text-accent-foreground'
-                            : 'hover:bg-accent hover:text-accent-foreground'
-                        "
-                      >
-                        <div>
-                          <p class="font-medium">
-                            {{ contact.first_name }} {{ contact.last_name }}
-                          </p>
-                          <p class="text-xs text-muted-foreground">{{ contact.email }}</p>
-                          <div
-                            v-if="contact.external_user_id"
-                            class="flex items-center gap-1 text-xs text-muted-foreground"
-                          >
-                            <IdCard :size="12" class="flex-shrink-0" />
-                            <span class="truncate">{{ contact.external_user_id }}</span>
-                          </div>
-                        </div>
-                      </li>
-                    </ul>
-                  </div>
-                </FormItem>
-              </FormField>
+                    <X class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <!-- BCC field -->
+                <div v-if="showBcc" class="flex items-center space-x-2">
+                  <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">BCC:</label>
+                  <EmailTagInput
+                    v-model="bccEmails"
+                    :placeholder="t('conversation.addBccRecipients')"
+                    class="flex-grow"
+                  />
+                  <button
+                    type="button"
+                    @click="showBcc = false; bccEmails = ''"
+                    class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
+                    :title="$t('conversation.removeBcc')"
+                    :aria-label="$t('conversation.removeBcc')"
+                  >
+                    <X class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
 
               <!-- Name Group -->
               <div class="grid grid-cols-2 gap-4">
@@ -263,6 +294,7 @@ import {
 } from '@shared-ui/components/ui/dialog'
 import { Button } from '@shared-ui/components/ui/button'
 import { Input } from '@shared-ui/components/ui/input'
+import EmailTagInput from '@/components/EmailTagInput.vue'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import {
@@ -299,7 +331,7 @@ import Editor from '@/components/editor/TextEditor.vue'
 import { useMacroStore } from '@/stores/macro'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
-import { IdCard } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import api from '@/api'
 
 const dialogOpen = defineModel({
@@ -313,14 +345,23 @@ const uStore = useUsersStore()
 const teamStore = useTeamStore()
 const emitter = useEmitter()
 const loading = ref(false)
-const searchResults = ref([])
+// EC7: emailQuery is the chip-input model — a comma-joined string of TO
+// recipients. The first one is the primary contact (drives the User row
+// lookup); contact_email in the form mirrors only the first email.
 const emailQuery = ref('')
 const conversationStore = useConversationStore()
 const macroStore = useMacroStore()
-let timeoutId = null
 const insertContent = ref('')
+// Tracks the contact selected from the suggestions dropdown so we can
+// auto-disable name fields and reset them when the agent backspaces the
+// matching email out of the chip-input.
 const selectedContact = ref(null)
-const emailInputRef = ref(null)
+// EC7: CC/BCC are toggled visible like Gmail; their chip-input models live
+// independently of TO and are submitted as separate fields on the request.
+const showCc = ref(false)
+const showBcc = ref(false)
+const ccEmails = ref('')
+const bccEmails = ref('')
 
 const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
@@ -356,7 +397,6 @@ const formSchema = z.object({
 })
 
 onUnmounted(() => {
-  clearTimeout(timeoutId)
   clearMediaFiles()
   conversationStore.resetMacro(MACRO_CONTEXT.NEW_CONVERSATION)
   emitter.emit(EMITTER_EVENTS.SET_NESTED_COMMAND, {
@@ -371,9 +411,9 @@ onMounted(() => {
     command: 'apply-macro-to-new-conversation',
     open: false
   })
-  nextTick(() => {
-    emailInputRef.value?.$el?.focus()
-  })
+  // EC7: EmailTagInput owns its own internal focus — we let the user click
+  // it. Auto-focusing the chip's hidden input would be inconsistent with
+  // its native click-to-focus UX.
 })
 
 const form = useForm({
@@ -390,65 +430,42 @@ const form = useForm({
   }
 })
 
+// Keep the validated contact_email field in sync with the FIRST chip.
+// If the agent erases the chip that matches the picked contact, clear the
+// auto-filled name fields so they don't ship stale data with a different
+// primary recipient.
 watch(emailQuery, (newVal) => {
-  form.setFieldValue('contact_email', newVal)
-  if (selectedContact.value && newVal !== selectedContact.value.email) {
+  const firstEmail = newVal.split(',').map((e) => e.trim()).filter((e) => e)[0] || ''
+  form.setFieldValue('contact_email', firstEmail)
+  if (selectedContact.value && !newVal.includes(selectedContact.value.email)) {
     selectedContact.value = null
     form.setFieldValue('first_name', '')
     form.setFieldValue('last_name', '')
   }
 })
 
-const handleSearchContacts = async () => {
-  clearTimeout(timeoutId)
-  timeoutId = setTimeout(async () => {
-    const query = emailQuery.value.trim()
-
-    if (query.length < 3) {
-      searchResults.value.splice(0)
-      return
-    }
-
-    try {
-      const resp = await api.searchContacts({ query })
-      searchResults.value = [...resp.data.data]
-      highlightedIndex.value = -1
-    } catch (error) {
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: handleHTTPError(error).message
-      })
-      searchResults.value.splice(0)
-    }
-  }, 300)
+// EmailTagInput emits @blur with no payload — re-derive the first email from
+// the chip-input model. Same intent as the watcher; this catches the case
+// where the chip was added without a reactive update yet (e.g. blur before
+// the next tick).
+const handleToBlur = () => {
+  const firstEmail = emailQuery.value.split(',').map((e) => e.trim()).filter((e) => e)[0] || ''
+  form.setFieldValue('contact_email', firstEmail)
 }
 
-const highlightedIndex = ref(-1)
-
-const handleSearchKeydown = (e) => {
-  if (!searchResults.value.length) return
-  if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    highlightedIndex.value = Math.min(highlightedIndex.value + 1, searchResults.value.length - 1)
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
-  } else if (e.key === 'Enter' && highlightedIndex.value >= 0) {
-    e.preventDefault()
-    selectContact(searchResults.value[highlightedIndex.value])
-  } else if (e.key === 'Escape') {
-    searchResults.value.splice(0)
-    highlightedIndex.value = -1
-  }
-}
-
+// Triggered when the agent picks a suggestion from EmailTagInput's contact
+// dropdown. The chip is already added by the component itself; here we just
+// fill the name fields — but only if they're empty, so picking a SECOND
+// contact (an additional recipient) doesn't silently overwrite the first
+// contact's name.
 const selectContact = (contact) => {
   selectedContact.value = contact
-  emailQuery.value = contact.email
-  form.setFieldValue('first_name', contact.first_name)
-  form.setFieldValue('last_name', contact.last_name || '')
-  searchResults.value.splice(0)
-  highlightedIndex.value = -1
+  if (!form.values.first_name) {
+    form.setFieldValue('first_name', contact.first_name || '')
+  }
+  if (!form.values.last_name) {
+    form.setFieldValue('last_name', contact.last_name || '')
+  }
 }
 
 const createConversation = form.handleSubmit(async (values) => {
@@ -460,6 +477,11 @@ const createConversation = form.handleSubmit(async (values) => {
     values.agent_id = values.agent_id ? Number(values.agent_id) : null
     // Array of attachment ids.
     values.attachments = mediaFiles.value.map((file) => file.id)
+    // EC7: Pass through CC/BCC chip-input contents as comma-separated strings.
+    // Backend (cmd/conversation.go) splits, trims, dedupes, then forwards to
+    // QueueReply.
+    values.cc = ccEmails.value || ''
+    values.bcc = bccEmails.value || ''
     // Initiator of this conversation is always agent
     values.initiator = UserTypeAgent
     const conversation = await api.createConversation(values)
