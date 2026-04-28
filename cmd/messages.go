@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
 	authzModels "github.com/abhinavxd/libredesk/internal/authz/models"
@@ -11,6 +15,39 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
 )
+
+// messageDedupMap prevents duplicate message submissions within a short
+// window. Live ops kept seeing customers receive two identical replies when
+// an agent's "send failed" toast fired (transient timeout) and the agent
+// retried — but the original send had actually succeeded server-side.
+var messageDedupMap sync.Map
+
+// messageDedupTTL bounds the dedup window. 60s covers the worst case we've
+// seen in prod (#6043): an agent waiting ~11s on a perceived-failed send
+// then retrying. Shorter windows let real duplicates slip through; longer
+// risks blocking legitimate "I meant to send the same thing twice" cases.
+const messageDedupTTL = 60 * time.Second
+
+// checkMessageDedup returns true if this message was already sent recently.
+// The key includes setStatus so a "Send" followed by "Send & Resolve" with
+// the same body isn't conflated — they're different actions even though the
+// content matches. Without this, EC1's Send-and-Set-Status dropdown could
+// silently no-op the second click.
+func checkMessageDedup(userID int, convUUID, content, setStatus string) bool {
+	h := sha256.Sum256([]byte(content))
+	key := fmt.Sprintf("%d:%s:%s:%x", userID, convUUID, setStatus, h[:8])
+
+	if _, loaded := messageDedupMap.LoadOrStore(key, time.Now()); loaded {
+		return true
+	}
+
+	// Evict after TTL so the map doesn't grow unbounded over the day.
+	go func() {
+		time.Sleep(messageDedupTTL)
+		messageDedupMap.Delete(key)
+	}()
+	return false
+}
 
 type messageReq struct {
 	Attachments []int                  `json:"attachments"`
@@ -26,6 +63,10 @@ type messageReq struct {
 	// the listed addresses". The original recipients (To) are ignored;
 	// CC/BCC pass through unchanged so an agent can loop in teammates.
 	ForwardedTo []string `json:"forwarded_to"`
+	// SetStatus, when non-empty, transitions the conversation to that
+	// status name after a successful send. Powers the "Send & Resolve" /
+	// "Send & Close" dropdown in the reply box.
+	SetStatus string `json:"set_status"`
 }
 
 // handleGetMessages returns messages for a conversation.
@@ -296,6 +337,19 @@ func handleSendMessage(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.InputError)
 	}
 
+	// Reject duplicate submissions early. Only guard agent sends — contact
+	// sends come from external integrations where idempotency is the
+	// caller's responsibility, and private notes don't go to a customer
+	// so a stray duplicate is harmless. The set_status field is part of
+	// the dedup key so EC1's dropdown variants don't collide with a
+	// preceding plain Send.
+	if req.SenderType == umodels.UserTypeAgent && !req.Private && len(req.ForwardedTo) == 0 {
+		if checkMessageDedup(user.ID, cuuid, req.Message, req.SetStatus) {
+			app.lo.Warn("duplicate message rejected", "user_id", user.ID, "conversation_uuid", cuuid, "set_status", req.SetStatus)
+			return r.SendErrorEnvelope(fasthttp.StatusConflict, app.i18n.T("replyBox.duplicateMessage"), nil, envelope.InputError)
+		}
+	}
+
 	// Contacts cannot send private messages
 	if req.SenderType == umodels.UserTypeContact && req.Private {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
@@ -367,6 +421,17 @@ func handleSendMessage(r *fastglue.Request) error {
 		recipients := strings.Join(req.ForwardedTo, ", ")
 		if err := app.conversation.InsertConversationActivity(cmodels.ActivityMessageForwarded, cuuid, recipients, user); err != nil {
 			app.lo.Warn("failed to insert forward activity note", "error", err, "conversation_uuid", cuuid)
+		}
+	}
+
+	// EC1: "Send & Set Status" dropdown. After the reply is queued,
+	// transition the conversation status in the same request so the agent
+	// gets a single-action send-and-resolve. Best-effort — surface the
+	// error in logs but don't fail the response, since the reply itself
+	// landed and the agent can flip status manually if needed.
+	if req.SetStatus != "" {
+		if err := app.conversation.UpdateConversationStatus(cuuid, 0, req.SetStatus, "", user); err != nil {
+			app.lo.Warn("failed to set status after send", "error", err, "conversation_uuid", cuuid, "set_status", req.SetStatus)
 		}
 	}
 

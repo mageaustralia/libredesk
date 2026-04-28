@@ -139,7 +139,11 @@
       :isSending="isSending"
       :enableSend="enableSend"
       :handleSend="handleSend"
+      :hasDraft="hasDraft"
+      :sendStatuses="sendStatuses"
       @emojiSelect="handleEmojiSelect"
+      @sendWithStatus="handleSendWithStatus"
+      @deleteDraft="handleDeleteDraft"
     />
   </div>
 </template>
@@ -241,12 +245,27 @@ const props = defineProps({
     type: Boolean,
     required: false,
     default: false
+  },
+  // EC1: drives the delete-draft button visibility in the menu bar.
+  // Parent owns the source-of-truth (does the editor have content or
+  // attached files?) so the menu bar stays presentational.
+  hasDraft: {
+    type: Boolean,
+    default: false
+  },
+  // EC1: status names for the "Send & set as" dropdown. Parent filters
+  // to the valid set; ReplyBoxContent just relays.
+  sendStatuses: {
+    type: Array,
+    default: () => []
   }
 })
 
 const emit = defineEmits([
   'toggleFullscreen',
   'send',
+  'sendWithStatus',
+  'deleteDraft',
   'fileUpload',
   'inlineImageUpload',
   'fileDelete',
@@ -319,6 +338,25 @@ const handleSend = async () => {
     return
   }
   emit('send')
+}
+
+// EC1: Send-and-set-status variant. Same email validation guard as handleSend
+// — we don't want a chevron click to bypass the recipient sanity check that
+// the primary Send applies.
+const handleSendWithStatus = async (status) => {
+  await validateEmails()
+  if (emailErrors.value.length > 0) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: t('globals.messages.correctEmailErrors')
+    })
+    return
+  }
+  emit('sendWithStatus', status)
+}
+
+const handleDeleteDraft = () => {
+  emit('deleteDraft')
 }
 
 const handleFileUpload = (event) => {
