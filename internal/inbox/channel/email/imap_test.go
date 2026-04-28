@@ -184,3 +184,84 @@ Body`,
 		})
 	}
 }
+
+// TestExtractDSNDiagnostic verifies that the diagnostic and original-message
+// parts of an RFC 3464 multipart/report bounce are surfaced into the displayed
+// body. Without this, a bounce only shows the friendly summary and the agent
+// has no way to see the SMTP error code or which original message bounced.
+func TestExtractDSNDiagnostic(t *testing.T) {
+	// Realistic Amazon SES-shaped DSN. CRLF line endings are required for
+	// enmime to parse the multipart structure correctly.
+	dsn := "From: mailer-daemon@amazonses.com\r\n" +
+		"To: orders@tenniswarehouse.com.au\r\n" +
+		"Subject: Delivery Status Notification (Failure)\r\n" +
+		"Message-ID: <bounce-test@amazonses.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/report; report-type=delivery-status; boundary=\"bound42\"\r\n" +
+		"\r\n" +
+		"--bound42\r\n" +
+		"Content-Type: text/plain; charset=us-ascii\r\n" +
+		"\r\n" +
+		"An error occurred while trying to deliver the mail to the following recipients:\r\n" +
+		"info@meristpor.com.tr\r\n" +
+		"\r\n" +
+		"--bound42\r\n" +
+		"Content-Type: message/delivery-status\r\n" +
+		"\r\n" +
+		"Reporting-MTA: dns; a8-23.smtp-out.amazonses.com\r\n" +
+		"\r\n" +
+		"Final-Recipient: rfc822; info@meristpor.com.tr\r\n" +
+		"Action: failed\r\n" +
+		"Status: 5.1.1\r\n" +
+		"Diagnostic-Code: smtp; 550 5.1.1 <info@meristpor.com.tr>: User unknown\r\n" +
+		"\r\n" +
+		"--bound42\r\n" +
+		"Content-Type: message/rfc822-headers\r\n" +
+		"\r\n" +
+		"From: orders@tenniswarehouse.com.au\r\n" +
+		"To: info@meristpor.com.tr\r\n" +
+		"Subject: Order Confirmation #12345\r\n" +
+		"Message-ID: <original-12345@tenniswarehouse.com.au>\r\n" +
+		"\r\n" +
+		"--bound42--\r\n"
+
+	envelope, err := enmime.ReadEnvelope(strings.NewReader(dsn))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := extractDSNDiagnostic(envelope)
+
+	wantSubstrings := []string{
+		"550 5.1.1",                        // SMTP diagnostic code
+		"info@meristpor.com.tr",            // failed recipient
+		"Status: 5.1.1",                    // RFC 3464 status code
+		"Order Confirmation #12345",        // original message subject
+		"original-12345@tenniswarehouse.com.au", // original Message-ID
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(got, want) {
+			t.Errorf("extractDSNDiagnostic missing %q\nfull output:\n%s", want, got)
+		}
+	}
+}
+
+// TestExtractDSNDiagnostic_NotADSN verifies that ordinary emails return an
+// empty diagnostic so we don't pollute regular message bodies.
+func TestExtractDSNDiagnostic_NotADSN(t *testing.T) {
+	plain := "From: alice@example.com\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: Hello\r\n" +
+		"Content-Type: text/plain; charset=us-ascii\r\n" +
+		"\r\n" +
+		"Just a regular email.\r\n"
+
+	envelope, err := enmime.ReadEnvelope(strings.NewReader(plain))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := extractDSNDiagnostic(envelope); got != "" {
+		t.Errorf("expected empty diagnostic for non-DSN email, got %q", got)
+	}
+}
