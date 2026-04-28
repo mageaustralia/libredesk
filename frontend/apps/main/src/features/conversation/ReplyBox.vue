@@ -560,6 +560,16 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
     setStatus
   }
 
+  // EC3: Briefly mark the editor as sending. Drives ReplyBoxContent's
+  // :isSending prop (lines 119, 156) which disables the Send button so a
+  // double-click during the synchronous setup below can't double-fire
+  // SEND_QUEUED. Cleared at the end of processSend (a few lines below)
+  // since the editor is itself cleared up-front and a new compose during
+  // the banner window is a legitimate flow — Conversation.vue's
+  // handleSendQueued explicitly handles a second queued send by flushing
+  // the previous one first.
+  isSending.value = true
+
   // EC3: Hand the queued send off to Conversation.vue, which owns the 5s
   // countdown + Undo banner. We deliberately clear local editor / draft
   // state up-front so the editor visually empties — Undo restores it.
@@ -811,6 +821,10 @@ function handleRestoreSend (data) {
     bcc.value = data.bcc
     if (data.bcc) showBcc.value = true
   }
+  // Skip the empty-array case: setMediaFiles([]) would clear any files the
+  // agent uploaded after the original send was queued (rare but possible
+  // during the 5s window). Restore is additive — we only repopulate when
+  // the queued send had attachments.
   if (Array.isArray(data.mediaFiles) && data.mediaFiles.length > 0) {
     setMediaFiles(data.mediaFiles)
   }

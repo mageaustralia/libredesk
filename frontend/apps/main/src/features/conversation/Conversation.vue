@@ -148,6 +148,8 @@
       -->
       <div
         v-if="pendingSend"
+        role="status"
+        aria-live="polite"
         class="flex-shrink-0 border-t bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800"
       >
         <div class="flex items-center justify-between px-4 py-2">
@@ -272,6 +274,12 @@ onBeforeUnmount(() => {
   // EC18 (sibling case): if the user closes the tab / navigates away while a
   // send is queued, flush it to the server. Otherwise the optimistic message
   // sits in cache and the customer never gets the reply.
+  // Fire-and-forget by design: we can't await executePendingSend (Vue tears
+  // down the component immediately after this hook returns) and we don't
+  // need to — the api.sendMessage call has already been issued, and the
+  // emitter.off below unregisters handleSendQueued. If executePendingSend
+  // catches and tries to emit RESTORE_SEND after teardown, there's no
+  // listener so it's a safe no-op.
   if (pendingSend.value) {
     executePendingSend()
   }
@@ -364,12 +372,20 @@ async function executePendingSend () {
     }
   } catch (error) {
     // EC2: Restore the editor content + recipients on failure so the agent
-    // doesn't lose their work. Only restore if we're still on the same
+    // doesn't lose their work. Only restore if (a) we're still on the same
     // conversation — otherwise we'd hijack the agent's current draft on a
-    // different conversation. The pending message is removed in either
-    // case so the failed send doesn't visually persist in the thread.
+    // different conversation — AND (b) no NEWER send has been queued since
+    // this one started. The latter guards against rapid-fire sends: while
+    // we were awaiting api.sendMessage above, handleSendQueued may have
+    // assigned a new pendingSend.value for a fresh compose, and a stomp of
+    // RESTORE_SEND would clobber the agent's in-flight new draft. The
+    // pending message is removed in either case so the failed send doesn't
+    // visually persist in the thread.
     conversationStore.removePendingMessage(send.uuid, send.tempUUID)
-    if (conversationStore.current?.uuid === send.uuid) {
+    if (
+      conversationStore.current?.uuid === send.uuid &&
+      pendingSend.value === null
+    ) {
       emitter.emit(EMITTER_EVENTS.RESTORE_SEND, send.restoreData)
     }
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
