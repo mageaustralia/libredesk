@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
@@ -55,6 +56,12 @@ type createConversationRequest struct {
 	ExternalUserID   string         `json:"external_user_id"`
 	Subject          string         `json:"subject"`
 	Content          string         `json:"content"`
+	// EC7: Gmail-style new conversation. Email is comma-separated TO list (the
+	// first address is the primary contact used to look up / create the User
+	// row); CC and BCC are optional comma-separated extras carried straight
+	// through to QueueReply.
+	CC               string         `json:"cc"`
+	BCC              string         `json:"bcc"`
 	Attachments      []int          `json:"attachments"`
 	Initiator        string         `json:"initiator"` // "contact" | "agent"
 	CustomAttributes map[string]any `json:"custom_attributes"`
@@ -803,7 +810,20 @@ func handleCreateConversation(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
-	to := []string{req.Email}
+	// EC7: Build TO list. Primary contact's email is always TO[0]; any additional
+	// recipients the agent typed in the chip-input (CreateConversation forwards
+	// them concatenated to req.Email post-EC7 frontend changes — but for safety
+	// we re-derive here, since the backend is the source of truth) are appended,
+	// de-duplicated.
+	to := []string{}
+	for _, e := range strings.Split(req.Email, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			to = append(to, e)
+		}
+	}
+	if len(to) == 0 {
+		to = []string{req.Email}
+	}
 	user, err := app.user.GetAgent(auser.ID, "")
 	if err != nil {
 		return sendErrorEnvelope(r, err)
@@ -844,11 +864,30 @@ func handleCreateConversation(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.GeneralError)
 	}
 
+	// EC7: Parse CC/BCC strings into slices. Both are optional comma-separated
+	// extras carried through to QueueReply; whitespace-trim and skip empties so
+	// "a@b.com,  ,c@d.com" doesn't surface a blank recipient.
+	var ccList, bccList []string
+	if req.CC != "" {
+		for _, e := range strings.Split(req.CC, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				ccList = append(ccList, e)
+			}
+		}
+	}
+	if req.BCC != "" {
+		for _, e := range strings.Split(req.BCC, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				bccList = append(bccList, e)
+			}
+		}
+	}
+
 	// Send initial message based on the initiator of conversation.
 	switch req.Initiator {
 	case umodels.UserTypeAgent:
 		// Queue reply.
-		if _, err := app.conversation.QueueReply(media, req.InboxID, auser.ID /**sender_id**/, contact.ID, conversationUUID, req.Content, to, nil /**cc**/, nil /**bcc**/, map[string]any{} /**meta**/); err != nil {
+		if _, err := app.conversation.QueueReply(media, req.InboxID, auser.ID /**sender_id**/, contact.ID, conversationUUID, req.Content, to, ccList, bccList, map[string]any{} /**meta**/); err != nil {
 			// Delete the conversation if msg queue fails.
 			if err := app.conversation.DeleteConversation(conversationUUID); err != nil {
 				app.lo.Error("error deleting conversation", "error", err)

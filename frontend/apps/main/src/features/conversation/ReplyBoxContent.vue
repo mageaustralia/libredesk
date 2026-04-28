@@ -57,23 +57,29 @@
         :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
         v-if="messageType === 'reply' || messageType === 'forward'"
       >
+        <!--
+          EC7/EC8: Gmail-style chip inputs. Emails render as removable pills
+          with per-chip remove (X). The chip-level remove fully supersedes the
+          previous EC9 per-field clear-X — finer-grained, so we drop the
+          all-or-nothing clear button and the wrapping div+Input it lived in.
+          Model is still a comma-joined string, so validateEmails / parseTo /
+          parseCC / parseBCC keep working untouched.
+        -->
         <div class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">TO:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="to"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
         </div>
         <div class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">CC:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="cc"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
           <Button
@@ -86,11 +92,10 @@
         </div>
         <div v-if="showBcc" class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">BCC:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="bcc"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
         </div>
@@ -165,8 +170,8 @@ import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { Maximize2, Minimize2 } from 'lucide-vue-next'
 import Editor from '@main/components/editor/TextEditor.vue'
+import EmailTagInput from '@main/components/EmailTagInput.vue'
 import { useConversationStore } from '@main/stores/conversation'
-import { Input } from '@shared-ui/components/ui/input'
 import { Button } from '@shared-ui/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@shared-ui/components/ui/tabs'
 import { useEmitter } from '@main/composables/useEmitter'
@@ -405,9 +410,12 @@ watch(
   { immediate: true }
 )
 
-// Expose focus method for parent components
-const focus = () => {
-  editorRef.value?.focus()
+// Expose focus method for parent components.
+// EC10: Forwards a position arg so ReplyBox.vue's conv-switch focus can opt
+// for cursor-at-start (default in TextEditor.focus()) without poking at the
+// editor ref directly.
+const focus = (position = 'start') => {
+  editorRef.value?.focus(position)
 }
 defineExpose({ focus })
 </script>
