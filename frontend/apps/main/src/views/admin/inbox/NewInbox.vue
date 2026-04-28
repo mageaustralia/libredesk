@@ -119,7 +119,11 @@ const submitForm = (values) => {
     name: values.name,
     from: values.from,
     channel: channelName,
+    enabled: values.enabled ?? true,
+    csat_enabled: values.csat_enabled ?? false,
+    prompt_tags_on_reply: values.prompt_tags_on_reply ?? false,
     config: {
+      reply_to: values.reply_to,
       enable_plus_addressing: values.enable_plus_addressing,
       auto_assign_on_reply: values.auto_assign_on_reply,
       imap: [values.imap],
@@ -135,6 +139,9 @@ const submitLiveChatForm = (values) => {
     channel: 'livechat',
     enabled: values.enabled ?? true,
     csat_enabled: values.csat_enabled ?? false,
+    prompt_tags_on_reply: values.prompt_tags_on_reply ?? false,
+    secret: values.secret ?? '',
+    linked_email_inbox_id: values.linked_email_inbox_id ?? null,
     config: values.config
   }
   createInbox(payload)

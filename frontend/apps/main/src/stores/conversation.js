@@ -381,7 +381,8 @@ export const useConversationStore = defineStore('conversation', () => {
     const { to, cc, bcc } = computeRecipientsFromMessage(
       latestMessage,
       conv.contact?.email || '',
-      inboxEmail
+      inboxEmail,
+      conv?.inbox_reply_to || ''
     )
     currentTo.value = to
     currentCC.value = cc
@@ -914,6 +915,7 @@ export const useConversationStore = defineStore('conversation', () => {
     })
   }
 
+  // Clears the list and pagination state so the next fetch starts fresh (removes stale rows).
   function resetConversations () {
     conversations.data = []
     conversations.page = 1
@@ -1067,6 +1069,7 @@ export const useConversationStore = defineStore('conversation', () => {
     updatePriority,
     updateStatus,
     refreshConversationList,
+    resetConversations,
     updateConversationLastMessage,
     fetchFirstPageConversations,
     fetchStatuses,

@@ -140,12 +140,12 @@ func (m *Manager) sendContinuityEmail(conv models.ContinuityConversation, maxMes
 	// Reuse saved subject for threading, or build from first message on first email
 	emailSubject := conv.ContinuityEmailSubject.String
 	if emailSubject == "" {
-		emailSubject = fmt.Sprintf("#%s", conv.ReferenceNumber)
+		emailSubject = m.formatRefMarker(conv.ReferenceNumber)
 		if text := strings.TrimSpace(unreadMessages[0].TextContent); text != "" {
 			if len(text) > 100 {
 				text = text[:100] + "..."
 			}
-			emailSubject = fmt.Sprintf("%s - #%s", text, conv.ReferenceNumber)
+			emailSubject = fmt.Sprintf("%s - %s", text, emailSubject)
 		}
 	}
 
@@ -209,13 +209,15 @@ func (m *Manager) sendContinuityEmail(conv models.ContinuityConversation, maxMes
 		return fmt.Errorf("rendering email template: %w", err)
 	}
 
-	// Build Reply-To with plus-addressing for conversation tracking
+	// Plus-address on the inbox reply_to when set so replies route there, otherwise on From.
+	replyToSource := linkedEmailInbox.ReplyToAddress()
+	if replyToSource == "" {
+		replyToSource = linkedEmailInbox.FromAddress()
+	}
 	var replyTo string
-	emailAddress, err := stringutil.ExtractEmail(linkedEmailInbox.FromAddress())
-	if err == nil {
-		emailUserPart := strings.Split(emailAddress, "@")
-		if len(emailUserPart) == 2 {
-			replyTo = fmt.Sprintf("%s+conv-%s@%s", emailUserPart[0], conv.UUID, emailUserPart[1])
+	if emailAddress, err := stringutil.ExtractEmail(replyToSource); err == nil {
+		if parts := strings.SplitN(emailAddress, "@", 2); len(parts) == 2 {
+			replyTo = fmt.Sprintf("%s+conv-%s@%s", parts[0], conv.UUID, parts[1])
 		}
 	}
 
