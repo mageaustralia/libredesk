@@ -63,6 +63,7 @@ type Inbox interface {
 	Identifier
 	MessageHandler
 	FromAddress() string
+	ReplyToAddress() string
 	Channel() string
 }
 
@@ -229,11 +230,14 @@ func (m *Manager) GetAll() ([]imodels.Inbox, error) {
 
 // Create creates an inbox in the DB.
 func (m *Manager) Create(inbox imodels.Inbox) (imodels.Inbox, error) {
-	// Generate and encrypt secret for livechat inboxes if not provided
-	if inbox.Channel == ChannelLiveChat && !inbox.Secret.Valid {
-		secret, err := stringutil.RandomAlphanumeric(32)
-		if err != nil {
-			return imodels.Inbox{}, fmt.Errorf("generating inbox secret: %w", err)
+	if inbox.Channel == ChannelLiveChat {
+		secret := inbox.Secret.String
+		if secret == "" {
+			generated, err := stringutil.RandomAlphanumeric(32)
+			if err != nil {
+				return imodels.Inbox{}, fmt.Errorf("generating inbox secret: %w", err)
+			}
+			secret = generated
 		}
 		encryptedSecret, err := crypto.Encrypt(secret, m.encryptionKey)
 		if err != nil {
@@ -250,7 +254,7 @@ func (m *Manager) Create(inbox imodels.Inbox) (imodels.Inbox, error) {
 	}
 
 	var createdInbox imodels.Inbox
-	if err := m.queries.InsertInbox.Get(&createdInbox, inbox.Channel, encryptedConfig, inbox.Name, inbox.From, inbox.CSATEnabled, inbox.Secret, inbox.LinkedEmailInboxID); err != nil {
+	if err := m.queries.InsertInbox.Get(&createdInbox, inbox.Channel, encryptedConfig, inbox.Name, inbox.From, inbox.Enabled, inbox.CSATEnabled, inbox.PromptTagsOnReply, inbox.Secret, inbox.LinkedEmailInboxID); err != nil {
 		m.lo.Error("error creating inbox", "error", err)
 		return imodels.Inbox{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
@@ -343,6 +347,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			OAuth                map[string]string `json:"oauth"`
 			IMAP                 []map[string]any  `json:"imap"`
 			SMTP                 []map[string]any  `json:"smtp"`
+			ReplyTo              string            `json:"reply_to"`
 			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
 		}
@@ -351,6 +356,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			OAuth                map[string]string `json:"oauth"`
 			IMAP                 []map[string]any  `json:"imap"`
 			SMTP                 []map[string]any  `json:"smtp"`
+			ReplyTo              string            `json:"reply_to"`
 			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
 		}
@@ -430,7 +436,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 
 	// Update the inbox in the DB.
 	var updatedInbox imodels.Inbox
-	if err := m.queries.Update.Get(&updatedInbox, id, inbox.Channel, encryptedConfig, inbox.Name, inbox.From, inbox.CSATEnabled, inbox.Enabled, inbox.Secret, inbox.LinkedEmailInboxID); err != nil {
+	if err := m.queries.Update.Get(&updatedInbox, id, inbox.Channel, encryptedConfig, inbox.Name, inbox.From, inbox.CSATEnabled, inbox.PromptTagsOnReply, inbox.Enabled, inbox.Secret, inbox.LinkedEmailInboxID); err != nil {
 		m.lo.Error("error updating inbox", "error", err)
 		return imodels.Inbox{}, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}

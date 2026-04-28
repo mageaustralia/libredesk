@@ -27,6 +27,7 @@ type Inbox struct {
 	Channel            string          `db:"channel" json:"channel"`
 	Enabled            bool            `db:"enabled" json:"enabled"`
 	CSATEnabled        bool            `db:"csat_enabled" json:"csat_enabled"`
+	PromptTagsOnReply  bool            `db:"prompt_tags_on_reply" json:"prompt_tags_on_reply"`
 	From               string          `db:"from" json:"from"`
 	Config             json.RawMessage `db:"config" json:"config"`
 	Secret             null.String     `db:"secret" json:"secret"`
@@ -40,6 +41,7 @@ type Config struct {
 	SMTP                 []SMTPConfig `json:"smtp"`
 	IMAP                 []IMAPConfig `json:"imap"`
 	From                 string       `json:"from"`
+	ReplyTo              string       `json:"reply_to"`
 	EnablePlusAddressing bool         `json:"enable_plus_addressing"` // Enable plus-addressing in Reply-To header for conversation matching
 	AutoAssignOnReply    bool         `json:"auto_assign_on_reply"`   // When true, an unassigned conversation gets assigned to the agent who first replies
 }

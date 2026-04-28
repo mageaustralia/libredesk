@@ -84,6 +84,7 @@ type Manager struct {
 	closedMu                   sync.RWMutex
 	wg                         sync.WaitGroup
 	continuityConfig           ContinuityConfig
+	subjectRefFormat           string
 }
 
 // WidgetConversationView represents the conversation data for widget clients
@@ -177,6 +178,7 @@ type Opts struct {
 	OutgoingMessageQueueSize int
 	IncomingMessageQueueSize int
 	ContinuityConfig         *ContinuityConfig
+	SubjectRefFormat         string
 }
 
 // New initializes a new conversation Manager.
@@ -215,6 +217,13 @@ func New(
 		}
 	}
 
+	subjectRefFormat := opts.SubjectRefFormat
+	if subjectRefFormat == "" {
+		subjectRefFormat = "#{ref}"
+	} else if !strings.Contains(subjectRefFormat, "{ref}") {
+		return nil, fmt.Errorf("conversation.subject_ref_format must contain {ref} placeholder")
+	}
+
 	c := &Manager{
 		q:                          q,
 		wsHub:                      wsHub,
@@ -238,6 +247,7 @@ func New(
 		outgoingMessageQueue:       make(chan models.Message, opts.OutgoingMessageQueueSize),
 		outgoingProcessingMessages: sync.Map{},
 		continuityConfig:           continuityConfig,
+		subjectRefFormat:           subjectRefFormat,
 	}
 
 	return c, nil
@@ -362,7 +372,7 @@ func (c *Manager) CreateConversation(contactID, inboxID int, lastMessage string,
 		since = time.Now().Add(-rateLimitWindow)
 	}
 
-	if err := c.q.InsertConversation.QueryRow(contactID, models.StatusOpen, inboxID, lastMessage, lastMessageAt, subject, prefix, appendRefNumToSubject, metaJSON, customAttrsJSON, since, maxConversations).Scan(&id, &uuid); err != nil {
+	if err := c.q.InsertConversation.QueryRow(contactID, models.StatusOpen, inboxID, lastMessage, lastMessageAt, subject, prefix, appendRefNumToSubject, metaJSON, customAttrsJSON, since, maxConversations, c.subjectRefFormat).Scan(&id, &uuid); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, "", envelope.NewError(envelope.RateLimitError, c.i18n.T("globals.messages.tooManyRequests"), nil)
 		}
@@ -1350,7 +1360,7 @@ func (m *Manager) ApplyAction(action amodels.RuleAction, conv models.Conversatio
 		}
 	case amodels.ActionReply:
 		// Make recipient list.
-		to, cc, bcc, err := m.makeRecipients(conv.ID, conv.Contact.Email.String, conv.InboxMail)
+		to, cc, bcc, err := m.makeRecipients(conv.ID, conv.Contact.Email.String, conv.InboxMail, conv.InboxReplyTo)
 		if err != nil {
 			return fmt.Errorf("making recipients for reply action: %w", err)
 		}
@@ -1459,7 +1469,7 @@ func (m *Manager) SendCSATReply(actorUserID int, conversation models.Conversatio
 	}
 
 	// Make recipient list.
-	to, cc, bcc, err := m.makeRecipients(conversation.ID, conversation.Contact.Email.String, conversation.InboxMail)
+	to, cc, bcc, err := m.makeRecipients(conversation.ID, conversation.Contact.Email.String, conversation.InboxMail, conversation.InboxReplyTo)
 	if err != nil {
 		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
@@ -1908,6 +1918,7 @@ func (m *Manager) calculateBusinessHoursInfo(conversation models.Conversation) (
 
 	return businessHoursID, utcOffset
 }
+
 // MoveToTrash moves a conversation to trash. Delegates to UpdateConversationStatus
 // so the change picks up audit logging, webhooks, websocket broadcast and
 // automation rule evaluation just like a normal status change.
@@ -2129,4 +2140,8 @@ func (m *Manager) MergeConversations(primaryUUID string, secondaryUUIDs []string
 	}
 
 	return MergeResult{PrimaryUUID: primaryUUID, Warnings: statusWarnings}, nil
+}
+
+func (c *Manager) formatRefMarker(ref string) string {
+	return strings.ReplaceAll(c.subjectRefFormat, "{ref}", ref)
 }

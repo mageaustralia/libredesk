@@ -326,12 +326,13 @@ func handleOAuthCallback(r *fastglue.Request) error {
 
 	// Create inbox
 	newInbox := imodels.Inbox{
-		Name:        fmt.Sprintf("%s Inbox", userEmail),
-		From:        userEmail,
-		Channel:     inbox.ChannelEmail,
-		Enabled:     true,
-		CSATEnabled: false,
-		Config:      json.RawMessage(configJSON),
+		Name:              fmt.Sprintf("%s Inbox", userEmail),
+		From:              userEmail,
+		Channel:           inbox.ChannelEmail,
+		Enabled:           true,
+		CSATEnabled:       false,
+		PromptTagsOnReply: false,
+		Config:            json.RawMessage(configJSON),
 	}
 
 	createdInbox, err := app.inbox.Create(newInbox)
@@ -408,10 +409,10 @@ func getProviderDefaults(provider, emailAddr string) (imodels.SMTPConfig, imodel
 	smtp.Username = emailAddr
 	smtp.AuthProtocol = "login"
 	smtp.TLSSkipVerify = false
-	smtp.MaxConns = 10
-	smtp.MaxMessageRetries = 2
+	smtp.MaxConns = 5
+	smtp.MaxMessageRetries = 5
 	smtp.IdleTimeout = "20s"
-	smtp.PoolWaitTimeout = "30s"
+	smtp.PoolWaitTimeout = "120s"
 
 	imap.Username = emailAddr
 	imap.Mailbox = "INBOX"

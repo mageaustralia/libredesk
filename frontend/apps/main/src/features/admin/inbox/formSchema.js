@@ -1,12 +1,19 @@
 import * as z from 'zod'
-import { isGoDuration } from '@shared-ui/utils/string'
+import { isGoDuration, validateEmail } from '@shared-ui/utils/string'
 import { AUTH_TYPE_PASSWORD, AUTH_TYPE_OAUTH2 } from '@main/constants/auth.js'
 
 export const createFormSchema = (t) => z.object({
   name: z.string().min(1, t('globals.messages.required')),
   from: z.string().min(1, t('globals.messages.required')),
+  reply_to: z
+    .string()
+    .optional()
+    .refine((v) => !v || validateEmail(v), {
+      message: t('validation.invalidEmail')
+    }),
   enabled: z.boolean().optional(),
   csat_enabled: z.boolean().optional(),
+  prompt_tags_on_reply: z.boolean().optional(),
   enable_plus_addressing: z.boolean().optional(),
   auto_assign_on_reply: z.boolean().optional(),
   auth_type: z.enum([AUTH_TYPE_PASSWORD, AUTH_TYPE_OAUTH2]),
@@ -43,7 +50,7 @@ export const createFormSchema = (t) => z.object({
     idle_timeout: z.string().min(1, t('globals.messages.required')).refine(isGoDuration, {
       message: t('validation.invalidDuration')
     }),
-    wait_timeout: z.string().min(1, t('globals.messages.required')).refine(isGoDuration, {
+    pool_wait_timeout: z.string().min(1, t('globals.messages.required')).refine(isGoDuration, {
       message: t('validation.invalidDuration')
     }),
     tls_type: z.enum(['none', 'starttls', 'tls']),

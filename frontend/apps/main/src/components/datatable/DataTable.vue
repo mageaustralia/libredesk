@@ -1,8 +1,21 @@
 <template>
-  <div class="w-full">
-    <div class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-      <Table>
-        <TableHeader>
+  <div class="w-full space-y-3">
+    <div v-if="searchable" class="relative max-w-xs">
+      <Search class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        v-model="globalFilter"
+        :placeholder="searchPlaceholder || t('globals.terms.search')"
+        class="pl-8"
+      />
+    </div>
+
+    <div
+      ref="scrollContainer"
+      class="relative overflow-auto rounded-lg border border-border bg-card shadow-sm"
+      :style="{ maxHeight }"
+    >
+      <table class="w-full caption-bottom text-sm">
+        <TableHeader class="sticky top-0 z-10 bg-card">
           <TableRow
             v-for="headerGroup in table.getHeaderGroups()"
             :key="headerGroup.id"
@@ -41,21 +54,24 @@
         </TableHeader>
 
         <TableBody>
-          <template v-if="table.getRowModel().rows?.length">
+          <template v-if="rows.length">
+            <tr v-if="paddingTop > 0" :style="{ height: `${paddingTop}px` }"></tr>
             <TableRow
-              v-for="row in table.getRowModel().rows"
-              :key="row.id"
-              :data-state="row.getIsSelected() ? 'selected' : undefined"
+              v-for="virtualRow in virtualRows"
+              :key="rows[virtualRow.index].id"
+              :data-index="virtualRow.index"
+              :data-state="rows[virtualRow.index].getIsSelected() ? 'selected' : undefined"
               class="border-b border-border/50 transition-colors last:border-0 hover:bg-muted/30 data-[state=selected]:bg-muted"
             >
               <TableCell
-                v-for="cell in row.getVisibleCells()"
+                v-for="cell in rows[virtualRow.index].getVisibleCells()"
                 :key="cell.id"
                 class="px-4 py-3 text-center text-sm"
               >
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
             </TableRow>
+            <tr v-if="paddingBottom > 0" :style="{ height: `${paddingBottom}px` }"></tr>
           </template>
 
           <template v-else-if="loading">
@@ -79,24 +95,31 @@
             </TableRow>
           </template>
         </TableBody>
-      </Table>
+      </table>
     </div>
   </div>
 </template>
 
 <script setup>
-import { FlexRender, getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table'
+import {
+  FlexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  useVueTable
+} from '@tanstack/vue-table'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useI18n } from 'vue-i18n'
 import { computed, ref } from 'vue'
-import { ArrowUpDown, ChevronDown, ChevronUp, Ghost } from 'lucide-vue-next'
+import { ArrowUpDown, ChevronDown, ChevronUp, Ghost, Search } from 'lucide-vue-next'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow
 } from '@shared-ui/components/ui/table'
+import { Input } from '@shared-ui/components/ui/input'
 
 const { t } = useI18n()
 
@@ -110,16 +133,29 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  maxHeight: {
+    type: String,
+    default: '80vh'
+  },
+  estimatedRowHeight: {
+    type: Number,
+    default: 52
+  },
+  searchable: {
+    type: Boolean,
+    default: true
+  },
+  searchPlaceholder: {
+    type: String,
+    default: ''
   }
 })
 
-const emptyText = computed(
-  () =>
-    props.emptyText ||
-    t('globals.messages.noResultsFound')
-)
-
 const sorting = ref([])
+const globalFilter = ref('')
+
+const emptyText = computed(() => props.emptyText || t('globals.messages.noResultsFound'))
 
 const table = useVueTable({
   get data() {
@@ -131,6 +167,9 @@ const table = useVueTable({
   state: {
     get sorting() {
       return sorting.value
+    },
+    get globalFilter() {
+      return globalFilter.value
     }
   },
   enableSortingRemoval: false,
@@ -138,7 +177,32 @@ const table = useVueTable({
     sorting.value =
       typeof updaterOrValue === 'function' ? updaterOrValue(sorting.value) : updaterOrValue
   },
+  onGlobalFilterChange: (updaterOrValue) => {
+    globalFilter.value =
+      typeof updaterOrValue === 'function' ? updaterOrValue(globalFilter.value) : updaterOrValue
+  },
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel()
+  getSortedRowModel: getSortedRowModel(),
+  getFilteredRowModel: getFilteredRowModel()
+})
+
+const scrollContainer = ref(null)
+const rows = computed(() => table.getRowModel().rows)
+
+const rowVirtualizer = useVirtualizer({
+  get count() {
+    return rows.value.length
+  },
+  getScrollElement: () => scrollContainer.value,
+  estimateSize: () => props.estimatedRowHeight,
+  overscan: 10
+})
+
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
+const totalSize = computed(() => rowVirtualizer.value.getTotalSize())
+const paddingTop = computed(() => (virtualRows.value[0]?.start ?? 0))
+const paddingBottom = computed(() => {
+  const last = virtualRows.value[virtualRows.value.length - 1]
+  return last ? totalSize.value - last.end : 0
 })
 </script>
