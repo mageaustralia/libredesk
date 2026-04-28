@@ -194,6 +194,7 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 			if _, ok := meta["forwarded_to"]; ok {
 				isForward = true
 			}
+			// Trusted: validated by validateInboxFromOverride at the API boundary.
 			if v, ok := meta["from"].(string); ok {
 				fromOverride = v
 			}
