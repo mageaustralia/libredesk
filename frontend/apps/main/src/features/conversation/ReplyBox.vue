@@ -554,12 +554,18 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
       }
     } catch (error) {
       hasMessageSendingErrored = true
-      // Remove pending message and restore editor content.
+      // EC2: Restore the editor content the user typed so a transient send
+      // failure (5xx, axios timeout, expired session) doesn't lose their work.
+      // Recipients/attachments/mentions are NOT cleared on the failure path
+      // because they're only reset in the success branch below — which is what
+      // we want here, so the user can hit Send again without re-typing anything.
       conversationStore.removePendingMessage(convUUID, tempUUID)
       htmlContent.value = savedContent
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
         variant: 'destructive',
-        description: handleHTTPError(error).message
+        description: t('replyBox.messageFailedToSend', {
+          error: handleHTTPError(error).message
+        })
       })
     }
   }
