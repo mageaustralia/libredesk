@@ -1001,6 +1001,8 @@
   "replyBox.draftDeleted": "Draft deleted",
   "replyBox.duplicateMessage": "This message was just sent. Refresh if you don't see it yet.",
   "replyBox.emailAddresess": "Email addresses separated by comma",
+  "replyBox.fullscreen.enter": "Expand editor",
+  "replyBox.fullscreen.exit": "Exit fullscreen",
   "replyBox.invalidEmailsIn": "Invalid email(s) in",
   "replyBox.messageFailedToSend": "Message failed to send: {error}",
   "replyBox.missingTagsDescription": "This conversation has no tags. Tagging helps with reporting and triage. You can still send without tagging.",

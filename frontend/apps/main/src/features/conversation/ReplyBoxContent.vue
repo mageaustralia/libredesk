@@ -35,7 +35,18 @@
           </TabsTrigger>
         </TabsList>
       </Tabs>
-      <Button class="text-muted-foreground" variant="ghost" @click="toggleFullscreen">
+      <!--
+        EC6: Fullscreen toggle. Icon-only, so we surface the action via
+        title/aria-label so screen readers and tooltip-on-hover users know
+        what it does. Label flips between enter/exit based on current state.
+      -->
+      <Button
+        class="text-muted-foreground"
+        variant="ghost"
+        :title="isFullscreen ? t('replyBox.fullscreen.exit') : t('replyBox.fullscreen.enter')"
+        :aria-label="isFullscreen ? t('replyBox.fullscreen.exit') : t('replyBox.fullscreen.enter')"
+        @click="toggleFullscreen"
+      >
         <component :is="isFullscreen ? Minimize2 : Maximize2" />
       </Button>
     </div>
