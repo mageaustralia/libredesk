@@ -998,6 +998,7 @@
   "replyBox.duplicateMessage": "This message was just sent. Refresh if you don't see it yet.",
   "replyBox.emailAddresess": "Email addresses separated by comma",
   "replyBox.invalidEmailsIn": "Invalid email(s) in",
+  "replyBox.messageFailedToSend": "Message failed to send: {error}",
   "replyBox.missingTagsDescription": "This conversation has no tags. Tagging helps with reporting and triage. You can still send without tagging.",
   "replyBox.missingTagsTitle": "No tags on this conversation",
   "replyBox.removeBCC": "Remove BCC",
