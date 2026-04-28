@@ -226,6 +226,7 @@
                 <FormControl class="flex-1 flex flex-col min-h-0">
                   <div class="flex flex-col h-full">
                     <Editor
+                      ref="createEditorRef"
                       v-model:htmlContent="componentField.modelValue"
                       @update:htmlContent="(value) => componentField.onChange(value)"
                       :placeholder="t('editor.hint.newLineCtrlK')"
@@ -271,6 +272,7 @@
             <ReplyBoxMenuBar
               :handleFileUpload="handleFileUpload"
               @emojiSelect="handleEmojiSelect"
+              @editorCommand="(cmd) => createEditorRef?.runCommand(cmd)"
               :showSendButton="false"
             />
             <Button type="submit" :disabled="isDisabled" :isLoading="loading">
@@ -352,6 +354,10 @@ const emailQuery = ref('')
 const conversationStore = useConversationStore()
 const macroStore = useMacroStore()
 const insertContent = ref('')
+// EC12: Editor ref so the formatting toolbar in the embedded ReplyBoxMenuBar
+// can call into the editor's exposed runCommand() (bold / italic / list /
+// link / image insertion).
+const createEditorRef = ref(null)
 // Tracks the contact selected from the suggestions dropdown so we can
 // auto-disable name fields and reset them when the agent backspaces the
 // matching email out of the chip-input.

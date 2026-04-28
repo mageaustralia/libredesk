@@ -1007,6 +1007,7 @@
   "replyBox.draftDeleted": "Draft deleted",
   "replyBox.duplicateMessage": "This message was just sent. Refresh if you don't see it yet.",
   "replyBox.emailAddresess": "Email addresses separated by comma",
+  "replyBox.formatting": "Show formatting toolbar",
   "replyBox.fullscreen.enter": "Expand editor",
   "replyBox.fullscreen.exit": "Exit fullscreen",
   "replyBox.invalidEmailsIn": "Invalid email(s) in",

@@ -158,6 +158,7 @@
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
       @emojiSelect="handleEmojiSelect"
+      @editorCommand="handleEditorCommand"
       @sendWithStatus="handleSendWithStatus"
       @deleteDraft="handleDeleteDraft"
     />
@@ -387,6 +388,13 @@ const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
   // Force reactivity so the user can select the same emoji multiple times
   nextTick(() => (insertContent.value = emoji))
+}
+
+// EC12: Bridge from ReplyBoxMenuBar's formatting toolbar to the editor's
+// exposed runCommand(). The menu bar is presentational; the editor ref lives
+// here, so this component owns the wiring.
+const handleEditorCommand = (command) => {
+  editorRef.value?.runCommand(command)
 }
 
 const handleAiPromptSelected = (key) => {
