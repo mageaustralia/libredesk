@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -495,6 +496,20 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		incomingMsg.ContentType = models.ContentTypeText
 	}
 
+	// For RFC 3464 multipart/report bounces, append the diagnostic and
+	// original-message-header parts that enmime leaves unread, so the SMTP
+	// error code and the bounced message identification stay visible.
+	if dsn := extractDSNDiagnostic(envelope); dsn != "" {
+		if incomingMsg.ContentType == models.ContentTypeHTML {
+			incomingMsg.Content += "<pre>" + html.EscapeString(dsn) + "</pre>"
+		} else {
+			incomingMsg.Content = strings.TrimRight(incomingMsg.Content, "\r\n") + "\n" + dsn
+			if incomingMsg.ContentType == "" {
+				incomingMsg.ContentType = models.ContentTypeText
+			}
+		}
+	}
+
 	e.lo.Debug("envelope HTML content", "message_id", incomingMsg.SourceID.String, "content", incomingMsg.Content)
 	e.lo.Debug("envelope text content", "message_id", incomingMsg.SourceID.String, "content", envelope.Text)
 
@@ -861,6 +876,54 @@ func (e *Email) extractUUIDFromReplyAddress(address string) string {
 	}
 
 	return ""
+}
+
+// extractDSNDiagnostic returns a textual rendering of the diagnostic and
+// original-message-header parts of an RFC 3464 multipart/report bounce.
+// Returns empty string for non-DSN emails. The standard text/plain summary
+// part is captured by the regular envelope.Text path; this function recovers
+// the message/delivery-status and message/rfc822(-headers) parts that enmime
+// otherwise leaves unread, so the SMTP error code and the identification of
+// the original bounced message remain visible to the agent.
+func extractDSNDiagnostic(envelope *enmime.Envelope) string {
+	if envelope == nil || envelope.Root == nil {
+		return ""
+	}
+	if !strings.Contains(strings.ToLower(envelope.GetHeader("Content-Type")), "multipart/report") {
+		return ""
+	}
+
+	var diag, origHeaders strings.Builder
+	var walk func(p *enmime.Part)
+	walk = func(p *enmime.Part) {
+		if p == nil {
+			return
+		}
+		switch strings.ToLower(p.ContentType) {
+		case "message/delivery-status":
+			diag.Write(p.Content)
+		case "message/rfc822-headers", "message/rfc822":
+			origHeaders.Write(p.Content)
+		}
+		for c := p.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(envelope.Root)
+
+	var out strings.Builder
+	if diag.Len() > 0 {
+		out.WriteString("\n--- Diagnostic ---\n")
+		out.WriteString(strings.TrimSpace(diag.String()))
+	}
+	if origHeaders.Len() > 0 {
+		if out.Len() > 0 {
+			out.WriteString("\n\n")
+		}
+		out.WriteString("--- Original message headers ---\n")
+		out.WriteString(strings.TrimSpace(origHeaders.String()))
+	}
+	return out.String()
 }
 
 // extractMessageIDFromHeaders extracts and cleans the Message-ID from email headers.
