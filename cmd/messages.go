@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	authzModels "github.com/abhinavxd/libredesk/internal/authz/models"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
+	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
@@ -70,6 +73,13 @@ type messageReq struct {
 	// status name after a successful send. Powers the "Send & Resolve" /
 	// "Send & Close" dropdown in the reply box.
 	SetStatus string `json:"set_status"`
+	// From, when non-empty, overrides the inbox's primary From address
+	// for this single send. Powers EC14's per-inbox From switcher
+	// (e.g. send as "orders@" instead of "support@" from the same inbox).
+	// Must match the inbox's configured primary From or one of the
+	// configured aliases — validated at the handler before the send is
+	// queued so a malicious client can't spoof an arbitrary address.
+	From string `json:"from"`
 }
 
 // handleGetMessages returns messages for a conversation.
@@ -404,6 +414,20 @@ func handleSendMessage(r *fastglue.Request) error {
 		meta["echo_id"] = req.EchoID
 	}
 
+	// EC14: validate the per-message From override. Only allow values that
+	// match either the inbox's primary From or one of the configured
+	// aliases — otherwise an attacker who can post a reply could spoof
+	// any From address. We compare against the bare email part so admins
+	// can configure aliases either as bare addresses or with display
+	// names; either form on either side matches.
+	if req.From != "" {
+		validFrom, err := validateInboxFromOverride(inbox, req.From)
+		if err != nil {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
+		}
+		meta["from"] = validFrom
+	}
+
 	// Forward mode: route to the forwarded_to recipients instead of req.To.
 	// CC/BCC pass through unchanged so an agent can loop teammates in.
 	sendTo := req.To
@@ -454,6 +478,46 @@ func handleSendMessage(r *fastglue.Request) error {
 		})
 	}
 	return r.SendEnvelope(message)
+}
+
+// validateInboxFromOverride enforces that a per-message From override (EC14
+// reply-box From switcher) matches one of the inbox's configured addresses —
+// the primary `from` field or one of the `aliases` entries in the JSONB
+// config. Comparison is by parsed bare email so admins can mix bare and
+// display-name forms freely on either side. Returns the trusted From string
+// to thread into the message meta, or an error envelope-friendly message.
+func validateInboxFromOverride(inbox imodels.Inbox, requested string) (string, error) {
+	requestedAddr, err := mail.ParseAddress(requested)
+	if err != nil {
+		return "", fmt.Errorf("invalid From address: %v", err)
+	}
+	requestedEmail := strings.ToLower(strings.TrimSpace(requestedAddr.Address))
+
+	// Build the allow-list: primary From + aliases. The primary From is on
+	// the inbox row; aliases live inside the JSONB config column.
+	candidates := []string{inbox.From}
+	if len(inbox.Config) > 0 {
+		var cfg imodels.Config
+		if err := json.Unmarshal(inbox.Config, &cfg); err == nil {
+			candidates = append(candidates, cfg.Aliases...)
+		}
+	}
+
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		addr, err := mail.ParseAddress(c)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(addr.Address), requestedEmail) {
+			// Return the agent's chosen string verbatim — preserves any
+			// display-name override they may have typed.
+			return requested, nil
+		}
+	}
+	return "", fmt.Errorf("From address not allowed for this inbox")
 }
 
 // resolveContentCIDs replaces inline image cid: references in email message content

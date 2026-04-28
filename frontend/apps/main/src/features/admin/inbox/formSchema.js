@@ -16,6 +16,21 @@ export const createFormSchema = (t) => z.object({
   prompt_tags_on_reply: z.boolean().optional(),
   enable_plus_addressing: z.boolean().optional(),
   auto_assign_on_reply: z.boolean().optional(),
+  // EC14: comma-separated alias list, e.g. "orders@example.com, support@example.com".
+  // Stored as string here to fit the Gmail-style chip input (EmailTagInput);
+  // EditInbox/NewInbox split it into a JSON array before posting to the API.
+  // Empty = no aliases, only the primary From is available in the reply box.
+  aliases: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.split(',').every((e) => {
+      const trimmed = e.trim()
+      // Allow either "Name <email>" or bare "email" forms.
+      const m = trimmed.match(/<([^>]+)>$/)
+      return validateEmail(m ? m[1].trim() : trimmed)
+    }), {
+      message: t('validation.invalidEmail')
+    }),
   auth_type: z.enum([AUTH_TYPE_PASSWORD, AUTH_TYPE_OAUTH2]),
   oauth: z.object({
     access_token: z.string().optional(),

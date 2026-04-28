@@ -350,6 +350,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			ReplyTo              string            `json:"reply_to"`
 			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
+			Aliases              []string          `json:"aliases"`
 		}
 		var updateCfg struct {
 			AuthType             string            `json:"auth_type"`
@@ -359,6 +360,7 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 			ReplyTo              string            `json:"reply_to"`
 			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
 			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
+			Aliases              []string          `json:"aliases"`
 		}
 
 		if err := json.Unmarshal(current.Config, &currentCfg); err != nil {

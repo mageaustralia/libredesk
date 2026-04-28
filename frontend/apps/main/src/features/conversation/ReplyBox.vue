@@ -131,6 +131,7 @@
           :uploadedFiles="mediaFiles"
           :hasDraft="hasDraftContent"
           :sendStatuses="availableSendStatuses"
+          :fromOptions="fromOptions"
           v-model:htmlContent="htmlContent"
           v-model:textContent="textContent"
           v-model:to="to"
@@ -140,6 +141,7 @@
           v-model:messageType="messageType"
           v-model:showBcc="showBcc"
           v-model:mentions="mentions"
+          v-model:selectedFrom="selectedFrom"
           @toggleFullscreen="isEditorFullscreen = !isEditorFullscreen"
           @send="processSend"
           @sendWithStatus="processSendWithStatus"
@@ -295,6 +297,25 @@ const collisionWarning = ref(false)
 const collisionAgentName = ref('')
 const showCollisionConfirm = ref(false)
 let pendingSendAction = null
+
+// EC14: per-message From override. When the inbox has aliases configured,
+// the reply box surfaces a From dropdown so the agent can send as
+// "orders@" instead of "support@" without leaving the conversation.
+// `selectedFrom` is one entry from `fromOptions`; empty = use the inbox
+// primary (no override sent). Backend re-validates on POST so a stale
+// dropdown can't spoof a foreign address.
+const selectedFrom = ref('')
+const fromOptions = computed(() => {
+  const inbox = inboxStore.inboxes.find(
+    (i) => i.id === conversationStore.current?.inbox_id
+  )
+  if (!inbox || inbox.channel !== 'email') return []
+  const aliases = Array.isArray(inbox?.config?.aliases) ? inbox.config.aliases : []
+  if (aliases.length === 0) return []
+  // Primary first so it stays the default; aliases follow in admin order.
+  const primary = inbox.from || ''
+  return primary ? [primary, ...aliases] : aliases
+})
 
 /**
  * Fetches AI prompts from the server.
@@ -538,6 +559,12 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
     to: parsedTo,
     echo_id: isPrivate ? '' : tempUUID
   }
+  // EC14: include the per-message From override only when the agent
+  // explicitly picked an alias (not the empty default). Backend
+  // re-validates against inbox.from + config.aliases.
+  if (!isPrivate && selectedFrom.value) {
+    payload.from = selectedFrom.value
+  }
   // Forward mode routes to the typed addresses via `forwarded_to`; the
   // backend overrides the conversation's normal recipients with these
   // and tags meta.forwarded_to. CC/BCC pass through unchanged.
@@ -729,6 +756,11 @@ watch(
   () => {
     clearMediaFiles()
     conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
+    // EC14: reset From override on conversation switch. The new
+    // conversation may belong to a different inbox with a different
+    // alias set; carrying the previous selection over would either
+    // pick a now-invalid alias or silently spoof the agent's intent.
+    selectedFrom.value = ''
     if (messageType.value === 'forward') {
       messageType.value = 'reply'
       to.value = ''
@@ -802,6 +834,9 @@ onMounted(() => {
   emitter.on(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
   emitter.on(EMITTER_EVENTS.RESTORE_SEND, handleRestoreSend)
+  // EC14: ensure inboxes are loaded so fromOptions can be computed for
+  // the From switcher. fetchInboxes is a no-op if already populated.
+  inboxStore.fetchInboxes()
 })
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)

@@ -44,6 +44,13 @@ type Config struct {
 	ReplyTo              string       `json:"reply_to"`
 	EnablePlusAddressing bool         `json:"enable_plus_addressing"` // Enable plus-addressing in Reply-To header for conversation matching
 	AutoAssignOnReply    bool         `json:"auto_assign_on_reply"`   // When true, an unassigned conversation gets assigned to the agent who first replies
+	// Aliases lists alternate From addresses an agent can pick from in the
+	// reply box (EC14 "From switcher"). Each entry is a complete From-style
+	// string — bare email ("orders@example.com") or with display name
+	// ("Orders <orders@example.com>"). The MTA must accept these aliases on
+	// the SMTP envelope; admins are responsible for that mapping at the
+	// mailbox provider. Unset/empty = no switcher shown, primary From only.
+	Aliases []string `json:"aliases"`
 }
 
 // OAuthConfig holds OAuth 2.0 authentication details.
