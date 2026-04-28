@@ -368,14 +368,16 @@ const hasDraftContent = computed(() => {
 })
 
 /**
- * EC1: status names exposed in the "Send & set as" dropdown. We exclude
- * Snoozed/Spam/Trashed because those have dedicated UI flows (snooze
- * picker, spam/trash actions in the header menu) — surfacing them here
- * would invite agents to use the wrong path.
+ * EC1: status names exposed in the "Send & set as" dropdown. Filter by
+ * category, not name — admins can rename "Snoozed" or add custom statuses
+ * in those categories, and a name-based filter would silently fail open
+ * (lets agents pick a status that has a dedicated UI flow). Categories
+ * 'waiting' (snooze picker), 'spam' and 'trashed' (header menu actions)
+ * are surfaced via dedicated UI; only 'open' and 'resolved' belong here.
  */
 const availableSendStatuses = computed(() => {
   return conversationStore.statuses
-    .filter((s) => !['Snoozed', 'Spam', 'Trashed'].includes(s.name))
+    .filter((s) => s.category === 'open' || s.category === 'resolved')
     .map((s) => s.name)
 })
 
@@ -383,6 +385,7 @@ const availableSendStatuses = computed(() => {
 // with the right action variant. Without this, clicking the Send chevron
 // while another agent is composing would lose the status choice once the
 // agent confirms the collision dialog.
+// intentionally non-reactive (matches pendingSendAction); only read in confirmSend
 let pendingSetStatus = ''
 
 /**
@@ -535,6 +538,19 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
       // Private notes are sent immediately so replace immediately.
       if (isPrivate && response?.data?.data) {
         conversationStore.replacePendingMessage(convUUID, tempUUID, response.data.data)
+      }
+
+      // EC1: surface non-fatal status-transition failure. The reply itself
+      // landed successfully, but the post-send status change (Send & Resolve
+      // / Send & Close) didn't apply. Without this, the action silently
+      // degrades to a plain Send and the agent has no signal — they think
+      // they resolved the conversation when they didn't.
+      const setStatusError = response?.data?.data?.set_status_error
+      if (setStatusError) {
+        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+          variant: 'destructive',
+          description: t('replyBox.sentButSetStatusFailed', { status: setStatus })
+        })
       }
     } catch (error) {
       hasMessageSendingErrored = true
@@ -792,10 +808,12 @@ function confirmSend() {
   showCollisionConfirm.value = false
   collisionWarning.value = false
   if (pendingSendAction === 'send') {
-    // skipContactEmailCheck=true: agent already passed the collision dialog,
-    // don't bounce them through more guards. Pass-through any pending
-    // set_status so a chevron pick before the dialog still resolves the
-    // conversation post-send.
+    // agent confirmed past one guard; don't bounce them through more
+    // skipContactEmailCheck=true AND skipMissingTagsCheck=true: agent
+    // already passed the collision dialog, don't make them re-confirm
+    // the contact-email and missing-tags warnings on the way through.
+    // Pass-through any pending set_status so a chevron pick before the
+    // dialog still resolves the conversation post-send.
     processSend(true, true, pendingSetStatus)
   }
   pendingSendAction = null

@@ -35,6 +35,9 @@ const messageDedupTTL = 60 * time.Second
 // silently no-op the second click.
 func checkMessageDedup(userID int, convUUID, content, setStatus string) bool {
 	h := sha256.Sum256([]byte(content))
+	// Truncating to first 8 bytes (64 bits) is intentional — collision-safe
+	// at this scale (single agent's per-conv keyspace within a 60s window)
+	// and the per-user/per-conv namespace prevents cross-tenant collisions.
 	key := fmt.Sprintf("%d:%s:%s:%x", userID, convUUID, setStatus, h[:8])
 
 	if _, loaded := messageDedupMap.LoadOrStore(key, time.Now()); loaded {
@@ -426,15 +429,30 @@ func handleSendMessage(r *fastglue.Request) error {
 
 	// EC1: "Send & Set Status" dropdown. After the reply is queued,
 	// transition the conversation status in the same request so the agent
-	// gets a single-action send-and-resolve. Best-effort — surface the
-	// error in logs but don't fail the response, since the reply itself
-	// landed and the agent can flip status manually if needed.
+	// gets a single-action send-and-resolve. Don't fail the response, since
+	// the reply itself landed and the agent can flip status manually — but
+	// log at Error (this is an unmet user-facing guarantee) and surface the
+	// error string back via the envelope so the frontend can toast a warning
+	// like "Reply sent, but couldn't set status to Resolved". Without this,
+	// "Send & Resolve" silently degrades to "Send" and the agent never knows.
+	var setStatusErr string
 	if req.SetStatus != "" {
 		if err := app.conversation.UpdateConversationStatus(cuuid, 0, req.SetStatus, "", user); err != nil {
-			app.lo.Warn("failed to set status after send", "error", err, "conversation_uuid", cuuid, "set_status", req.SetStatus)
+			app.lo.Error("failed to set status after send", "error", err, "conversation_uuid", cuuid, "set_status", req.SetStatus)
+			setStatusErr = err.Error()
 		}
 	}
 
+	if setStatusErr != "" {
+		// Inline the message fields plus a non-fatal set_status_error so
+		// existing consumers reading the message (e.g. echo replacement) still
+		// see what they expect — only the new field is additive.
+		return r.SendEnvelope(map[string]any{
+			"message":          message,
+			"set_status_error": setStatusErr,
+			"set_status":       req.SetStatus,
+		})
+	}
 	return r.SendEnvelope(message)
 }
 
