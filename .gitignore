@@ -9,3 +9,4 @@ uploads
 dist/
 .vscode/
 static/widget.min.js
+.worktrees
