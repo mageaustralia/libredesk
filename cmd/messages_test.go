@@ -1,11 +1,87 @@
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/abhinavxd/libredesk/internal/attachment"
 	cmodels "github.com/abhinavxd/libredesk/internal/conversation/models"
 )
+
+// resetDedupMap clears the package-level dedup map so each test starts
+// fresh. Tests that exercise checkMessageDedup must call this in their
+// arrange phase or they'll inherit state from earlier runs.
+func resetDedupMap() {
+	messageDedupMap = sync.Map{}
+}
+
+func TestCheckMessageDedup(t *testing.T) {
+	t.Run("first call for a key returns false", func(t *testing.T) {
+		resetDedupMap()
+		if checkMessageDedup(1, "conv-uuid-a", "hello", "") {
+			t.Error("first call should not be flagged as duplicate")
+		}
+	})
+
+	t.Run("repeat of the same key returns true", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
+		if !checkMessageDedup(1, "conv-uuid-a", "hello", "") {
+			t.Error("second identical call should be flagged as duplicate")
+		}
+	})
+
+	t.Run("different content does not collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
+		if checkMessageDedup(1, "conv-uuid-a", "different body", "") {
+			t.Error("distinct content should not collide")
+		}
+	})
+
+	t.Run("different conversation does not collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
+		if checkMessageDedup(1, "conv-uuid-b", "hello", "") {
+			t.Error("distinct conversation should not collide")
+		}
+	})
+
+	t.Run("different user does not collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "hello", "")
+		if checkMessageDedup(2, "conv-uuid-a", "hello", "") {
+			t.Error("distinct user should not collide")
+		}
+	})
+
+	// EC17: Send and Send-and-Resolve with the same body must NOT collide.
+	t.Run("send vs send-and-resolve does not collide", func(t *testing.T) {
+		resetDedupMap()
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "") {
+			t.Fatal("plain Send should not be a duplicate on first call")
+		}
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved") {
+			t.Error("Send-and-Resolve with the same body should NOT be flagged after a plain Send (EC17)")
+		}
+	})
+
+	t.Run("send-and-resolve repeated does collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved")
+		if !checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved") {
+			t.Error("the same Send-and-Resolve call twice in a row IS a duplicate")
+		}
+	})
+
+	t.Run("send-and-resolve vs send-and-close does not collide", func(t *testing.T) {
+		resetDedupMap()
+		_ = checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Resolved")
+		if checkMessageDedup(1, "conv-uuid-a", "Thanks!", "Closed") {
+			t.Error("different status variants should not collide")
+		}
+	})
+}
 
 func TestResolveContentCIDs(t *testing.T) {
 	tests := []struct {

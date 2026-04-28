@@ -40,6 +40,10 @@
               <span class="text-secondary font-medium inline-block">
                 {{ conversationStore.current?.status }}
               </span>
+              <!-- Hint that this pill is a dropdown, not a static label.
+                   Without the chevron, agents repeatedly miss that they
+                   can change status by clicking it. -->
+              <ChevronDown class="w-3 h-3 text-secondary" />
             </div>
             <Skeleton class="w-[70px] h-6 rounded-full" v-else />
           </DropdownMenuTrigger>
@@ -160,7 +164,7 @@ import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'

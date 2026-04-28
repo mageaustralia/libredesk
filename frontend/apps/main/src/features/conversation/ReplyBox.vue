@@ -120,6 +120,8 @@
           :isDraftLoading="isDraftLoading"
           :uploadingFiles="uploadingFiles"
           :uploadedFiles="mediaFiles"
+          :hasDraft="hasDraftContent"
+          :sendStatuses="availableSendStatuses"
           v-model:htmlContent="htmlContent"
           v-model:textContent="textContent"
           v-model:to="to"
@@ -131,6 +133,8 @@
           v-model:mentions="mentions"
           @toggleFullscreen="isEditorFullscreen = !isEditorFullscreen"
           @send="processSend"
+          @sendWithStatus="processSendWithStatus"
+          @deleteDraft="handleDeleteDraft"
           @fileUpload="handleFileUpload"
           @fileDelete="handleFileDelete"
           @aiPromptSelected="handleAiPromptSelected"
@@ -153,6 +157,8 @@
         :isDraftLoading="isDraftLoading"
         :uploadingFiles="uploadingFiles"
         :uploadedFiles="mediaFiles"
+        :hasDraft="hasDraftContent"
+        :sendStatuses="availableSendStatuses"
         v-model:htmlContent="htmlContent"
         v-model:textContent="textContent"
         v-model:to="to"
@@ -164,6 +170,8 @@
         v-model:mentions="mentions"
         @toggleFullscreen="isEditorFullscreen = !isEditorFullscreen"
         @send="processSend"
+        @sendWithStatus="processSendWithStatus"
+        @deleteDraft="handleDeleteDraft"
         @fileUpload="handleFileUpload"
         @fileDelete="handleFileDelete"
         @aiPromptSelected="handleAiPromptSelected"
@@ -351,12 +359,47 @@ const hasTextContent = computed(() => {
 })
 
 /**
+ * EC1: drives the delete-draft button visibility. We treat any text or
+ * attached file as "draft worth discarding". An empty editor with no
+ * attachments doesn't surface the button.
+ */
+const hasDraftContent = computed(() => {
+  return hasTextContent.value || mediaFiles.value.length > 0
+})
+
+/**
+ * EC1: status names exposed in the "Send & set as" dropdown. We exclude
+ * Snoozed/Spam/Trashed because those have dedicated UI flows (snooze
+ * picker, spam/trash actions in the header menu) — surfacing them here
+ * would invite agents to use the wrong path.
+ */
+const availableSendStatuses = computed(() => {
+  return conversationStore.statuses
+    .filter((s) => !['Snoozed', 'Spam', 'Trashed'].includes(s.name))
+    .map((s) => s.name)
+})
+
+// Track the in-flight set-status so collision-confirm dialog can resume it
+// with the right action variant. Without this, clicking the Send chevron
+// while another agent is composing would lose the status choice once the
+// agent confirms the collision dialog.
+let pendingSetStatus = ''
+
+/**
  * Processes the send action.
  * If another agent replied while composing, show a confirmation dialog first.
+ *
+ * @param {boolean} skipContactEmailCheck - bypass the contact-not-in-recipients warning
+ * @param {boolean} skipMissingTagsCheck - bypass the prompt-tags-on-reply warning
+ * @param {string}  setStatus - if non-empty, transition the conversation to
+ *                              this status name in the same backend request.
+ *                              Powers the EC1 "Send & Resolve" / "Send & Close"
+ *                              dropdown — single-action send-and-transition.
  */
-const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck = false) => {
+const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck = false, setStatus = '') => {
   if (!skipContactEmailCheck && collisionWarning.value) {
     pendingSendAction = 'send'
+    pendingSetStatus = setStatus
     showCollisionConfirm.value = true
     return
   }
@@ -480,6 +523,13 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
         payload.forwarded_to = parsedTo
         payload.to = []
       }
+      // EC1: tell the backend to transition status post-send in the same
+      // request so the agent gets atomic Send-and-Resolve. Backend validates
+      // the status name; we just pass it through. Empty string = no transition,
+      // which is the default and matches a plain Send.
+      if (setStatus && !isPrivate && !isForward) {
+        payload.set_status = setStatus
+      }
       const response = await api.sendMessage(convUUID, payload)
 
       // Private notes are sent immediately so replace immediately.
@@ -527,6 +577,32 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
     collisionAgentName.value = ''
   }
   isSending.value = false
+}
+
+/**
+ * EC1: Send & Set Status. Thin wrapper that forwards the chosen status name
+ * to processSend, which packs it into the POST as `set_status`. Backend
+ * does the actual transition after the reply is queued — single atomic
+ * action, no second round-trip from the client.
+ */
+const processSendWithStatus = (status) => {
+  return processSend(false, false, status)
+}
+
+/**
+ * EC1: Discard the current draft. Clears persisted draft state, attached
+ * files, and any pending validation errors. The toast is the agent's
+ * confirmation that the action took effect.
+ */
+const handleDeleteDraft = () => {
+  clearDraft(currentDraftKey.value)
+  clearMediaFiles()
+  emailErrors.value = []
+  mentions.value = []
+  htmlContent.value = ''
+  emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+    description: t('replyBox.draftDeleted')
+  })
 }
 
 /**
@@ -716,9 +792,14 @@ function confirmSend() {
   showCollisionConfirm.value = false
   collisionWarning.value = false
   if (pendingSendAction === 'send') {
-    processSend(false)
+    // skipContactEmailCheck=true: agent already passed the collision dialog,
+    // don't bounce them through more guards. Pass-through any pending
+    // set_status so a chevron pick before the dialog still resolves the
+    // conversation post-send.
+    processSend(true, true, pendingSetStatus)
   }
   pendingSendAction = null
+  pendingSetStatus = ''
 }
 
 // Track when the agent starts composing (used to detect collision window).
