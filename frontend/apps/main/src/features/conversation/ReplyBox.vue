@@ -455,149 +455,149 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
       }
     }
   }
-  let tempUUID = null
-
-  // Add pending message to cache for instant display.
-  if (hasContent) {
-    const savedContent = htmlContent.value
-    const author = {
-      id: userStore.userID,
-      first_name: userStore.firstName,
-      last_name: userStore.lastName,
-      avatar_url: userStore.avatar,
-      type: 'agent'
-    }
-    const parsedTo =
-      !isPrivate && to.value
-        ? to.value
-            .split(',')
-            .map((e) => e.trim())
-            .filter(Boolean)
-        : []
-    const parsedCC =
-      !isPrivate && cc.value
-        ? cc.value
-            .split(',')
-            .map((e) => e.trim())
-            .filter(Boolean)
-        : []
-    const parsedBCC =
-      !isPrivate && bcc.value
-        ? bcc.value
-            .split(',')
-            .map((e) => e.trim())
-            .filter(Boolean)
-        : []
-    const meta = {}
-    if (parsedTo.length) meta.to = parsedTo
-    if (parsedCC.length) meta.cc = parsedCC
-    if (parsedBCC.length) meta.bcc = parsedBCC
-
-    tempUUID = conversationStore.addPendingMessage(
-      convUUID,
-      savedContent,
-      isPrivate,
-      author,
-      mediaFiles.value,
-      textContent.value,
-      meta
-    )
-
-    // Clear editor immediately.
-    htmlContent.value = ''
-
-    try {
-      isSending.value = true
-      const payload = {
-        sender_type: UserTypeAgent,
-        private: isPrivate,
-        message: savedContent,
-        attachments: mediaFiles.value.map((file) => file.id),
-        mentions: isPrivate ? mentions.value : [],
-        cc: parsedCC,
-        bcc: parsedBCC,
-        to: parsedTo,
-        echo_id: isPrivate ? '' : tempUUID
-      }
-      // Forward mode routes to the typed addresses via `forwarded_to`; the
-      // backend overrides the conversation's normal recipients with these
-      // and tags meta.forwarded_to. CC/BCC pass through unchanged.
-      if (isForward) {
-        payload.forwarded_to = parsedTo
-        payload.to = []
-      }
-      // EC1: tell the backend to transition status post-send in the same
-      // request so the agent gets atomic Send-and-Resolve. Backend validates
-      // the status name; we just pass it through. Empty string = no transition,
-      // which is the default and matches a plain Send.
-      if (setStatus && !isPrivate && !isForward) {
-        payload.set_status = setStatus
-      }
-      const response = await api.sendMessage(convUUID, payload)
-
-      // Private notes are sent immediately so replace immediately.
-      if (isPrivate && response?.data?.data) {
-        conversationStore.replacePendingMessage(convUUID, tempUUID, response.data.data)
-      }
-
-      // EC1: surface non-fatal status-transition failure. The reply itself
-      // landed successfully, but the post-send status change (Send & Resolve
-      // / Send & Close) didn't apply. Without this, the action silently
-      // degrades to a plain Send and the agent has no signal — they think
-      // they resolved the conversation when they didn't.
-      const setStatusError = response?.data?.data?.set_status_error
-      if (setStatusError) {
-        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-          variant: 'destructive',
-          description: t('replyBox.sentButSetStatusFailed', { status: setStatus })
-        })
-      }
-    } catch (error) {
-      hasMessageSendingErrored = true
-      // EC2: Restore the editor content the user typed so a transient send
-      // failure (5xx, axios timeout, expired session) doesn't lose their work.
-      // Recipients/attachments/mentions are NOT cleared on the failure path
-      // because they're only reset in the success branch below — which is what
-      // we want here, so the user can hit Send again without re-typing anything.
-      conversationStore.removePendingMessage(convUUID, tempUUID)
-      htmlContent.value = savedContent
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: t('replyBox.messageFailedToSend', {
-          error: handleHTTPError(error).message
-        })
-      })
-    }
+  // Nothing to send.
+  if (!hasContent) {
+    isSending.value = false
+    return
   }
 
-  // Apply macro actions if any.
-  if (!hasMessageSendingErrored) {
-    const macroID = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.id
-    const macroActions = conversationStore.getMacro(MACRO_CONTEXT.REPLY)?.actions || []
-    if (macroID > 0 && macroActions.length > 0) {
-      try {
-        await api.applyMacro(convUUID, macroID, macroActions)
-      } catch (error) {
-        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-          variant: 'destructive',
-          description: handleHTTPError(error).message
-        })
-      }
-    }
+  const savedContent = htmlContent.value
+  const savedTo = to.value
+  const savedCC = cc.value
+  const savedBCC = bcc.value
+  const savedMessageType = messageType.value
+  const savedMediaFiles = [...mediaFiles.value]
+  const savedMentions = [...mentions.value]
+  const macroSnapshot = conversationStore.getMacro(MACRO_CONTEXT.REPLY)
+  const savedMacroID = macroSnapshot?.id || 0
+  const savedMacroActions = macroSnapshot?.actions ? [...macroSnapshot.actions] : []
+
+  const author = {
+    id: userStore.userID,
+    first_name: userStore.firstName,
+    last_name: userStore.lastName,
+    avatar_url: userStore.avatar,
+    type: 'agent'
+  }
+  const parsedTo =
+    !isPrivate && savedTo
+      ? savedTo
+          .split(',')
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : []
+  const parsedCC =
+    !isPrivate && savedCC
+      ? savedCC
+          .split(',')
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : []
+  const parsedBCC =
+    !isPrivate && savedBCC
+      ? savedBCC
+          .split(',')
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : []
+  const meta = {}
+  if (parsedTo.length) meta.to = parsedTo
+  if (parsedCC.length) meta.cc = parsedCC
+  if (parsedBCC.length) meta.bcc = parsedBCC
+
+  // Optimistically render the message in the thread so the agent gets
+  // instant feedback. If they hit Undo, Conversation.vue will remove this
+  // pending entry; otherwise the API response (or WS echo) replaces it.
+  const tempUUID = conversationStore.addPendingMessage(
+    convUUID,
+    savedContent,
+    isPrivate,
+    author,
+    savedMediaFiles,
+    textContent.value,
+    meta
+  )
+
+  const payload = {
+    sender_type: UserTypeAgent,
+    private: isPrivate,
+    message: savedContent,
+    attachments: savedMediaFiles.map((file) => file.id),
+    mentions: isPrivate ? savedMentions : [],
+    cc: parsedCC,
+    bcc: parsedBCC,
+    to: parsedTo,
+    echo_id: isPrivate ? '' : tempUUID
+  }
+  // Forward mode routes to the typed addresses via `forwarded_to`; the
+  // backend overrides the conversation's normal recipients with these
+  // and tags meta.forwarded_to. CC/BCC pass through unchanged.
+  if (isForward) {
+    payload.forwarded_to = parsedTo
+    payload.to = []
+  }
+  // EC1: tell the backend to transition status post-send in the same
+  // request so the agent gets atomic Send-and-Resolve. Backend validates
+  // the status name; we just pass it through. Empty string = no transition,
+  // which is the default and matches a plain Send.
+  if (setStatus && !isPrivate && !isForward) {
+    payload.set_status = setStatus
   }
 
-  // Clear state on success.
-  if (!hasMessageSendingErrored) {
-    clearDraft(currentDraftKey.value)
-    conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
-    clearMediaFiles()
-    emailErrors.value = []
-    mentions.value = []
-    // Reset collision state.
-    isComposing.value = false
-    collisionWarning.value = false
-    collisionAgentName.value = ''
+  // EC3: Save everything needed to restore the editor on Undo. Recipients +
+  // message type + content + attachments + mentions + macro selection — the
+  // full state the agent had at the moment they clicked Send.
+  const restoreData = {
+    htmlContent: savedContent,
+    messageType: savedMessageType,
+    to: savedTo,
+    cc: savedCC,
+    bcc: savedBCC,
+    mediaFiles: savedMediaFiles,
+    mentions: savedMentions,
+    macroID: savedMacroID,
+    macroActions: savedMacroActions,
+    setStatus
   }
+
+  // EC3: Hand the queued send off to Conversation.vue, which owns the 5s
+  // countdown + Undo banner. We deliberately clear local editor / draft
+  // state up-front so the editor visually empties — Undo restores it.
+  emitter.emit(EMITTER_EVENTS.SEND_QUEUED, {
+    uuid: convUUID,
+    tempUUID,
+    payload,
+    isPrivate,
+    isForward,
+    setStatus,
+    macroID: savedMacroID,
+    macroActions: savedMacroActions,
+    draftKey: currentDraftKey.value,
+    restoreData
+  })
+
+  // Clear editor / draft / recipients up-front. Conversation.vue drives the
+  // delayed POST; we don't await it here. Any failure path is handled there.
+  clearDraft(currentDraftKey.value)
+  conversationStore.resetMacro(MACRO_CONTEXT.REPLY)
+  clearMediaFiles()
+  htmlContent.value = ''
+  textContent.value = ''
+  // Recipients are restored from conversation defaults via watchers; only
+  // forward mode needs an explicit reset because forward defaults to empty.
+  if (isForward) {
+    to.value = ''
+    cc.value = ''
+    bcc.value = ''
+    showBcc.value = false
+    messageType.value = 'reply'
+  }
+  emailErrors.value = []
+  mentions.value = []
+  // Reset collision state.
+  isComposing.value = false
+  collisionWarning.value = false
+  collisionAgentName.value = ''
   isSending.value = false
 }
 
@@ -782,11 +782,45 @@ function handleForwardMessage (message) {
 onMounted(() => {
   emitter.on(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)
   emitter.on(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+  emitter.on(EMITTER_EVENTS.RESTORE_SEND, handleRestoreSend)
 })
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)
   emitter.off(EMITTER_EVENTS.NEW_MESSAGE, handleNewMessageCollision)
+  emitter.off(EMITTER_EVENTS.RESTORE_SEND, handleRestoreSend)
 })
+
+/**
+ * EC3: Restore the editor state after the agent clicks Undo on the queued
+ * send banner. Re-hydrates content + recipients + message type + attachments
+ * + mentions + macro selection — exactly what processSend captured.
+ *
+ * The set_status from a Send & Resolve isn't restored to a UI control here
+ * because v2's set-status dropdown is a transient action menu (no sticky
+ * "next send will be Send & Resolve" mode). If the agent re-clicks Send &
+ * Resolve after Undo, they reselect from the chevron — which is consistent
+ * with how the dropdown works for any non-undo flow.
+ */
+function handleRestoreSend (data) {
+  if (data == null) return
+  if (data.htmlContent != null) htmlContent.value = data.htmlContent
+  if (data.messageType != null) messageType.value = data.messageType
+  if (data.to != null) to.value = data.to
+  if (data.cc != null) cc.value = data.cc
+  if (data.bcc != null) {
+    bcc.value = data.bcc
+    if (data.bcc) showBcc.value = true
+  }
+  if (Array.isArray(data.mediaFiles) && data.mediaFiles.length > 0) {
+    setMediaFiles(data.mediaFiles)
+  }
+  if (Array.isArray(data.mentions)) {
+    mentions.value = data.mentions
+  }
+  if (data.macroID && data.macroActions?.length > 0) {
+    conversationStore.setMacroActions([...data.macroActions], MACRO_CONTEXT.REPLY)
+  }
+}
 
 /**
  * Handles collision detection when a new message arrives while composing.
