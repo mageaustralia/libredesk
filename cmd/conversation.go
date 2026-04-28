@@ -37,6 +37,10 @@ type statusUpdateReq struct {
 	SnoozedUntil string `json:"snoozed_until,omitempty"`
 }
 
+type subjectUpdateReq struct {
+	Subject string `json:"subject"`
+}
+
 type tagsUpdateReq struct {
 	Tags []string `json:"tags"`
 }
@@ -524,6 +528,39 @@ func handleUpdateConversationPriority(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
+	return r.SendEnvelope(true)
+}
+
+// handleUpdateConversationSubject updates the subject of a conversation. The
+// sticky-header inline-edit affordance posts here. Wrapped in
+// enforceConversationAccess so an agent without access to a conversation
+// can't rewrite its subject by guessing the UUID. Length cap and trim happen
+// in UpdateConversationSubject so future callers (CLI, automation) inherit
+// the same guards.
+func handleUpdateConversationSubject(r *fastglue.Request) error {
+	var (
+		app   = r.Context.(*App)
+		uuid  = r.RequestCtx.UserValue("uuid").(string)
+		auser = r.RequestCtx.UserValue("user").(amodels.User)
+		req   = subjectUpdateReq{}
+	)
+
+	if err := r.Decode(&req, "json"); err != nil {
+		app.lo.Error("error decoding subject update request", "error", err)
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("errors.parsingRequest"), nil, envelope.InputError)
+	}
+
+	user, err := app.user.GetAgent(auser.ID, "")
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+
+	if err := app.conversation.UpdateConversationSubject(uuid, req.Subject, user); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
 	return r.SendEnvelope(true)
 }
 

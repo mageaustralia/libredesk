@@ -113,6 +113,67 @@
       </div>
     </div>
 
+    <!--
+      EC4 / EC5: Sticky subject bar.
+      Sits between the conversation header and the message list. Because both
+      live outside the MessageList's overflow-y-auto wrapper (see below) the
+      bar stays visible no matter how far the agent scrolls — no `position:
+      sticky` needed; flex layout already guarantees it.
+
+      Click the subject to edit inline. Pencil icon appears on hover (group
+      pattern); a check icon and click-outside save; Escape cancels.
+    -->
+    <div
+      v-if="!conversationStore.conversation.loading && (conversationStore.current?.subject || conversationStore.current?.uuid)"
+      class="flex-shrink-0 border-b bg-background/95 backdrop-blur-sm px-4 py-2"
+    >
+      <div class="group flex items-center gap-2 min-w-0">
+        <span
+          v-if="conversationStore.current?.reference_number"
+          class="text-xs font-medium text-muted-foreground shrink-0"
+        >#{{ conversationStore.current.reference_number }}</span>
+        <h2
+          v-if="!editingHeaderSubject"
+          class="text-sm font-semibold truncate"
+          :class="{ 'italic text-muted-foreground': !conversationStore.current?.subject }"
+          :title="conversationStore.current?.subject || t('conversation.list.noSubject')"
+        >{{ conversationStore.current?.subject || t('conversation.list.noSubject') }}</h2>
+        <input
+          v-else
+          ref="headerSubjectInput"
+          v-model="headerSubjectDraft"
+          :maxlength="MAX_SUBJECT_LEN"
+          :aria-label="t('conversation.subject.editAria')"
+          :disabled="savingHeaderSubject"
+          class="flex-1 min-w-0 text-sm font-semibold border rounded px-2 py-0.5 bg-transparent disabled:opacity-50"
+          @keyup.enter="saveHeaderSubject"
+          @keyup.escape="cancelEditHeaderSubject"
+          @blur="saveHeaderSubject"
+        />
+        <button
+          v-if="!editingHeaderSubject"
+          type="button"
+          :title="t('conversation.subject.editTitle')"
+          :aria-label="t('conversation.subject.editTitle')"
+          class="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0"
+          @click="startEditHeaderSubject"
+        >
+          <Pencil :size="13" />
+        </button>
+        <button
+          v-else
+          type="button"
+          :title="t('conversation.subject.save')"
+          :aria-label="t('conversation.subject.save')"
+          :disabled="savingHeaderSubject"
+          class="text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-50"
+          @mousedown.prevent="saveHeaderSubject"
+        >
+          <Check :size="14" />
+        </button>
+      </div>
+    </div>
+
     <!-- Merge banner: shown on a secondary that has been merged into a primary. -->
     <div
       v-if="conversationStore.current?.merged_into_id"
@@ -202,7 +263,7 @@ import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown, CheckCircle2 } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
@@ -218,6 +279,92 @@ const router = useRouter()
 const { t } = useI18n()
 
 const showMergeDialog = ref(false)
+
+// ---------------------------------------------------------------------------
+// EC4 / EC5: Sticky subject header + inline edit
+// ---------------------------------------------------------------------------
+// Backend caps subject at 500 chars (see UpdateConversationSubject in
+// internal/conversation/conversation.go). Mirror the cap client-side via
+// maxlength so the input physically can't exceed it — saves the round-trip
+// on egregious paste.
+const MAX_SUBJECT_LEN = 500
+const editingHeaderSubject = ref(false)
+const headerSubjectDraft = ref('')
+const headerSubjectInput = ref(null)
+// In-flight guard: blur fires after Enter, which would double-submit. Also
+// guards against the user clicking the check button while the PUT is still
+// pending and producing two parallel requests.
+const savingHeaderSubject = ref(false)
+
+const startEditHeaderSubject = () => {
+  headerSubjectDraft.value = conversationStore.current?.subject || ''
+  editingHeaderSubject.value = true
+  // nextTick so the input exists in the DOM before we focus + select.
+  nextTick(() => {
+    headerSubjectInput.value?.focus()
+    headerSubjectInput.value?.select?.()
+  })
+}
+
+const cancelEditHeaderSubject = () => {
+  editingHeaderSubject.value = false
+  headerSubjectDraft.value = ''
+}
+
+// If the agent switches conversations mid-edit, drop the draft. Otherwise
+// `saveHeaderSubject` would PUT against the new conversation's UUID using
+// the old conversation's draft — silently rewriting the wrong subject.
+watch(
+  () => conversationStore.current?.uuid,
+  () => {
+    if (editingHeaderSubject.value) {
+      cancelEditHeaderSubject()
+    }
+  }
+)
+
+const saveHeaderSubject = async () => {
+  // Guard against the blur+enter double-fire and rapid double-clicks.
+  if (!editingHeaderSubject.value || savingHeaderSubject.value) return
+  const trimmed = headerSubjectDraft.value.trim()
+  const current = conversationStore.current?.subject || ''
+  // No-op cases: empty input or unchanged value. Treat empty as a cancel
+  // rather than a delete — the backend rejects empty anyway, and prompting
+  // the agent for "did you mean to clear?" is more friction than we want
+  // for the click-outside-saves UX.
+  if (!trimmed || trimmed === current) {
+    cancelEditHeaderSubject()
+    return
+  }
+  const uuid = conversationStore.current?.uuid
+  if (!uuid) {
+    cancelEditHeaderSubject()
+    return
+  }
+  savingHeaderSubject.value = true
+  try {
+    await api.updateConversationSubject(uuid, trimmed)
+    // Optimistically update local state — the backend also broadcasts via
+    // BroadcastConversationUpdate, but the WS round-trip is async and we
+    // want the field to reflect the new value before exiting edit mode so
+    // the agent sees their change immediately.
+    if (conversationStore.conversation.data?.uuid === uuid) {
+      conversationStore.conversation.data.subject = trimmed
+    }
+    editingHeaderSubject.value = false
+    headerSubjectDraft.value = ''
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      description: t('conversation.subject.updated')
+    })
+  } catch (error) {
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      variant: 'destructive',
+      description: handleHTTPError(error).message
+    })
+  } finally {
+    savingHeaderSubject.value = false
+  }
+}
 
 // Build a link to the primary the current secondary was merged into. Reuse the
 // current route's `type` (assigned/unassigned/etc) so the navigation lands the

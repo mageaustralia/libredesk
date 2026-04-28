@@ -361,8 +361,14 @@ WHERE uuid = $1;
 SELECT COUNT(*) FROM conversations WHERE status_id IN (SELECT id FROM conversation_statuses WHERE category = 'open') AND assigned_user_id = $1;
 
 -- name: update-conversation-priority
-UPDATE conversations 
+UPDATE conversations
 SET priority_id = (SELECT id FROM conversation_priorities WHERE name = $2),
+    updated_at = NOW()
+WHERE uuid = $1;
+
+-- name: update-conversation-subject
+UPDATE conversations
+SET subject = $2,
     updated_at = NOW()
 WHERE uuid = $1;
 
