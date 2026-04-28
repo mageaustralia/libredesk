@@ -51,12 +51,31 @@
       </Button>
     </div>
 
-    <!-- To, CC, and BCC fields -->
+    <!-- From, To, CC, and BCC fields -->
     <div v-if="conversationStore.current.inbox_channel === 'email'">
       <div
         :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
         v-if="messageType === 'reply' || messageType === 'forward'"
       >
+        <!--
+          EC14: From switcher. Only renders when the inbox has at least one
+          alias configured (fromOptions includes the primary + aliases).
+          Empty selection means "use inbox primary" — the parent omits the
+          override on send so we don't send a redundant payload field.
+        -->
+        <div v-if="fromOptions.length > 0" class="flex items-center space-x-2">
+          <label class="w-12 text-sm font-medium text-muted-foreground">{{ $t('replyBox.from') }}:</label>
+          <select
+            v-model="selectedFrom"
+            class="flex-grow h-9 px-3 py-1 text-sm border rounded bg-background text-foreground focus:ring-2 focus:ring-ring outline-none"
+          >
+            <option
+              v-for="opt in fromOptions"
+              :key="opt"
+              :value="opt"
+            >{{ opt }}</option>
+          </select>
+        </div>
         <!--
           EC7/EC8: Gmail-style chip inputs. Emails render as removable pills
           with per-chip remove (X). The chip-level remove fully supersedes the
@@ -194,6 +213,9 @@ const emailErrors = defineModel('emailErrors', { default: () => [] })
 const htmlContent = defineModel('htmlContent', { default: '' })
 const textContent = defineModel('textContent', { default: '' })
 const mentions = defineModel('mentions', { default: () => [] })
+// EC14: chosen From alias (one entry from props.fromOptions). Empty
+// string means "use inbox primary" — parent omits the override on send.
+const selectedFrom = defineModel('selectedFrom', { default: '' })
 const macroStore = useMacroStore()
 const usersStore = useUsersStore()
 const teamStore = useTeamStore()
@@ -273,6 +295,12 @@ const props = defineProps({
   // EC1: status names for the "Send & set as" dropdown. Parent filters
   // to the valid set; ReplyBoxContent just relays.
   sendStatuses: {
+    type: Array,
+    default: () => []
+  },
+  // EC14: From-switcher options. Inbox primary first then aliases.
+  // Empty array hides the dropdown (no aliases configured).
+  fromOptions: {
     type: Array,
     default: () => []
   }

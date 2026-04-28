@@ -180,19 +180,58 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 	// thread, not as a reply to the originating customer's message.
 	// Unmarshal failure is non-fatal — we just treat the message as a
 	// regular reply.
+	// EC14 piggybacks on the same meta unmarshal to read an optional
+	// per-message From override (the alias the agent picked in the reply
+	// box). Validation against the inbox's primary From + config.aliases
+	// happens at the API boundary; here we just apply the trusted value.
 	isForward := false
+	var fromOverride string
 	if len(message.Meta) > 0 {
 		var meta map[string]any
 		if err := json.Unmarshal(message.Meta, &meta); err != nil {
 			m.lo.Debug("send: meta unmarshal failed, treating as non-forward", "error", err, "message_id", message.ID)
-		} else if _, ok := meta["forwarded_to"]; ok {
-			isForward = true
+		} else {
+			if _, ok := meta["forwarded_to"]; ok {
+				isForward = true
+			}
+			if v, ok := meta["from"].(string); ok {
+				fromOverride = v
+			}
 		}
 	}
 
 	if inb.Channel() == inbox.ChannelEmail {
-		// Set from address of the inbox
+		// Set from address of the inbox.
 		outbound.From = inb.FromAddress()
+
+		// EC14: per-message From override applied here so the configured
+		// alias becomes the canonical From before EC13's display-name
+		// prepend runs against it.
+		if fromOverride != "" {
+			outbound.From = fromOverride
+		}
+
+		// EC13: prepend the agent's display name to a bare-email From so
+		// recipients see "Jane Smith <support@…>" instead of the shared
+		// inbox alias. Skipped for forwards (the customer-facing context
+		// is the forwarded message's author, not the forwarding agent),
+		// for the system user (continuity emails / automation), and when
+		// the From already carries a display name (admin-set on the
+		// inbox or alias). Lookup failures fall through silently — never
+		// block a send to enforce a cosmetic header.
+		if !isForward {
+			systemUser, sysErr := m.userStore.GetSystemUser()
+			if sysErr == nil && message.SenderID != systemUser.ID {
+				if !strings.Contains(outbound.From, "<") {
+					if sender, gerr := m.userStore.GetAgent(message.SenderID, ""); gerr == nil {
+						agentName := strings.TrimSpace(sender.FirstName + " " + sender.LastName)
+						if email, eerr := stringutil.ExtractEmail(outbound.From); eerr == nil && agentName != "" {
+							outbound.From = fmt.Sprintf("%s <%s>", agentName, email)
+						}
+					}
+				}
+			}
+		}
 
 		if isForward {
 			// Strip threading headers so the forward starts a new email

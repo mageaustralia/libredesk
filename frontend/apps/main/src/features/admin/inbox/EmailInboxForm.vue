@@ -45,6 +45,31 @@
       </FormItem>
     </FormField>
 
+    <!--
+      EC14: From aliases. Each alias is a complete From-style string
+      (bare "orders@…" or "Orders <orders@…>"). Reused EmailTagInput keeps
+      UX consistent with the reply-box recipient chips agents already know.
+      Hidden until showFormFields gates other inbox config fields, same as
+      reply_to — we don't want to surface aliases until OAuth/manual setup
+      has settled.
+    -->
+    <FormField v-if="showFormFields" v-slot="{ componentField }" name="aliases">
+      <FormItem>
+        <FormLabel>{{ $t('admin.inbox.aliases') }}</FormLabel>
+        <FormControl>
+          <EmailTagInput
+            :model-value="componentField.modelValue || ''"
+            @update:model-value="componentField['onUpdate:modelValue']"
+            :placeholder="$t('admin.inbox.aliases.placeholder')"
+          />
+        </FormControl>
+        <FormDescription>
+          {{ $t('admin.inbox.aliases.description') }}
+        </FormDescription>
+        <FormMessage />
+      </FormItem>
+    </FormField>
+
     <!-- Toggle Fields -->
     <FormField v-if="showFormFields" v-slot="{ componentField, handleChange }" name="enabled">
       <FormItem>
@@ -882,6 +907,7 @@ import {
 } from '@shared-ui/components/ui/dialog'
 import { CheckCircle2, Loader2, Lightbulb, Mail, RefreshCw } from 'lucide-vue-next'
 import MenuCard from '@main/components/layout/MenuCard.vue'
+import EmailTagInput from '@main/components/EmailTagInput.vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
 import { useEmitter } from '@/composables/useEmitter'
@@ -959,6 +985,7 @@ const form = useForm({
     name: '',
     from: '',
     reply_to: '',
+    aliases: '',
     enabled: true,
     csat_enabled: false,
     prompt_tags_on_reply: false,
