@@ -805,7 +805,13 @@ func parseContactFormFields(plainText, html string) (firstName, lastName, email 
 }
 
 // isAutoReply checks if a given email envelope indicates an auto-reply message.
+// DSN bounces (RFC 3464 multipart/report) are auto-submitted by definition but
+// are critical diagnostic mail for agents — they are explicitly NOT classified
+// as auto-replies so they survive the filter and reach the conversation.
 func isAutoReply(envelope *enmime.Envelope) bool {
+	if isDSN(envelope) {
+		return false
+	}
 	if as := strings.ToLower(strings.TrimSpace(envelope.GetHeader("Auto-Submitted"))); as != "" && as != "no" {
 		return true
 	}
@@ -813,6 +819,16 @@ func isAutoReply(envelope *enmime.Envelope) bool {
 		return true
 	}
 	return false
+}
+
+// isDSN reports whether the envelope is an RFC 3464 multipart/report
+// delivery status notification (a bounce).
+func isDSN(envelope *enmime.Envelope) bool {
+	if envelope == nil {
+		return false
+	}
+	ct := strings.ToLower(envelope.GetHeader("Content-Type"))
+	return strings.Contains(ct, "multipart/report") && strings.Contains(ct, "delivery-status")
 }
 
 // isLoopMessage returns true if the email is a loop prevention message. i.e., it has the `X-Libredesk-Loop-Prevention` header with the inbox email address.
@@ -886,10 +902,7 @@ func (e *Email) extractUUIDFromReplyAddress(address string) string {
 // otherwise leaves unread, so the SMTP error code and the identification of
 // the original bounced message remain visible to the agent.
 func extractDSNDiagnostic(envelope *enmime.Envelope) string {
-	if envelope == nil || envelope.Root == nil {
-		return ""
-	}
-	if !strings.Contains(strings.ToLower(envelope.GetHeader("Content-Type")), "multipart/report") {
+	if !isDSN(envelope) || envelope.Root == nil {
 		return ""
 	}
 

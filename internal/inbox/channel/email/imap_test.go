@@ -265,3 +265,42 @@ func TestExtractDSNDiagnostic_NotADSN(t *testing.T) {
 		t.Errorf("expected empty diagnostic for non-DSN email, got %q", got)
 	}
 }
+
+// TestIsAutoReply_KeepsDSN verifies that bounces (which set
+// Auto-Submitted: auto-replied per RFC 3464) are NOT classified as auto-replies
+// and so will be ingested. Without this, every bounce gets silently dropped
+// and agents have no record of failed sends.
+func TestIsAutoReply_KeepsDSN(t *testing.T) {
+	dsn := "From: mailer-daemon@example.net\r\n" +
+		"To: support@example.com\r\n" +
+		"Subject: Delivery Status Notification (Failure)\r\n" +
+		"Auto-Submitted: auto-replied\r\n" +
+		"Content-Type: multipart/report; report-type=delivery-status; boundary=\"b\"\r\n" +
+		"\r\n--b\r\nContent-Type: text/plain\r\n\r\nAddress not found\r\n--b--\r\n"
+	envelope, err := enmime.ReadEnvelope(strings.NewReader(dsn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isAutoReply(envelope) {
+		t.Error("DSN bounce was classified as auto-reply; bounces must be ingested for diagnostic visibility")
+	}
+}
+
+// TestIsAutoReply_SkipsVacationResponder verifies that genuine auto-replies
+// (out-of-office, vacation responders) are still skipped — the fix should
+// only carve out DSNs, not weaken the filter.
+func TestIsAutoReply_SkipsVacationResponder(t *testing.T) {
+	vacation := "From: ooo@example.net\r\n" +
+		"To: support@example.com\r\n" +
+		"Subject: Out of office\r\n" +
+		"Auto-Submitted: auto-replied\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\nI'm on holiday until next week.\r\n"
+	envelope, err := enmime.ReadEnvelope(strings.NewReader(vacation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isAutoReply(envelope) {
+		t.Error("vacation responder was NOT classified as auto-reply; the filter is too lax")
+	}
+}
