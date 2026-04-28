@@ -72,6 +72,21 @@
     </BubbleMenu>
     <EditorContent :editor="editor" class="native-html" />
 
+    <!--
+      EC12: Hidden file input backing the formatting toolbar's image button.
+      The toolbar button calls runCommand('insertImage') which clicks this
+      input; the file goes through the same uploadImage / insertImage path
+      as paste / drop so the resulting <img> matches the inline-image styling
+      used everywhere else.
+    -->
+    <input
+      ref="imageInput"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleImageSelect"
+    />
+
     <Dialog v-model:open="showLinkDialog">
       <DialogContent class="sm:max-w-[425px]">
         <DialogHeader>
@@ -143,6 +158,7 @@ import {
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import StarterKit from '@tiptap/starter-kit'
+import { liftListItem as pmLiftListItem } from '@tiptap/pm/schema-list'
 import Link from '@tiptap/extension-link'
 import Mention from '@tiptap/extension-mention'
 import Table from '@tiptap/extension-table'
@@ -265,6 +281,23 @@ const insertImage = (url) => {
   if (url && editor.value) {
     editor.value.chain().focus().setImage({ src: url }).run()
   }
+}
+
+// EC12: Hidden image input + trigger / handler for the formatting toolbar's
+// image button. Same upload path as paste / drop — the only extra surface
+// here is the explicit file picker.
+const imageInput = ref(null)
+const triggerImageUpload = () => {
+  imageInput.value?.click()
+}
+const handleImageSelect = async (event) => {
+  const file = event.target.files?.[0]
+  if (file && file.type.startsWith('image/')) {
+    const url = await uploadImage(file)
+    if (url) insertImage(url)
+  }
+  // Reset so picking the same file twice in a row still fires @change.
+  event.target.value = ''
 }
 
 // Paste handler: catch image content from the clipboard, upload, then insert.
@@ -611,6 +644,23 @@ const editor = useEditor({
         stopTyping()
         return true
       }
+      // EC12: Exit list on Enter inside an empty list item. TipTap's
+      // splitListItem returns false on this case, so we fall back to
+      // liftListItem from prosemirror-schema-list to lift the cursor out
+      // of the list — same Word/Gmail behaviour where a second Enter
+      // ends the bullet/ordered list.
+      if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        const { state } = view
+        const { $from } = state.selection
+        if ($from.parent.content.size === 0 && $from.depth >= 3) {
+          const listItemType = state.schema.nodes.listItem
+          if ($from.node(-1).type === listItemType) {
+            if (pmLiftListItem(listItemType)(state, view.dispatch)) {
+              return true
+            }
+          }
+        }
+      }
     }
   },
   // To update state when user types.
@@ -690,7 +740,36 @@ const focus = (position = 'start') => {
   editor.value?.commands.focus(position)
 }
 
-defineExpose({ focus, extractMentions })
+// EC12: Lets the formatting toolbar in ReplyBoxMenuBar drive editor commands
+// without exposing the raw editor instance. Each case mirrors the same
+// chain().focus().<cmd>().run() shape that the BubbleMenu buttons use, so
+// behaviour stays consistent between selection-floating UI and the toggleable
+// bottom toolbar.
+const runCommand = (command) => {
+  if (!editor.value) return
+  switch (command) {
+    case 'toggleBold':
+      editor.value.chain().focus().toggleBold().run()
+      break
+    case 'toggleItalic':
+      editor.value.chain().focus().toggleItalic().run()
+      break
+    case 'toggleBulletList':
+      editor.value.chain().focus().toggleBulletList().run()
+      break
+    case 'toggleOrderedList':
+      editor.value.chain().focus().toggleOrderedList().run()
+      break
+    case 'openLink':
+      openLinkModal()
+      break
+    case 'insertImage':
+      triggerImageUpload()
+      break
+  }
+}
+
+defineExpose({ focus, extractMentions, runCommand })
 </script>
 
 <style lang="scss">

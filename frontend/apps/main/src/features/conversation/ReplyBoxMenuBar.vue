@@ -1,8 +1,43 @@
 <template>
-  <div
-    class="flex justify-between h-14 relative"
-    :class="{ 'items-end': isFullscreen, 'items-center': !isFullscreen }"
-  >
+  <div class="relative">
+    <!--
+      EC12: Formatting toolbar. Toggled by the "Aa" button below; collapsed by
+      default to keep the menu bar quiet. Same six controls as the BubbleMenu
+      (Bold / Italic / lists / Link / Image) plus a bonus Emoji slot so the
+      formatting popover doubles as the entry point for emoji insertion.
+    -->
+    <div
+      v-if="isToolbarVisible"
+      class="flex items-center gap-1 px-2 py-1 border-t border-border bg-muted/30"
+    >
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleBold')">
+        <Bold class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleItalic')">
+        <Italic class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleBulletList')">
+        <List class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('toggleOrderedList')">
+        <ListOrdered class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('openLink')">
+        <LinkIcon class="h-3.5 w-3.5" />
+      </Toggle>
+      <Toggle class="px-2 py-1.5 h-7 border-0" variant="outline" @click="emitCommand('insertImage')">
+        <ImageIcon class="h-3.5 w-3.5" />
+      </Toggle>
+      <div class="w-px h-4 bg-border mx-1" />
+      <Toggle
+        class="px-2 py-1.5 h-7 border-0"
+        variant="outline"
+        @click="toggleEmojiPicker"
+        :pressed="isEmojiPickerVisible"
+      >
+        <Smile class="h-3.5 w-3.5" />
+      </Toggle>
+    </div>
     <EmojiPicker
       ref="emojiPickerRef"
       :native="true"
@@ -10,6 +45,10 @@
       class="absolute bottom-14 left-14"
       v-if="isEmojiPickerVisible"
     />
+    <div
+      class="flex justify-between h-14"
+      :class="{ 'items-end': isFullscreen, 'items-center': !isFullscreen }"
+    >
     <div class="flex justify-items-start gap-2">
       <!-- File inputs -->
       <input type="file" class="hidden" ref="attachmentInput" multiple @change="handleFileUpload" />
@@ -29,13 +68,21 @@
       >
         <Paperclip class="h-4 w-4" />
       </Toggle>
+      <!--
+        EC12: Replaces the standalone emoji button with a formatting toggle.
+        Emoji moved into the formatting toolbar above so the menu bar surfaces
+        a single "show formatting" affordance rather than competing icons.
+      -->
       <Toggle
         class="px-2 py-2 border-0"
         variant="outline"
-        @click="toggleEmojiPicker"
-        :pressed="isEmojiPickerVisible"
+        @click="isToolbarVisible = !isToolbarVisible"
+        :pressed="isToolbarVisible"
+        :title="$t('replyBox.formatting')"
+        :aria-label="$t('replyBox.formatting')"
       >
-        <Smile class="h-4 w-4" />
+        <ChevronUp v-if="isToolbarVisible" class="h-4 w-4" />
+        <ALargeSmall v-else class="h-4 w-4" />
       </Toggle>
     </div>
     <div class="flex items-center" v-if="showSendButton">
@@ -86,6 +133,7 @@
         </DropdownMenu>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -100,7 +148,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@shared-ui/components/ui/dropdown-menu'
-import { Paperclip, Smile, ChevronDown, Trash2 } from 'lucide-vue-next'
+import {
+  Paperclip,
+  Smile,
+  ChevronDown,
+  ChevronUp,
+  ALargeSmall,
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Link as LinkIcon,
+  Image as ImageIcon,
+  Trash2
+} from 'lucide-vue-next'
 
 const EmojiPicker = defineAsyncComponent(async () => {
   const [mod] = await Promise.all([
@@ -113,8 +174,12 @@ const EmojiPicker = defineAsyncComponent(async () => {
 const attachmentInput = ref(null)
 // const inlineImageInput = ref(null)
 const isEmojiPickerVisible = ref(false)
+// EC12: Toggle for the formatting toolbar row that sits above the menu bar.
+// Collapsed by default — agents who don't need formatting controls don't see
+// chrome they have to ignore.
+const isToolbarVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'sendWithStatus', 'deleteDraft'])
+const emit = defineEmits(['emojiSelect', 'sendWithStatus', 'deleteDraft', 'editorCommand'])
 
 // Using defineProps for props that don't need two-way binding
 defineProps({
@@ -161,5 +226,12 @@ const toggleEmojiPicker = () => {
 
 function onSelectEmoji(emoji) {
   emit('emojiSelect', emoji.i)
+}
+
+// EC12: Forward formatting toolbar clicks up to the parent, which then calls
+// the editor's exposed runCommand(). Keeps this component presentational —
+// it doesn't need a ref to the editor.
+function emitCommand(command) {
+  emit('editorCommand', command)
 }
 </script>
