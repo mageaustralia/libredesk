@@ -234,9 +234,7 @@ import { useConversationRoute } from '@main/composables/useConversationRoute'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { useUserStore } from '@/stores/user'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
-import { useEmitter } from '@/composables/useEmitter'
-import { EMITTER_EVENTS } from '@/constants/emitterEvents'
+import { useToast } from '@/composables/useToast'
 import { permissions as p } from '@/constants/permissions'
 import api from '@/api'
 import { useI18n } from 'vue-i18n'
@@ -247,7 +245,7 @@ const conversationStore = useConversationStore()
 const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
 const userStore = useUserStore()
-const emitter = useEmitter()
+const toast = useToast()
 const { t } = useI18n()
 const frdStatus = ref('')
 const rdStatus = ref('')
@@ -319,10 +317,7 @@ const assignAgent = async (agent) => {
     await api.updateAssignee(props.conversation.uuid, 'user', { assignee_id: parseInt(agent.value) })
     props.conversation.assigned_user_name = agent.label
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 
@@ -331,10 +326,7 @@ const unassignAgent = async () => {
     await api.removeAssignee(props.conversation.uuid, 'user')
     props.conversation.assigned_user_name = null
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 
@@ -343,10 +335,7 @@ const assignTeam = async (team) => {
     await api.updateAssignee(props.conversation.uuid, 'team', { assignee_id: parseInt(team.value) })
     props.conversation.assigned_team_name = team.label
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 
@@ -355,10 +344,7 @@ const unassignTeam = async () => {
     await api.removeAssignee(props.conversation.uuid, 'team')
     props.conversation.assigned_team_name = null
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 </script>

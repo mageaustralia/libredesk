@@ -187,7 +187,6 @@
 
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
-import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { Maximize2, Minimize2 } from 'lucide-vue-next'
 import Editor from '@main/components/editor/TextEditor.vue'
@@ -195,12 +194,12 @@ import EmailTagInput from '@main/components/EmailTagInput.vue'
 import { useConversationStore } from '@main/stores/conversation'
 import { Button } from '@shared-ui/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@shared-ui/components/ui/tabs'
-import { useEmitter } from '@main/composables/useEmitter'
+import { useToast } from '@main/composables/useToast'
 import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
 import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue'
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { useI18n } from 'vue-i18n'
-import { validateEmail } from '@shared-ui/utils/string'
+import { validateEmail, parseEmailList } from '@shared-ui/utils/string'
 import { useMacroStore } from '@main/stores/macro'
 import { useUsersStore } from '@main/stores/users'
 import { useTeamStore } from '@main/stores/team'
@@ -319,7 +318,7 @@ const emit = defineEmits([
 ])
 
 const conversationStore = useConversationStore()
-const emitter = useEmitter()
+const toast = useToast()
 const { t } = useI18n()
 const insertContent = ref(null)
 const editorRef = ref(null)
@@ -361,10 +360,7 @@ const validateEmails = async () => {
   const values = { to: to.value, cc: cc.value, bcc: bcc.value }
 
   fields.forEach((field) => {
-    const invalid = values[field]
-      .split(',')
-      .map((e) => e.trim())
-      .filter((e) => e && !validateEmail(e))
+    const invalid = parseEmailList(values[field]).filter((e) => !validateEmail(e))
 
     if (invalid.length)
       emailErrors.value.push(`${t('replyBox.invalidEmailsIn')} '${field}': ${invalid.join(', ')}`)
@@ -377,10 +373,7 @@ const validateEmails = async () => {
 const handleSend = async () => {
   await validateEmails()
   if (emailErrors.value.length > 0) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: t('globals.messages.correctEmailErrors')
-    })
+    toast.error(t('globals.messages.correctEmailErrors'))
     return
   }
   emit('send')
@@ -392,10 +385,7 @@ const handleSend = async () => {
 const handleSendWithStatus = async (status) => {
   await validateEmails()
   if (emailErrors.value.length > 0) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: t('globals.messages.correctEmailErrors')
-    })
+    toast.error(t('globals.messages.correctEmailErrors'))
     return
   }
   emit('sendWithStatus', status)

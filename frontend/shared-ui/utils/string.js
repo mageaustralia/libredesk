@@ -25,6 +25,24 @@ export function validateEmail (email) {
   return emailRegex.test(email)
 }
 
+/**
+ * Split a string on commas, semicolons, or whitespace. Trim each part. Drop empties.
+ * Mirrors the backend `stringutil.SplitEmailList` so chip-input parsing on the frontend
+ * matches what the server actually accepts.
+ */
+export function parseEmailList (str) {
+  if (!str) return []
+  return str.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean)
+}
+
+/**
+ * Return the first email-shaped substring from a comma/semicolon/whitespace separated list.
+ * Returns '' if the list is empty.
+ */
+export function firstEmail (str) {
+  return parseEmailList(str)[0] || ''
+}
+
 export const isGoDuration = (value) => {
   if (value === '') return false
   const regex = /^(\d+h)?(\d+m)?(\d+s)?$/

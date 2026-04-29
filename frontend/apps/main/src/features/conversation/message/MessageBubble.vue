@@ -246,13 +246,13 @@ import { computed, nextTick, ref } from 'vue'
 import { useConversationStore } from '@main/stores/conversation'
 import { useUserStore } from '@main/stores/user'
 import { useEmitter } from '@main/composables/useEmitter'
+import { useToast } from '@main/composables/useToast'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents'
 import { useI18n } from 'vue-i18n'
 import { Lock, Mail, RotateCcw, Check, Pencil, Trash2, Forward } from 'lucide-vue-next'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
 import { Spinner } from '@shared-ui/components/ui/spinner'
 import { formatMessageTimestamp, formatFullTimestamp } from '@shared-ui/utils/datetime.js'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
 import { Avatar, AvatarFallback, AvatarImage } from '@shared-ui/components/ui/avatar'
 import { Letter } from 'vue-letter'
 import ImageLightbox from '@/components/ImageLightbox.vue'
@@ -343,6 +343,7 @@ const retryMessage = (msg) => {
 // Hide the controls once meta.deleted is set so an already-tombstoned note
 // can't be re-edited or re-deleted.
 const emitter = useEmitter()
+const toast = useToast()
 const isNoteDeleted = computed(() => Boolean(props.message.meta?.deleted))
 const isNoteAuthor = computed(() => props.message.sender_id === userStore.userID)
 const canEditPrivateNote = computed(
@@ -384,10 +385,7 @@ const saveEdit = async () => {
     })
     isEditing.value = false
   } catch (err) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(err).message
-    })
+    toast.error(err)
   } finally {
     isSavingEdit.value = false
   }
@@ -407,10 +405,7 @@ const confirmDelete = async () => {
       meta: { ...(props.message.meta || {}), deleted: true }
     })
   } catch (err) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(err).message
-    })
+    toast.error(err)
   }
 }
 

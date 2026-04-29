@@ -47,13 +47,13 @@
                           type="button"
                           @click="showCc = true"
                           class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
-                        >{{ $t('conversation.cc') }}</button>
+                        >{{ $t('replyBox.cc') }}</button>
                         <button
                           v-if="!showBcc"
                           type="button"
                           @click="showBcc = true"
                           class="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
-                        >{{ $t('conversation.bcc') }}</button>
+                        >{{ $t('replyBox.bcc') }}</button>
                       </div>
                     </div>
                     <FormMessage />
@@ -64,15 +64,15 @@
                   <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">CC:</label>
                   <EmailTagInput
                     v-model="ccEmails"
-                    :placeholder="t('conversation.addCcRecipients')"
+                    :placeholder="t('replyBox.addCcRecipients')"
                     class="flex-grow"
                   />
                   <button
                     type="button"
                     @click="showCc = false; ccEmails = ''"
                     class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
-                    :title="$t('conversation.removeCc')"
-                    :aria-label="$t('conversation.removeCc')"
+                    :title="$t('replyBox.removeCC')"
+                    :aria-label="$t('replyBox.removeCC')"
                   >
                     <X class="h-3.5 w-3.5" />
                   </button>
@@ -82,15 +82,15 @@
                   <label class="w-10 text-sm font-medium text-muted-foreground shrink-0">BCC:</label>
                   <EmailTagInput
                     v-model="bccEmails"
-                    :placeholder="t('conversation.addBccRecipients')"
+                    :placeholder="t('replyBox.addBccRecipients')"
                     class="flex-grow"
                   />
                   <button
                     type="button"
                     @click="showBcc = false; bccEmails = ''"
                     class="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1"
-                    :title="$t('conversation.removeBcc')"
-                    :aria-label="$t('conversation.removeBcc')"
+                    :title="$t('replyBox.removeBCC')"
+                    :aria-label="$t('replyBox.removeBCC')"
                   >
                     <X class="h-3.5 w-3.5" />
                   </button>
@@ -316,7 +316,8 @@ import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { useEmitter } from '@main/composables/useEmitter'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
+import { firstEmail } from '@shared-ui/utils/string'
+import { useToast } from '@main/composables/useToast'
 import { useInboxStore } from '@main/stores/inbox'
 import { useUsersStore } from '@main/stores/users'
 import { useTeamStore } from '@main/stores/team'
@@ -349,6 +350,7 @@ const uStore = useUsersStore()
 const teamStore = useTeamStore()
 const userStore = useUserStore()
 const emitter = useEmitter()
+const toast = useToast()
 const loading = ref(false)
 // EC7: emailQuery is the chip-input model — a comma-joined string of TO
 // recipients. The first one is the primary contact (drives the User row
@@ -466,8 +468,7 @@ watch(
 // auto-filled name fields so they don't ship stale data with a different
 // primary recipient.
 watch(emailQuery, (newVal) => {
-  const firstEmail = newVal.split(',').map((e) => e.trim()).filter((e) => e)[0] || ''
-  form.setFieldValue('contact_email', firstEmail)
+  form.setFieldValue('contact_email', firstEmail(newVal))
   if (selectedContact.value && !newVal.includes(selectedContact.value.email)) {
     selectedContact.value = null
     form.setFieldValue('first_name', '')
@@ -480,8 +481,7 @@ watch(emailQuery, (newVal) => {
 // where the chip was added without a reactive update yet (e.g. blur before
 // the next tick).
 const handleToBlur = () => {
-  const firstEmail = emailQuery.value.split(',').map((e) => e.trim()).filter((e) => e)[0] || ''
-  form.setFieldValue('contact_email', firstEmail)
+  form.setFieldValue('contact_email', firstEmail(emailQuery.value))
 }
 
 // Triggered when the agent picks a suggestion from EmailTagInput's contact
@@ -524,19 +524,13 @@ const createConversation = form.handleSubmit(async (values) => {
       try {
         await api.applyMacro(conversationUUID, macro.id, macro.actions)
       } catch (error) {
-        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-          variant: 'destructive',
-          description: handleHTTPError(error).message
-        })
+        toast.error(error)
       }
     }
     dialogOpen.value = false
     form.resetForm()
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   } finally {
     loading.value = false
   }

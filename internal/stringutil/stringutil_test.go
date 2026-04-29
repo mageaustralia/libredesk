@@ -375,3 +375,67 @@ func TestExtractReferenceNumber(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitEmailList(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:     "single email",
+			input:    "a@x.com",
+			expected: []string{"a@x.com"},
+		},
+		{
+			name:     "comma separated",
+			input:    "a@x.com,b@x.com",
+			expected: []string{"a@x.com", "b@x.com"},
+		},
+		{
+			name:     "semicolon separated",
+			input:    "a@x.com;b@x.com",
+			expected: []string{"a@x.com", "b@x.com"},
+		},
+		{
+			name:     "whitespace separated",
+			input:    "a@x.com b@x.com",
+			expected: []string{"a@x.com", "b@x.com"},
+		},
+		{
+			name:     "mixed delimiters",
+			input:    "a@x.com, b@x.com; c@x.com",
+			expected: []string{"a@x.com", "b@x.com", "c@x.com"},
+		},
+		{
+			name:     "trims whitespace and drops empties",
+			input:    "  a@x.com  ,  ,  b@x.com  ",
+			expected: []string{"a@x.com", "b@x.com"},
+		},
+		{
+			name:     "only delimiters",
+			input:    " , ; ",
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SplitEmailList(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Fatalf("SplitEmailList(%q) = %v (len %d), want %v (len %d)",
+					tt.input, result, len(result), tt.expected, len(tt.expected))
+			}
+			for i := range result {
+				if result[i] != tt.expected[i] {
+					t.Errorf("at index %d got %q, want %q", i, result[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}

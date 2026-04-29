@@ -196,7 +196,8 @@
 <script setup>
 import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount } from 'vue'
 import { useStorage } from '@vueuse/core'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
+import { parseEmailList } from '@shared-ui/utils/string'
+import { useToast } from '@main/composables/useToast'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { useUserStore } from '@main/stores/user'
@@ -251,6 +252,7 @@ const { t } = useI18n()
 const conversationStore = useConversationStore()
 const inboxStore = useInboxStore()
 const emitter = useEmitter()
+const toast = useToast()
 const userStore = useUserStore()
 
 // Setup file upload composable
@@ -330,10 +332,7 @@ const fetchAiPrompts = async () => {
     const resp = await api.getAiPrompts()
     aiPrompts.value = resp.data.data
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 
@@ -357,10 +356,7 @@ const handleAiPromptSelected = async (key) => {
     if (error.response?.status === 400 && userStore.can('ai:manage')) {
       openAIKeyPrompt.value = true
     }
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   }
 }
 
@@ -373,14 +369,9 @@ const updateProvider = async (values) => {
     isOpenAIKeyUpdating.value = true
     await api.updateAIProvider({ api_key: values.apiKey, provider: 'openai' })
     openAIKeyPrompt.value = false
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      description: t('globals.messages.savedSuccessfully')
-    })
+    toast.success(t('globals.messages.savedSuccessfully'))
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   } finally {
     isOpenAIKeyUpdating.value = false
   }
@@ -465,10 +456,7 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
   if (!isPrivate && conversationStore.current.inbox_channel === 'email') {
     // Require at least one recipient in `to`.
     if (!to.value.trim()) {
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: t('replyBox.toRequired')
-      })
+      toast.error(t('replyBox.toRequired'))
       return
     }
 
@@ -478,12 +466,7 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
       const contactEmail = conversationStore.current.contact?.email?.toLowerCase()
       if (contactEmail) {
         const allRecipients = [to.value, cc.value, bcc.value].join(',').toLowerCase()
-        if (
-          !allRecipients
-            .split(',')
-            .map((e) => e.trim())
-            .includes(contactEmail)
-        ) {
+        if (!parseEmailList(allRecipients).includes(contactEmail)) {
           showContactEmailWarning.value = true
           return
         }
@@ -514,27 +497,9 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
     avatar_url: userStore.avatar,
     type: 'agent'
   }
-  const parsedTo =
-    !isPrivate && savedTo
-      ? savedTo
-          .split(',')
-          .map((e) => e.trim())
-          .filter(Boolean)
-      : []
-  const parsedCC =
-    !isPrivate && savedCC
-      ? savedCC
-          .split(',')
-          .map((e) => e.trim())
-          .filter(Boolean)
-      : []
-  const parsedBCC =
-    !isPrivate && savedBCC
-      ? savedBCC
-          .split(',')
-          .map((e) => e.trim())
-          .filter(Boolean)
-      : []
+  const parsedTo = !isPrivate && savedTo ? parseEmailList(savedTo) : []
+  const parsedCC = !isPrivate && savedCC ? parseEmailList(savedCC) : []
+  const parsedBCC = !isPrivate && savedBCC ? parseEmailList(savedBCC) : []
   const meta = {}
   if (parsedTo.length) meta.to = parsedTo
   if (parsedCC.length) meta.cc = parsedCC
@@ -673,9 +638,7 @@ const handleDeleteDraft = () => {
   emailErrors.value = []
   mentions.value = []
   htmlContent.value = ''
-  emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-    description: t('replyBox.draftDeleted')
-  })
+  toast.success(t('replyBox.draftDeleted'))
 }
 
 /**
