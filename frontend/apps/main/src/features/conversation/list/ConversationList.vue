@@ -334,8 +334,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { useUserStore } from '@/stores/user'
-import { useEmitter } from '@/composables/useEmitter'
-import { EMITTER_EVENTS } from '@/constants/emitterEvents'
+import { useToast } from '@/composables/useToast'
 import { permissions as p } from '@/constants/permissions'
 import api from '@/api'
 import { useViewMode } from '@/composables/useViewMode'
@@ -350,7 +349,7 @@ const teamsStore = useTeamStore()
 const userStore = useUserStore()
 const route = useRoute()
 const { t } = useI18n()
-const emitter = useEmitter()
+const toast = useToast()
 const { viewMode, setViewMode } = useViewMode()
 const bulkLoading = ref(false)
 
@@ -419,19 +418,13 @@ const runBulkAction = async (actionFn) => {
   conversationStore.fetchFirstPageConversations()
 
   if (errorCount > 0) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      title: t('globals.terms.error', 1),
-      description: t('conversation.bulkActions.failedToast', {
-        success: successCount,
-        failed: errorCount,
-        total: uuids.length
-      })
-    })
+    toast.error(t('conversation.bulkActions.failedToast', {
+      success: successCount,
+      failed: errorCount,
+      total: uuids.length
+    }))
   } else {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      description: t('conversation.bulkActions.successToast', successCount, { count: successCount })
-    })
+    toast.success(t('conversation.bulkActions.successToast', successCount, { count: successCount }))
   }
 }
 

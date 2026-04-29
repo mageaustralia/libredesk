@@ -112,13 +112,11 @@ import { useConversationStore } from '../../../stores/conversation'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
 import CustomAttributes from '@/features/conversation/sidebar/CustomAttributes.vue'
 import { useCustomAttributeStore } from '../../../stores/customAttributes'
-import { EMITTER_EVENTS } from '../../../constants/emitterEvents.js'
-import { useEmitter } from '../../../composables/useEmitter'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
+import { useToast } from '../../../composables/useToast'
 import api from '../../../api'
 import { useI18n } from 'vue-i18n'
 
-const emitter = useEmitter()
+const toast = useToast()
 const { t } = useI18n()
 const customAttributeStore = useCustomAttributeStore()
 const conversationStore = useConversationStore()
@@ -130,14 +128,9 @@ const updateCustomAttributes = async (attributes) => {
   try {
     conversationStore.current.custom_attributes = attributes
     await api.updateConversationCustomAttribute(conversation.value.uuid, attributes)
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      description: t('globals.messages.savedSuccessfully')
-    })
+    toast.success(t('globals.messages.savedSuccessfully'))
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
     conversationStore.current.custom_attributes = previousAttributes
   }
 }

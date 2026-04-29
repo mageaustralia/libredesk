@@ -262,6 +262,7 @@ import MergeDialog from './MergeDialog.vue'
 import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { useEmitter } from '../../composables/useEmitter'
+import { useToast } from '../../composables/useToast'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
 import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, GitMerge, ChevronDown, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
@@ -274,6 +275,7 @@ const conversationStore = useConversationStore()
 const presenceStore = usePresenceStore()
 const userStore = useUserStore()
 const emitter = useEmitter()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -353,14 +355,9 @@ const saveHeaderSubject = async () => {
     }
     editingHeaderSubject.value = false
     headerSubjectDraft.value = ''
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      description: t('conversation.subject.updated')
-    })
+    toast.success(t('conversation.subject.updated'))
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
   } finally {
     savingHeaderSubject.value = false
   }
@@ -499,10 +496,7 @@ async function executePendingSend () {
     // conversation that's still open.
     const setStatusError = response?.data?.data?.set_status_error
     if (setStatusError && send.setStatus) {
-      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-        variant: 'destructive',
-        description: t('replyBox.sentButSetStatusFailed', { status: send.setStatus })
-      })
+      toast.error(t('replyBox.sentButSetStatusFailed', { status: send.setStatus }))
     }
 
     // Apply macro actions if any. Non-fatal — surface failure but don't
@@ -511,10 +505,7 @@ async function executePendingSend () {
       try {
         await api.applyMacro(send.uuid, send.macroID, send.macroActions)
       } catch (error) {
-        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-          variant: 'destructive',
-          description: handleHTTPError(error).message
-        })
+        toast.error(error)
       }
     }
   } catch (error) {
@@ -535,12 +526,9 @@ async function executePendingSend () {
     ) {
       emitter.emit(EMITTER_EVENTS.RESTORE_SEND, send.restoreData)
     }
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: t('replyBox.messageFailedToSend', {
-        error: handleHTTPError(error).message
-      })
-    })
+    toast.error(t('replyBox.messageFailedToSend', {
+      error: handleHTTPError(error).message
+    }))
   }
 }
 
@@ -567,23 +555,19 @@ function undoSend () {
   }
 }
 
-const showToast = (description, variant) => {
-  emitter.emit(EMITTER_EVENTS.SHOW_TOAST, variant ? { variant, description } : { description })
-}
-
 const runConversationAction = async (action, successMsg) => {
   const uuid = conversationStore.conversation.data?.uuid
   if (!uuid) return
   try {
     await action(uuid)
-    showToast(successMsg)
+    toast.success(successMsg)
     // Step back so the user lands on whatever list they came from (e.g. Trash
     // when restoring from trash, custom view when marking as spam) instead of
     // forcing them back to the assigned inbox.
     if (window.history.length > 1) router.back()
     else router.push({ name: 'inbox', params: { type: 'assigned' } })
   } catch (error) {
-    showToast(handleHTTPError(error).message, 'destructive')
+    toast.error(error)
   }
 }
 

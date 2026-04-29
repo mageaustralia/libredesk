@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/k3a/html2text"
 )
@@ -156,6 +157,27 @@ func FormatDuration(d time.Duration, includeSeconds bool) string {
 		parts = append(parts, fmt.Sprintf("%d seconds", s))
 	}
 	return strings.Join(parts, " ")
+}
+
+// SplitEmailList splits a string on commas, semicolons, or whitespace,
+// trims each part, and drops empties. Mirrors the frontend `parseEmailList`
+// helper so chip-input → backend parsing stays consistent: a user typing
+// "a@x.com;b@x.com" produces two recipients on both sides.
+func SplitEmailList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ';' || unicode.IsSpace(r)
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // ValidEmail returns true if it's a valid email else return false.

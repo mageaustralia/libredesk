@@ -7,9 +7,12 @@
     supersedes the previous per-field clear-X (EC9) — the chip-level remove is
     finer-grained, so EC9's all-or-nothing clear button is no longer needed.
 
-    Backed by a comma-separated string in modelValue so the surrounding
-    validateEmails / parseTo / parseCC / parseBCC helpers (which all split on
-    comma) keep working untouched.
+    Backed by a comma-separated string in modelValue. Both the chip-rendering
+    parse and the addEmail typing/paste parse go through `parseEmailList`
+    (shared-ui), so chip splitting and downstream backend parsing
+    (`stringutil.SplitEmailList`) agree on `,`, `;`, and whitespace as
+    delimiters — typing `a@x.com;b@x.com` produces 2 chips AND submits as 2
+    addresses.
 
     Contact suggestions: when the user types ≥2 chars, hits /contacts/search
     and surfaces a dropdown. Selecting a suggestion adds the email as a chip
@@ -82,6 +85,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { X } from 'lucide-vue-next'
 import api from '@main/api'
+import { parseEmailList } from '@shared-ui/utils/string'
 
 const props = defineProps({
   placeholder: { type: String, default: '' }
@@ -101,14 +105,8 @@ onUnmounted(() => {
   if (searchTimeout) clearTimeout(searchTimeout)
 })
 
-// Parse comma-separated string into array of trimmed emails
-const emails = computed(() => {
-  if (!modelValue.value) return []
-  return modelValue.value
-    .split(',')
-    .map((e) => e.trim())
-    .filter((e) => e.length > 0)
-})
+// Parse the comma/semicolon/whitespace-separated string into chip emails.
+const emails = computed(() => parseEmailList(modelValue.value))
 
 const updateModel = (emailArray) => {
   modelValue.value = emailArray.join(', ')
@@ -121,10 +119,7 @@ const addEmail = () => {
     return
   }
   // Support pasting multiple emails separated by commas / semicolons / whitespace.
-  const newEmails = val
-    .split(/[,;\s]+/)
-    .map((e) => e.trim())
-    .filter((e) => e.length > 0)
+  const newEmails = parseEmailList(val)
   const current = [...emails.value]
   newEmails.forEach((e) => {
     if (!current.includes(e)) current.push(e)

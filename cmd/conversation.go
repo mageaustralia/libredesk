@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
@@ -814,13 +813,9 @@ func handleCreateConversation(r *fastglue.Request) error {
 	// recipients the agent typed in the chip-input (CreateConversation forwards
 	// them concatenated to req.Email post-EC7 frontend changes — but for safety
 	// we re-derive here, since the backend is the source of truth) are appended,
-	// de-duplicated.
-	to := []string{}
-	for _, e := range strings.Split(req.Email, ",") {
-		if e = strings.TrimSpace(e); e != "" {
-			to = append(to, e)
-		}
-	}
+	// de-duplicated. SplitEmailList mirrors the frontend chip parser so `,`,
+	// `;`, and whitespace all work as delimiters.
+	to := stringutil.SplitEmailList(req.Email)
 	if len(to) == 0 {
 		to = []string{req.Email}
 	}
@@ -864,24 +859,11 @@ func handleCreateConversation(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.GeneralError)
 	}
 
-	// EC7: Parse CC/BCC strings into slices. Both are optional comma-separated
-	// extras carried through to QueueReply; whitespace-trim and skip empties so
-	// "a@b.com,  ,c@d.com" doesn't surface a blank recipient.
-	var ccList, bccList []string
-	if req.CC != "" {
-		for _, e := range strings.Split(req.CC, ",") {
-			if e = strings.TrimSpace(e); e != "" {
-				ccList = append(ccList, e)
-			}
-		}
-	}
-	if req.BCC != "" {
-		for _, e := range strings.Split(req.BCC, ",") {
-			if e = strings.TrimSpace(e); e != "" {
-				bccList = append(bccList, e)
-			}
-		}
-	}
+	// EC7: Parse CC/BCC strings into slices. Both are optional, accept `,`,
+	// `;`, or whitespace as delimiters (mirrors the chip-input parser) and
+	// drop empties so "a@b.com,  ,c@d.com" doesn't surface a blank recipient.
+	ccList := stringutil.SplitEmailList(req.CC)
+	bccList := stringutil.SplitEmailList(req.BCC)
 
 	// Send initial message based on the initiator of conversation.
 	switch req.Initiator {

@@ -121,9 +121,7 @@ import {
 import ConversationInfo from './ConversationInfo.vue'
 import ConversationSideBarContact from '@/features/conversation/sidebar/ConversationSideBarContact.vue'
 import { SelectTag } from '@shared-ui/components/ui/select'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
-import { EMITTER_EVENTS } from '../../../constants/emitterEvents.js'
-import { useEmitter } from '../../../composables/useEmitter'
+import { useToast } from '../../../composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { useStorage } from '@vueuse/core'
 import CustomAttributes from '@/features/conversation/sidebar/CustomAttributes.vue'
@@ -134,7 +132,7 @@ import SelectComboBox from '@main/components/combobox/SelectCombobox.vue'
 import api from '../../../api'
 
 const customAttributeStore = useCustomAttributeStore()
-const emitter = useEmitter()
+const toast = useToast()
 const conversationStore = useConversationStore()
 const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
@@ -244,14 +242,9 @@ const updateContactCustomAttributes = async (attributes) => {
   try {
     conversationStore.current.contact.custom_attributes = attributes
     await api.updateContactCustomAttribute(conversationStore.current.uuid, attributes)
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      description: t('globals.messages.savedSuccessfully')
-    })
+    toast.success(t('globals.messages.savedSuccessfully'))
   } catch (error) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: handleHTTPError(error).message
-    })
+    toast.error(error)
     conversationStore.current.contact.custom_attributes = previousAttributes
   }
 }
