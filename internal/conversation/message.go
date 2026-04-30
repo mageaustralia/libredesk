@@ -680,6 +680,25 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 		message.TextContent = stringutil.HTML2Text(message.Content)
 	}
 
+	// Strip quoted thread content to prevent exponential message-size growth.
+	// One v1.0.3 conversation hit 65MB across 36 messages because every reply
+	// embedded the full prior thread; loading that conversation locked browsers.
+	// Outgoing replies (when client-side threading is wired up) carry an
+	// explicit `<!-- thread -->` marker — strip everything after it. Incoming
+	// emails don't have that marker, so for messages over 50KB we look for a
+	// blockquote header within the first 50KB and trim from there. The 50KB
+	// floor protects long-but-legitimate single replies from being truncated.
+	// TextContent (search index) keeps the full body — only the stored Content
+	// (rendered HTML) is trimmed.
+	if idx := strings.Index(message.Content, "<!-- thread -->"); idx > 0 {
+		message.Content = message.Content[:idx]
+	}
+	if len(message.Content) > 50000 {
+		if idx := strings.Index(message.Content, "<blockquote"); idx > 0 && idx < 50000 {
+			message.Content = message.Content[:idx]
+		}
+	}
+
 	// Insert Message.
 	if err := m.q.InsertMessage.Get(message, message.Type, message.Status, message.ConversationID, message.ConversationUUID, message.Content, message.TextContent, message.SenderID, message.SenderType,
 		message.Private, message.ContentType, message.SourceID, message.Meta); err != nil {
