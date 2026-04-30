@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 var dateOnlyRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -154,9 +155,12 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 		case "not set":
 			conditions = append(conditions, field+" IS NULL")
 		case "in":
-			var arr []string
-			if err := json.Unmarshal([]byte(f.Value), &arr); err != nil {
-				return "", nil, fmt.Errorf("invalid array format for 'in' operator: %v", err)
+			arr, err := decodeFilterArray(f.Value, "in")
+			if err != nil {
+				return "", nil, err
+			}
+			if len(arr) == 0 {
+				continue
 			}
 			placeholders := make([]string, len(arr))
 			for i, v := range arr {
@@ -165,6 +169,45 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 				paramCount++
 			}
 			conditions = append(conditions, field+" IN ("+strings.Join(placeholders, ",")+")")
+		case "not_in":
+			arr, err := decodeFilterArray(f.Value, "not_in")
+			if err != nil {
+				return "", nil, err
+			}
+			if len(arr) == 0 {
+				continue
+			}
+			placeholders := make([]string, len(arr))
+			for i, v := range arr {
+				placeholders[i] = fmt.Sprintf("$%d", paramCount)
+				args = append(args, v)
+				paramCount++
+			}
+			conditions = append(conditions, field+" NOT IN ("+strings.Join(placeholders, ",")+")")
+		case "in_or_null":
+			arr, err := decodeFilterArray(f.Value, "in_or_null")
+			if err != nil {
+				return "", nil, err
+			}
+			if len(arr) == 0 {
+				conditions = append(conditions, field+" IS NULL")
+				break
+			}
+			placeholders := make([]string, len(arr))
+			for i, v := range arr {
+				placeholders[i] = fmt.Sprintf("$%d", paramCount)
+				args = append(args, v)
+				paramCount++
+			}
+			conditions = append(conditions, "("+field+" IN ("+strings.Join(placeholders, ",")+") OR "+field+" IS NULL)")
+		case "relative_date":
+			start, end, err := relativeDateRange(f.Value)
+			if err != nil {
+				return "", nil, err
+			}
+			conditions = append(conditions, fmt.Sprintf("%s >= $%d AND %s < $%d", field, paramCount, field, paramCount+1))
+			args = append(args, start, end)
+			paramCount += 2
 		case "between":
 			values := strings.Split(f.Value, ",")
 			if len(values) != 2 {
@@ -193,4 +236,38 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 	}
 
 	return strings.Join(conditions, " AND "), args, nil
+}
+
+// decodeFilterArray parses a JSON array string into a flat []string, accepting
+// both numeric and string elements (e.g. [1,7,8] and ["1","7","8"]).
+func decodeFilterArray(value, op string) ([]string, error) {
+	var raw []json.RawMessage
+	if err := json.Unmarshal([]byte(value), &raw); err != nil {
+		return nil, fmt.Errorf("invalid array format for %q operator: %v", op, err)
+	}
+	arr := make([]string, len(raw))
+	for i, r := range raw {
+		arr[i] = strings.Trim(string(r), "\"")
+	}
+	return arr, nil
+}
+
+func relativeDateRange(preset string) (time.Time, time.Time, error) {
+	now := time.Now()
+	switch preset {
+	case "today":
+		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		return start, start.Add(24 * time.Hour), nil
+	case "yesterday":
+		end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		return end.Add(-24 * time.Hour), end, nil
+	case "last_7_days":
+		return now.AddDate(0, 0, -7), now, nil
+	case "last_30_days":
+		return now.AddDate(0, 0, -30), now, nil
+	case "this_month":
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		return start, start.AddDate(0, 1, 0), nil
+	}
+	return time.Time{}, time.Time{}, fmt.Errorf("unknown relative_date preset: %s", preset)
 }

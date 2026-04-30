@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
@@ -253,7 +254,9 @@ func handleGetViewConversations(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusForbidden, app.i18n.T("status.deniedPermission"), nil, envelope.PermissionError)
 	}
 
-	conversations, err := app.conversation.GetViewConversationsList(user.ID, user.ID, user.Teams.IDs(), lists, order, orderBy, string(view.Filters), page, pageSize)
+	// Substitute the $current_user placeholder so shared views can filter by the logged-in agent.
+	viewFilters := strings.ReplaceAll(string(view.Filters), "$current_user", strconv.Itoa(user.ID))
+	conversations, err := app.conversation.GetViewConversationsList(user.ID, user.ID, user.Teams.IDs(), lists, order, orderBy, viewFilters, page, pageSize)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}

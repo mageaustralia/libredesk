@@ -58,10 +58,9 @@
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
+        <DropdownMenu v-if="!conversationStore.conversation.loading">
           <DropdownMenuTrigger as-child>
             <button
-              v-if="!conversationStore.conversation.loading"
               class="flex items-center justify-center cursor-pointer hover:bg-muted rounded-md h-7 w-7 ml-2"
               :title="t('globals.terms.actions', 2)"
             >
@@ -125,7 +124,7 @@
     -->
     <div
       v-if="!conversationStore.conversation.loading && (conversationStore.current?.subject || conversationStore.current?.uuid)"
-      class="flex-shrink-0 border-b bg-background/95 backdrop-blur-sm px-4 py-2"
+      class="flex-shrink-0 border-b bg-background px-4 py-2"
     >
       <div class="group flex items-center gap-2 min-w-0">
         <span
