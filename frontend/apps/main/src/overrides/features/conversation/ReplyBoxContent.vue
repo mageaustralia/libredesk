@@ -1,6 +1,11 @@
 <template>
-  <!-- Set fixed width only when not in fullscreen. -->
-  <div class="flex flex-col h-full" :class="{ 'max-h-[600px]': !isFullscreen }">
+  <!--
+    OVERRIDE: max-h-[600px] cap removed. The unified scroll container in
+    the Conversation override means the editor can grow naturally and the
+    page scrolls (v1.0.3 behaviour). Fullscreen path is unaffected — the
+    Dialog sizes itself.
+  -->
+  <div class="flex flex-col h-full">
     <!-- Message type toggle -->
     <div
       class="flex justify-between items-center"
@@ -22,36 +27,83 @@
           >
             {{ $t('globals.terms.privateNote') }}
           </TabsTrigger>
+          <!-- The Forward tab is only visible after the user clicks Forward
+               on a specific message. Switching to it from the bare list
+               wouldn't make sense (there's no message to quote). -->
+          <TabsTrigger
+            v-if="messageType === 'forward'"
+            value="forward"
+            class="px-3 py-1 rounded transition-colors duration-200"
+            :class="{ 'bg-background text-foreground': messageType === 'forward' }"
+          >
+            {{ $t('conversation.forward') }}
+          </TabsTrigger>
         </TabsList>
       </Tabs>
-      <Button class="text-muted-foreground" variant="ghost" @click="toggleFullscreen">
+      <!--
+        EC6: Fullscreen toggle. Icon-only, so we surface the action via
+        title/aria-label so screen readers and tooltip-on-hover users know
+        what it does. Label flips between enter/exit based on current state.
+      -->
+      <Button
+        class="text-muted-foreground"
+        variant="ghost"
+        :title="isFullscreen ? t('replyBox.fullscreen.exit') : t('replyBox.fullscreen.enter')"
+        :aria-label="isFullscreen ? t('replyBox.fullscreen.exit') : t('replyBox.fullscreen.enter')"
+        @click="toggleFullscreen"
+      >
         <component :is="isFullscreen ? Minimize2 : Maximize2" />
       </Button>
     </div>
 
-    <!-- To, CC, and BCC fields -->
+    <!-- From, To, CC, and BCC fields -->
     <div v-if="conversationStore.current.inbox_channel === 'email'">
       <div
         :class="['space-y-3', isFullscreen ? 'p-4 border-b border-border' : 'mb-4']"
-        v-if="messageType === 'reply'"
+        v-if="messageType === 'reply' || messageType === 'forward'"
       >
+        <!--
+          EC14: From switcher. Only renders when the inbox has at least one
+          alias configured (fromOptions includes the primary + aliases).
+          Empty selection means "use inbox primary" — the parent omits the
+          override on send so we don't send a redundant payload field.
+        -->
+        <div v-if="fromOptions.length > 0" class="flex items-center space-x-2">
+          <label class="w-12 text-sm font-medium text-muted-foreground">{{ $t('replyBox.from') }}:</label>
+          <select
+            v-model="selectedFrom"
+            class="flex-grow h-9 px-3 py-1 text-sm border rounded bg-background text-foreground focus:ring-2 focus:ring-ring outline-none"
+          >
+            <option
+              v-for="opt in fromOptions"
+              :key="opt"
+              :value="opt"
+            >{{ opt }}</option>
+          </select>
+        </div>
+        <!--
+          EC7/EC8: Gmail-style chip inputs. Emails render as removable pills
+          with per-chip remove (X). The chip-level remove fully supersedes the
+          previous EC9 per-field clear-X — finer-grained, so we drop the
+          all-or-nothing clear button and the wrapping div+Input it lived in.
+          Model is still a comma-joined string, so validateEmails / parseTo /
+          parseCC / parseBCC keep working untouched.
+        -->
         <div class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">TO:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="to"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
         </div>
         <div class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">CC:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="cc"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
           <Button
@@ -64,11 +116,10 @@
         </div>
         <div v-if="showBcc" class="flex items-center space-x-2">
           <label class="w-12 text-sm font-medium text-muted-foreground">BCC:</label>
-          <Input
-            type="text"
-            :placeholder="t('replyBox.emailAddresess')"
+          <EmailTagInput
             v-model="bcc"
-            class="flex-grow px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-ring"
+            :placeholder="t('replyBox.emailAddresess')"
+            class="flex-grow"
             @blur="validateEmails"
           />
         </div>
@@ -128,27 +179,32 @@
       :isSending="isSending"
       :enableSend="enableSend"
       :handleSend="handleSend"
+      :hasDraft="hasDraft"
+      :sendStatuses="sendStatuses"
+      :macroPickerCommand="'apply-macro-to-existing-conversation'"
       @emojiSelect="handleEmojiSelect"
+      @editorCommand="handleEditorCommand"
+      @sendWithStatus="handleSendWithStatus"
+      @deleteDraft="handleDeleteDraft"
     />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
-import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { Maximize2, Minimize2 } from 'lucide-vue-next'
 import Editor from '@main/components/editor/TextEditor.vue'
+import EmailTagInput from '@main/components/EmailTagInput.vue'
 import { useConversationStore } from '@main/stores/conversation'
-import { Input } from '@shared-ui/components/ui/input'
 import { Button } from '@shared-ui/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@shared-ui/components/ui/tabs'
-import { useEmitter } from '@main/composables/useEmitter'
+import { useToast } from '@main/composables/useToast'
 import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
 import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue'
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { useI18n } from 'vue-i18n'
-import { validateEmail } from '@shared-ui/utils/string'
+import { validateEmail, parseEmailList } from '@shared-ui/utils/string'
 import { useMacroStore } from '@main/stores/macro'
 import { useUsersStore } from '@main/stores/users'
 import { useTeamStore } from '@main/stores/team'
@@ -162,6 +218,9 @@ const emailErrors = defineModel('emailErrors', { default: () => [] })
 const htmlContent = defineModel('htmlContent', { default: '' })
 const textContent = defineModel('textContent', { default: '' })
 const mentions = defineModel('mentions', { default: () => [] })
+// EC14: chosen From alias (one entry from props.fromOptions). Empty
+// string means "use inbox primary" — parent omits the override on send.
+const selectedFrom = defineModel('selectedFrom', { default: '' })
 const macroStore = useMacroStore()
 const usersStore = useUsersStore()
 const teamStore = useTeamStore()
@@ -230,12 +289,33 @@ const props = defineProps({
     type: Boolean,
     required: false,
     default: false
+  },
+  // EC1: drives the delete-draft button visibility in the menu bar.
+  // Parent owns the source-of-truth (does the editor have content or
+  // attached files?) so the menu bar stays presentational.
+  hasDraft: {
+    type: Boolean,
+    default: false
+  },
+  // EC1: status names for the "Send & set as" dropdown. Parent filters
+  // to the valid set; ReplyBoxContent just relays.
+  sendStatuses: {
+    type: Array,
+    default: () => []
+  },
+  // EC14: From-switcher options. Inbox primary first then aliases.
+  // Empty array hides the dropdown (no aliases configured).
+  fromOptions: {
+    type: Array,
+    default: () => []
   }
 })
 
 const emit = defineEmits([
   'toggleFullscreen',
   'send',
+  'sendWithStatus',
+  'deleteDraft',
   'fileUpload',
   'inlineImageUpload',
   'fileDelete',
@@ -243,7 +323,7 @@ const emit = defineEmits([
 ])
 
 const conversationStore = useConversationStore()
-const emitter = useEmitter()
+const toast = useToast()
 const { t } = useI18n()
 const insertContent = ref(null)
 const editorRef = ref(null)
@@ -285,10 +365,7 @@ const validateEmails = async () => {
   const values = { to: to.value, cc: cc.value, bcc: bcc.value }
 
   fields.forEach((field) => {
-    const invalid = values[field]
-      .split(',')
-      .map((e) => e.trim())
-      .filter((e) => e && !validateEmail(e))
+    const invalid = parseEmailList(values[field]).filter((e) => !validateEmail(e))
 
     if (invalid.length)
       emailErrors.value.push(`${t('replyBox.invalidEmailsIn')} '${field}': ${invalid.join(', ')}`)
@@ -301,13 +378,26 @@ const validateEmails = async () => {
 const handleSend = async () => {
   await validateEmails()
   if (emailErrors.value.length > 0) {
-    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
-      variant: 'destructive',
-      description: t('globals.messages.correctEmailErrors')
-    })
+    toast.error(t('globals.messages.correctEmailErrors'))
     return
   }
   emit('send')
+}
+
+// EC1: Send-and-set-status variant. Same email validation guard as handleSend
+// — we don't want a chevron click to bypass the recipient sanity check that
+// the primary Send applies.
+const handleSendWithStatus = async (status) => {
+  await validateEmails()
+  if (emailErrors.value.length > 0) {
+    toast.error(t('globals.messages.correctEmailErrors'))
+    return
+  }
+  emit('sendWithStatus', status)
+}
+
+const handleDeleteDraft = () => {
+  emit('deleteDraft')
 }
 
 const handleFileUpload = (event) => {
@@ -322,6 +412,13 @@ const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
   // Force reactivity so the user can select the same emoji multiple times
   nextTick(() => (insertContent.value = emoji))
+}
+
+// EC12: Bridge from ReplyBoxMenuBar's formatting toolbar to the editor's
+// exposed runCommand(). The menu bar is presentational; the editor ref lives
+// here, so this component owns the wiring.
+const handleEditorCommand = (command) => {
+  editorRef.value?.runCommand(command)
 }
 
 const handleAiPromptSelected = (key) => {
@@ -345,9 +442,12 @@ watch(
   { immediate: true }
 )
 
-// Expose focus method for parent components
-const focus = () => {
-  editorRef.value?.focus()
+// Expose focus method for parent components.
+// EC10: Forwards a position arg so ReplyBox.vue's conv-switch focus can opt
+// for cursor-at-start (default in TextEditor.focus()) without poking at the
+// editor ref directly.
+const focus = (position = 'start') => {
+  editorRef.value?.focus(position)
 }
 defineExpose({ focus })
 </script>
