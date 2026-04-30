@@ -5,6 +5,7 @@ import autoprefixer from 'autoprefixer'
 import tailwind from 'tailwindcss'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { overrideResolver } from './vite-plugins/override-resolver.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -109,7 +110,20 @@ export default defineConfig(({ mode, command }) => {
         },
       },
     },
-    plugins: [vue()],
+    plugins: [
+      // Magento-style overrides: any file under apps/<x>/src or shared-ui
+      // is transparently replaced by a same-path file under .../overrides/
+      // when one exists. Lets us customise upstream files without editing
+      // them, so `git pull` from upstream stays conflict-free.
+      overrideResolver({
+        roots: [
+          path.resolve(__dirname, 'apps/main/src'),
+          path.resolve(__dirname, 'apps/widget/src'),
+          path.resolve(__dirname, 'shared-ui'),
+        ],
+      }),
+      vue(),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, `${appPath}/src`),
