@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/httputil"
 	"github.com/abhinavxd/libredesk/internal/inbox"
@@ -452,4 +453,62 @@ func trimEmailConfig(cfg *imodels.Config) {
 		cfg.OAuth.ClientID = strings.TrimSpace(cfg.OAuth.ClientID)
 		cfg.OAuth.TenantID = strings.TrimSpace(cfg.OAuth.TenantID)
 	}
+}
+
+// handleGetInboxSignature returns the inbox's HTML signature with placeholders
+// resolved against the calling agent and (optionally) a specific conversation's
+// contact. Doing the substitution server-side keeps the raw template + customer
+// data off the wire and matches the v1.0.3 fork (commit da939456).
+//
+// Placeholders supported:
+//
+//	{{agent.first_name}}, {{agent.last_name}}, {{agent.full_name}}, {{agent.email}}
+//	{{customer.first_name}}, {{customer.last_name}}
+//	{{inbox.name}}
+//
+// The customer placeholders only resolve when ?conversation_uuid=... is supplied
+// AND the conversation exists; otherwise they're left literal so the agent can
+// see what would have been substituted.
+func handleGetInboxSignature(r *fastglue.Request) error {
+	app := r.Context.(*App)
+
+	inboxID, err := strconv.Atoi(r.RequestCtx.UserValue("id").(string))
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid inbox ID", nil, envelope.InputError)
+	}
+
+	conversationUUID := string(r.RequestCtx.QueryArgs().Peek("conversation_uuid"))
+
+	inboxRecord, err := app.inbox.GetDBRecord(inboxID)
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusNotFound, "Inbox not found", nil, envelope.NotFoundError)
+	}
+
+	// Only the signature field is needed; decode loosely so an inbox config
+	// missing the field (older rows pre-migration) just yields an empty string.
+	var cfg struct {
+		Signature string `json:"signature"`
+	}
+	if err := json.Unmarshal(inboxRecord.Config, &cfg); err != nil || cfg.Signature == "" {
+		return r.SendEnvelope(map[string]string{"signature": ""})
+	}
+
+	signature := cfg.Signature
+	signature = strings.ReplaceAll(signature, "{{inbox.name}}", inboxRecord.Name)
+
+	if user, ok := r.RequestCtx.UserValue("user").(amodels.User); ok {
+		signature = strings.ReplaceAll(signature, "{{agent.first_name}}", user.FirstName)
+		signature = strings.ReplaceAll(signature, "{{agent.last_name}}", user.LastName)
+		signature = strings.ReplaceAll(signature, "{{agent.full_name}}", strings.TrimSpace(user.FirstName+" "+user.LastName))
+		signature = strings.ReplaceAll(signature, "{{agent.email}}", user.Email)
+	}
+
+	if conversationUUID != "" {
+		if conv, err := app.conversation.GetConversation(0, conversationUUID, ""); err == nil {
+			signature = strings.ReplaceAll(signature, "{{customer.first_name}}", conv.Contact.FirstName)
+			signature = strings.ReplaceAll(signature, "{{customer.last_name}}", conv.Contact.LastName)
+		}
+	}
+
+	return r.SendEnvelope(map[string]string{"signature": signature})
 }

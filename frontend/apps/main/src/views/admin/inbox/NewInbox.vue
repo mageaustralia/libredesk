@@ -126,6 +126,7 @@ const submitForm = (values) => {
       reply_to: values.reply_to,
       enable_plus_addressing: values.enable_plus_addressing,
       auto_assign_on_reply: values.auto_assign_on_reply,
+      signature: values.signature,
       // EC14: split the comma-joined string the form's EmailTagInput
       // produces back into the array shape persisted in JSONB config.
       aliases: (values.aliases || '')

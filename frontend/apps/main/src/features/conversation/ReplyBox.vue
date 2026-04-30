@@ -338,6 +338,39 @@ const fetchAiPrompts = async () => {
 
 fetchAiPrompts()
 
+// MP1: per-inbox signature.
+// Resolved server-side (placeholders → agent + customer values) and cached
+// per-conversation. Auto-inserted when the editor is empty so a fresh reply
+// already has the agent's standard sign-off; we don't overwrite an in-progress
+// draft. Refetched on conversation switch because both inbox and customer can
+// change.
+const inboxSignature = ref('')
+
+const fetchInboxSignature = async () => {
+  const conv = conversationStore.current
+  if (!conv?.inbox_id) {
+    inboxSignature.value = ''
+    return
+  }
+  try {
+    const resp = await api.getInboxSignature(conv.inbox_id, conv.uuid)
+    inboxSignature.value = resp.data?.data?.signature || ''
+  } catch {
+    inboxSignature.value = ''
+  }
+}
+
+const insertSignatureIfEmpty = () => {
+  // Only inject for fresh replies — never clobber a draft, an in-flight
+  // forward body, or a private note (private notes don't go to the
+  // customer; T2j will eventually strip the signature there too).
+  if (!inboxSignature.value) return
+  if (messageType.value !== 'reply') return
+  const stripped = (htmlContent.value || '').replace(/<[^>]+>/g, '').trim()
+  if (stripped) return
+  htmlContent.value = '<p><br></p><p><br></p>' + inboxSignature.value
+}
+
 /**
  * Handles the AI prompt selection event.
  * Sends the selected prompt key and the current text content to the server for completion.
@@ -741,6 +774,11 @@ watch(
     setTimeout(() => {
       replyBoxContentRef.value?.focus()
     }, 100)
+    // MP1: refetch signature for the new conversation's inbox + contact, then
+    // inject if the editor's still empty after the conversation switch settled.
+    fetchInboxSignature().then(() => {
+      setTimeout(insertSignatureIfEmpty, 100)
+    })
   }
 )
 
@@ -805,6 +843,10 @@ onMounted(() => {
   // EC14: ensure inboxes are loaded so fromOptions can be computed for
   // the From switcher. fetchInboxes is a no-op if already populated.
   inboxStore.fetchInboxes()
+  // MP1: fetch the inbox signature for the conversation that's already loaded
+  // when ReplyBox mounts (deep-link, refresh). The conversation-uuid watcher
+  // handles every subsequent switch.
+  fetchInboxSignature().then(() => insertSignatureIfEmpty())
 })
 onBeforeUnmount(() => {
   emitter.off(EMITTER_EVENTS.FORWARD_MESSAGE, handleForwardMessage)

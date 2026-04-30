@@ -53,6 +53,7 @@ const submitForm = (values) => {
       reply_to: values.reply_to,
       enable_plus_addressing: values.enable_plus_addressing,
       auto_assign_on_reply: values.auto_assign_on_reply,
+      signature: values.signature,
       // EC14: aliases are stored as a comma-joined string in the form
       // (single text input wrapping EmailTagInput) but persist as an
       // array in the JSONB config. Empty string => empty array so we
@@ -144,6 +145,7 @@ onMounted(async () => {
     inboxData.oauth = inboxData?.config?.oauth || {}
     inboxData.enable_plus_addressing = inboxData?.config?.enable_plus_addressing || false
     inboxData.auto_assign_on_reply = inboxData?.config?.auto_assign_on_reply || false
+    inboxData.signature = inboxData?.config?.signature || ''
     inboxData.reply_to = inboxData?.config?.reply_to || ''
     // EC14: collapse the persisted aliases array back into the
     // comma-joined string the form's EmailTagInput expects.

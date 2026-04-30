@@ -51,6 +51,14 @@ type Config struct {
 	// the SMTP envelope; admins are responsible for that mapping at the
 	// mailbox provider. Unset/empty = no switcher shown, primary From only.
 	Aliases []string `json:"aliases"`
+	// Signature is an HTML template appended to outgoing replies, with
+	// dynamic placeholders {{agent.first_name}}, {{agent.last_name}},
+	// {{agent.full_name}}, {{agent.email}}, {{customer.first_name}},
+	// {{customer.last_name}}, and {{inbox.name}}. Resolved server-side by
+	// handleGetInboxSignature so we don't ship the raw template to the
+	// client; ReplyBox auto-inserts the resolved HTML when starting a
+	// fresh reply.
+	Signature string `json:"signature"`
 }
 
 // OAuthConfig holds OAuth 2.0 authentication details.
