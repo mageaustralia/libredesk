@@ -16,6 +16,10 @@ export const createFormSchema = (t) => z.object({
   prompt_tags_on_reply: z.boolean().optional(),
   enable_plus_addressing: z.boolean().optional(),
   auto_assign_on_reply: z.boolean().optional(),
+  // MP1: HTML signature template appended to outgoing replies. Supports
+  // dynamic placeholders ({{agent.full_name}}, {{inbox.name}}, etc.) which
+  // the backend resolves on GET /api/v1/inboxes/{id}/signature.
+  signature: z.string().optional(),
   // EC14: comma-separated alias list, e.g. "orders@example.com, support@example.com".
   // Stored as string here to fit the Gmail-style chip input (EmailTagInput);
   // EditInbox/NewInbox split it into a JSON array before posting to the API.

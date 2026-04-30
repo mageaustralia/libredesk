@@ -165,6 +165,53 @@
       </FormItem>
     </FormField>
 
+    <!--
+      MP1: Per-inbox HTML signature with placeholder buttons. Stored as a
+      raw template; the backend's GET /api/v1/inboxes/{id}/signature
+      resolves placeholders with the calling agent's identity (and the
+      conversation's contact when a UUID is supplied) and returns ready-
+      to-insert HTML. Buttons are quick-inserts — admins can also type the
+      placeholders manually if they remember the syntax.
+    -->
+    <FormField v-if="showFormFields" v-slot="{ componentField }" name="signature">
+      <FormItem class="box p-4">
+        <div class="space-y-2">
+          <FormLabel class="text-base">{{ $t('admin.inbox.signature') }}</FormLabel>
+          <FormDescription>
+            {{ $t('admin.inbox.signature.description') }}
+          </FormDescription>
+          <div class="flex flex-wrap gap-1 mb-2">
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{agent.first_name}}')">
+              {{ $t('admin.inbox.signature.placeholder.agentFirstName') }}
+            </Button>
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{agent.last_name}}')">
+              {{ $t('admin.inbox.signature.placeholder.agentLastName') }}
+            </Button>
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{agent.full_name}}')">
+              {{ $t('admin.inbox.signature.placeholder.agentFullName') }}
+            </Button>
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{agent.email}}')">
+              {{ $t('admin.inbox.signature.placeholder.agentEmail') }}
+            </Button>
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{inbox.name}}')">
+              {{ $t('admin.inbox.signature.placeholder.inboxName') }}
+            </Button>
+            <Button type="button" variant="outline" size="xs" @click="insertSignaturePlaceholder('{{customer.first_name}}')">
+              {{ $t('admin.inbox.signature.placeholder.customerFirstName') }}
+            </Button>
+          </div>
+          <FormControl>
+            <Textarea
+              v-model="componentField.modelValue"
+              @update:modelValue="componentField['onUpdate:modelValue']"
+              :placeholder="$t('admin.inbox.signature.placeholder.example')"
+              class="min-h-[120px] font-mono text-sm"
+            />
+          </FormControl>
+        </div>
+      </FormItem>
+    </FormField>
+
     <FormField v-if="setupMethod" v-slot="{ componentField }" name="auth_type">
       <FormItem>
         <FormControl>
@@ -888,6 +935,7 @@ import {
 } from '@shared-ui/components/ui/form/index.js'
 import { Label } from '@shared-ui/components/ui/label'
 import { Input } from '@shared-ui/components/ui/input/index.js'
+import { Textarea } from '@shared-ui/components/ui/textarea'
 import SwitchField from '@shared-ui/components/SwitchField.vue'
 import { Button } from '@shared-ui/components/ui/button/index.js'
 import {
@@ -979,6 +1027,14 @@ const showFormFields = computed(
     (props.initialValues?.imap && Object.keys(props.initialValues?.imap).length > 0)
 )
 
+// MP1: append a placeholder token to the signature template. Append (rather
+// than splice at cursor) keeps the helper trivially predictable — admins can
+// reorder by hand after clicking. Mirrors v1.0.3's behaviour.
+const insertSignaturePlaceholder = (placeholder) => {
+  const current = form.values.signature || ''
+  form.setFieldValue('signature', current + placeholder)
+}
+
 const form = useForm({
   validationSchema: computed(() => toTypedSchema(createFormSchema(t))),
   initialValues: {
@@ -991,6 +1047,7 @@ const form = useForm({
     prompt_tags_on_reply: false,
     enable_plus_addressing: true,
     auto_assign_on_reply: false,
+    signature: '',
     auth_type: AUTH_TYPE_PASSWORD,
     imap: {
       host: 'imap.gmail.com',
