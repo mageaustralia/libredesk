@@ -1164,26 +1164,106 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 	return nil
 }
 
-// notifyAssignedAgentOfReply dispatches an in-app notification + WS toast to the
-// conversation's assigned agent when a customer replies. Skipped if the
-// conversation is unassigned. Email is intentionally not sent: the customer's
-// reply itself already arrives in the agent's email channel.
-func (m *Manager) notifyAssignedAgentOfReply(message models.Message) {
+// notifyParticipants dispatches in-app + WS + email notifications to the
+// conversation's assigned agent and any followers (conversation_participants)
+// when a customer replies, excluding the sender. Each recipient gets a
+// personalised email rendered from the TmplNewReply DB template; the template
+// receives an `IsAssignee` flag so an admin can show different subject/body
+// language for the ticket owner vs. a watcher (Freshdesk-style "you are
+// watching" distinction). Falls back to the previous in-app-only behaviour
+// when the template is missing or the dispatcher has no email channel
+// configured.
+func (m *Manager) notifyParticipants(message models.Message) {
+	if m.dispatcher == nil {
+		return
+	}
+
 	conv, err := m.GetConversation(message.ConversationID, message.ConversationUUID, "")
 	if err != nil {
 		m.lo.Warn("notify reply: failed to fetch conversation", "uuid", message.ConversationUUID, "error", err)
 		return
 	}
-	if conv.AssignedUserID.Int == 0 {
+
+	// Build recipient set: assignee + followers, minus the sender (a customer
+	// reply has SenderType=contact so the sender is rarely a participant, but
+	// guarding here keeps the function safe for future agent-reply use).
+	recipientIDs := make(map[int]struct{})
+	if conv.AssignedUserID.Int > 0 {
+		recipientIDs[conv.AssignedUserID.Int] = struct{}{}
+	}
+	if participants, err := m.GetConversationParticipants(message.ConversationUUID); err == nil {
+		for _, p := range participants {
+			recipientIDs[p.ID] = struct{}{}
+		}
+	}
+	delete(recipientIDs, message.SenderID)
+	if len(recipientIDs) == 0 {
 		return
 	}
+
 	authorName := strings.TrimSpace(conv.Contact.FullName())
 	if authorName == "" {
 		authorName = m.i18n.T("globals.terms.customer")
 	}
-	m.dispatcher.Send(notifier.Notification{
+
+	// Render personalised email per recipient. We render in the same loop that
+	// builds the recipientIDs slice so the per-recipient `emails` slice stays
+	// aligned with `ids` for SendWithEmails.
+	var ids []int
+	var emails []notifier.EmailNotification
+	assigneeID := conv.AssignedUserID.Int
+	for userID := range recipientIDs {
+		ids = append(ids, userID)
+
+		agent, err := m.userStore.GetAgent(userID, "")
+		if err != nil || agent.Email.String == "" {
+			emails = append(emails, notifier.EmailNotification{})
+			continue
+		}
+
+		content, subject, err := m.template.RenderStoredEmailTemplate(template.TmplNewReply,
+			map[string]any{
+				"Conversation": map[string]any{
+					"ReferenceNumber": conv.ReferenceNumber,
+					"Subject":         conv.Subject.String,
+					"UUID":            conv.UUID,
+				},
+				"Recipient": map[string]any{
+					"FirstName":  agent.FirstName,
+					"LastName":   agent.LastName,
+					"FullName":   strings.TrimSpace(agent.FirstName + " " + agent.LastName),
+					"Email":      agent.Email.String,
+					"IsAssignee": userID == assigneeID,
+				},
+				"Author": map[string]any{
+					"FirstName": conv.Contact.FirstName,
+					"FullName":  authorName,
+				},
+				// TODO: rewrite relative /uploads/ URLs to signed absolute
+				// URLs (v1.0.3 has makeAbsoluteURLs in ws.go) so inline images
+				// render in email clients without auth. Tracked separately —
+				// without this, recipients see broken-image icons for inline
+				// images but the rest of the body still renders.
+				"Message": map[string]any{
+					"UUID":    message.UUID,
+					"Content": message.Content,
+				},
+			})
+		if err != nil {
+			m.lo.Warn("notify reply: template render failed", "template", template.TmplNewReply, "user_id", userID, "error", err)
+			emails = append(emails, notifier.EmailNotification{})
+			continue
+		}
+		emails = append(emails, notifier.EmailNotification{
+			Recipients: []string{agent.Email.String},
+			Subject:    subject,
+			Content:    content,
+		})
+	}
+
+	m.dispatcher.SendWithEmails(notifier.Notification{
 		Type:             nmodels.NotificationTypeNewReply,
-		RecipientIDs:     []int{conv.AssignedUserID.Int},
+		RecipientIDs:     ids,
 		Title:            m.i18n.Ts("notification.customerReplied", "author", authorName, "referenceNumber", conv.ReferenceNumber),
 		Body:             conv.Subject,
 		ConversationID:   null.IntFrom(message.ConversationID),
@@ -1192,7 +1272,7 @@ func (m *Manager) notifyAssignedAgentOfReply(message models.Message) {
 		ConversationUUID: message.ConversationUUID,
 		ActorFirstName:   conv.Contact.FirstName,
 		ActorLastName:    conv.Contact.LastName,
-	})
+	}, emails)
 }
 
 // NotifyMention sends notifications (in-app, WebSocket, email) for mentions.
