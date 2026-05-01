@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -137,6 +138,7 @@ type mediaStore interface {
 	GetBlob(name string) ([]byte, error)
 	GetURL(uuid, contentType, fileName string) string
 	GetSignedURL(name string) string
+	GetEmailURL(name string) string
 	Attach(id int, model string, modelID int) error
 	GetByModel(id int, model string) ([]mmodels.Media, error)
 	ContentIDExists(contentID string) (bool, string, error)
@@ -1164,6 +1166,26 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 	return nil
 }
 
+// uploadsURLForEmailRe matches both relative (/uploads/UUID) and already-
+// absolute (https://host/uploads/UUID) references to uploaded media so that
+// notification emails can swap them for signed long-expiry URLs in one pass.
+// The trailing query is consumed too — a previous render may have already
+// stuck `?sig=…&exp=…` on the URL during in-app rendering, and that signature
+// is short-lived so we want to replace, not preserve.
+var uploadsURLForEmailRe = regexp.MustCompile(`(?:https?://[^/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"\s]*)?`)
+
+// makeAbsoluteURLs rewrites every /uploads/UUID reference in the given HTML
+// to a signed absolute URL with a 30-day expiry, so email clients (which
+// proxy or fetch images well after the email was delivered) can still load
+// inline images without an authenticated session. Mirrors v1.0.3's helper
+// of the same name.
+func (m *Manager) makeAbsoluteURLs(content string) string {
+	return uploadsURLForEmailRe.ReplaceAllStringFunc(content, func(match string) string {
+		uuid := uploadsURLForEmailRe.FindStringSubmatch(match)[1]
+		return m.mediaStore.GetEmailURL(uuid)
+	})
+}
+
 // notifyParticipants dispatches in-app + WS + email notifications to the
 // conversation's assigned agent and any followers (conversation_participants)
 // when a customer replies, excluding the sender. Each recipient gets a
@@ -1239,14 +1261,18 @@ func (m *Manager) notifyParticipants(message models.Message) {
 					"FirstName": conv.Contact.FirstName,
 					"FullName":  authorName,
 				},
-				// TODO: rewrite relative /uploads/ URLs to signed absolute
-				// URLs (v1.0.3 has makeAbsoluteURLs in ws.go) so inline images
-				// render in email clients without auth. Tracked separately —
-				// without this, recipients see broken-image icons for inline
-				// images but the rest of the body still renders.
+				// makeAbsoluteURLs rewrites relative /uploads/UUID paths and
+				// already-absolute /uploads/UUID URLs into signed long-expiry
+				// URLs so inline images render in email clients without
+				// requiring an authenticated session. PCI scrubbing of
+				// message body remains TODO and is tracked under spec section
+				// 5.13 (Tier 3 — PCI redaction); doing it here alone would
+				// give a false sense of security since raw PCI data still
+				// lives in the DB and is visible in the in-app conversation
+				// view.
 				"Message": map[string]any{
 					"UUID":    message.UUID,
-					"Content": message.Content,
+					"Content": m.makeAbsoluteURLs(message.Content),
 				},
 			})
 		if err != nil {

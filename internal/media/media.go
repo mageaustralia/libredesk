@@ -47,6 +47,11 @@ type Store interface {
 type SignedURLStore interface {
 	Store
 	GetSignedURL(name string) string
+	// GetEmailURL returns a URL with a long enough expiry that email clients
+	// (which often proxy or fetch images hours/days after delivery) can still
+	// resolve it. localfs uses 30 days; stores that don't differentiate fall
+	// through to Manager.GetURL via the fallback in Manager.GetEmailURL.
+	GetEmailURL(name string) string
 }
 
 type Manager struct {
@@ -206,6 +211,19 @@ func (m *Manager) GetSignedURL(name string) string {
 		return signedStore.GetSignedURL(name)
 	}
 	// Fallback to regular URL if signed URLs not supported
+	return m.GetURL(name, "", "")
+}
+
+// GetEmailURL returns a long-expiry signed URL suitable for embedding in
+// outbound notification emails. Gmail and other email clients proxy images
+// and may fetch them hours or days after the email was sent — a short
+// agent-session expiry would 401 by then. localfs returns a 30-day signed
+// URL; stores that don't implement the long-expiry variant (S3, where the
+// presign already has its own duration) fall back to the standard URL.
+func (m *Manager) GetEmailURL(name string) string {
+	if signedStore, ok := m.store.(SignedURLStore); ok {
+		return signedStore.GetEmailURL(name)
+	}
 	return m.GetURL(name, "", "")
 }
 
