@@ -127,6 +127,21 @@ func (c *Client) GetSignedURL(name string) string {
 	return c.signURL(name)
 }
 
+// GetEmailURL generates a signed URL with 30-day expiry for use in
+// notification emails. The agent-session-length expiry on GetSignedURL is
+// fine for in-app rendering but Gmail (and similar) proxy images and may
+// fetch them hours or days after delivery, by which point a short-lived
+// signature would 401. 30 days mirrors the v1.0.3 behaviour and is a
+// reasonable upper bound on "when an agent might still open this email".
+func (c *Client) GetEmailURL(name string) string {
+	if c.opts.SigningKey == "" {
+		return fmt.Sprintf("%s%s/%s", c.opts.RootURL(), c.opts.UploadURI, name)
+	}
+	exp := time.Now().Add(30 * 24 * time.Hour).Unix()
+	sig := c.generateSignature(name, exp)
+	return fmt.Sprintf("%s%s/%s?sig=%s&exp=%d", c.opts.RootURL(), c.opts.UploadURI, name, sig, exp)
+}
+
 // getDir returns the current working directory path if no directory is specified,
 // else returns the directory path specified itself.
 func getDir(dir string) string {
