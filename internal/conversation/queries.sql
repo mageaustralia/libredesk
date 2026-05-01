@@ -1019,3 +1019,19 @@ SELECT EXISTS(
     JOIN conversation_statuses cs ON cs.id = c.status_id
     WHERE c.uuid = ANY($1::uuid[]) AND cs.name NOT IN ('Closed', 'Trashed')
 );
+
+-- name: find-conversation-by-subject-contact
+-- ER3 fallback: when an incoming reply's In-Reply-To/References don't match
+-- any known conversation (typically because Google or another mail relay
+-- rewrote the Message-ID), match against the most-recent open conversation
+-- with the same contact + inbox + (case-insensitive, Re:/Fw:-stripped)
+-- subject. Resolved/Closed/Spam/Trashed conversations are excluded so a stale
+-- but technically-matching old ticket doesn't get re-opened.
+SELECT c.id
+FROM conversations c
+WHERE c.contact_id = $1
+  AND c.inbox_id = $2
+  AND LOWER(REGEXP_REPLACE(c.subject, '^(re|fw|fwd):\s*', '', 'gi')) = LOWER(REGEXP_REPLACE($3, '^(re|fw|fwd):\s*', '', 'gi'))
+  AND c.status_id NOT IN (3, 4, 5, 6)
+ORDER BY c.created_at DESC
+LIMIT 1;

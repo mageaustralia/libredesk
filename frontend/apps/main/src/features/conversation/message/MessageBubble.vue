@@ -61,11 +61,19 @@
             {{ sanitizedContent }}
           </div>
           <div v-else ref="messageContentEl" @click="onMessageContentClick">
+            <!--
+              ER6: dropped whitespace-pre-wrap. HTML emails carry meaningful
+              whitespace between tags (indentation in the source) that pre-wrap
+              would otherwise render as visible blank space, producing big
+              gaps. The Letter component already preserves intra-paragraph
+              whitespace via its own normalisation; pre-wrap on top breaks
+              email layouts that depend on the browser collapsing whitespace.
+            -->
             <Letter
               :key="sanitizedContent"
               :html="sanitizedContent"
               :allowedSchemas="['cid', 'https', 'http', 'mailto']"
-              class="mb-1 native-html whitespace-pre-wrap break-words"
+              class="mb-1 native-html break-words"
               :class="{ 'mb-3': message.attachments.length > 0 }"
             />
           </div>
@@ -300,7 +308,15 @@ const sanitizedContent = computed(() => {
   if (props.message.meta?.is_csat) {
     return t('globals.messages.pleaseRateConversation')
   }
-  return props.message.content || ''
+  let content = props.message.content || ''
+  // ER6: strip empty paragraphs (just &nbsp; / <br> / whitespace). Outlook +
+  // some Gmail templates embed runs of these between content blocks; without
+  // stripping, the conversation thread shows tall vertical gaps that make
+  // long messages hard to read.
+  if (props.message.content_type !== 'text') {
+    content = content.replace(/<p[^>]*>\s*(&nbsp;| |\s|<br\s*\/?>)*\s*<\/p>/gi, '')
+  }
+  return content
 })
 
 const nonInlineAttachments = computed(() =>
@@ -428,8 +444,17 @@ const forwardMessage = () => {
 
 // Incoming-only: quoted text toggle
 const showQuotedText = ref(false)
+// ER2: extend quote detection beyond <blockquote> to cover Gmail's
+// gmail_quote wrapper and Outlook's #divRplyFwdMsg. Both surface in incoming
+// replies but Outlook in particular doesn't use blockquote — the original
+// "include quoted text" toggle missed them entirely, so the prior thread
+// always rendered inline.
 const hasQuotedContent = computed(
-  () => !isOutgoing.value && sanitizedContent.value.includes('<blockquote')
+  () =>
+    !isOutgoing.value &&
+    (sanitizedContent.value.includes('<blockquote') ||
+      sanitizedContent.value.includes('gmail_quote') ||
+      sanitizedContent.value.includes('divRplyFwdMsg'))
 )
 const toggleQuote = () => {
   showQuotedText.value = !showQuotedText.value

@@ -266,6 +266,7 @@ type queries struct {
 	GetChatConversation                *sqlx.Stmt `query:"get-chat-conversation"`
 	GetContactPreviousConversations    *sqlx.Stmt `query:"get-contact-previous-conversations"`
 	GetConversationParticipants        *sqlx.Stmt `query:"get-conversation-participants"`
+	FindConversationBySubjectContact   *sqlx.Stmt `query:"find-conversation-by-subject-contact"`
 	GetUserActiveConversationsCount    *sqlx.Stmt `query:"get-user-active-conversations-count"`
 	UpdateConversationWaitingSince     *sqlx.Stmt `query:"update-conversation-waiting-since"`
 	UpdateConversationReplyTimestamps  *sqlx.Stmt `query:"update-conversation-reply-timestamps"`

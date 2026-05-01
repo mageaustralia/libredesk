@@ -209,8 +209,31 @@
   @apply flex flex-col px-4 pt-2 pb-3 w-fit min-w-[30%] max-w-full border overflow-x-auto rounded shadow-sm;
   overflow-wrap: break-all;
 
+  // ER6: width:100% (not max-width). Keeps every child filling the bubble's
+  // available width so a forwarded email's nested table doesn't shrink to
+  // its content's intrinsic width and leave whitespace on the right edge.
   * {
-    max-width: 100%;
+    width: 100%;
+  }
+
+  // ER6: HTML email content (.native-html, set on the Letter wrapper) is a
+  // sibling of the plain-text branch. Plain text still gets pre-wrap from
+  // the template class; HTML emails must collapse inter-tag whitespace, or
+  // the source-formatting indentation renders as visible gaps. !important
+  // because the Letter component sets its own white-space rule.
+  .native-html {
+    white-space: normal !important;
+  }
+
+  // ER6: tighten block-element margins. Default browser margins on h1-h6/p
+  // (~1em top+bottom) produce huge vertical gaps in HTML emails. 0.15-0.25em
+  // mirrors the spacing email clients themselves apply.
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0.25em 0;
+  }
+
+  p {
+    margin: 0.15em 0;
   }
 
   // Force pre blocks to wrap
@@ -303,8 +326,18 @@
   }
 }
 
+// ER2: hide every quoted-thread wrapper email clients use, not just
+// blockquote. gmail_quote / gmail_attr wrap Gmail replies; divRplyFwdMsg is
+// Outlook's quoted-reply container. The [class*="gmail_quote"] and
+// [id*="divRplyFwdMsg"] variants catch the suffixed forms some clients
+// produce (gmail_quote_container, divRplyFwdMsg-1234, etc.).
 .hide-quoted-text {
-  blockquote {
+  blockquote,
+  .gmail_quote,
+  .gmail_attr,
+  [class*="gmail_quote"],
+  #divRplyFwdMsg,
+  [id*="divRplyFwdMsg"] {
     @apply hidden;
   }
 }

@@ -1448,6 +1448,22 @@ func (m *Manager) findOrCreateConversation(in models.IncomingMessage) (int, stri
 		return 0, "", false, err
 	}
 
+	// ER3: Subject+contact threading fallback. If the in-reply-to/references
+	// search came up empty, try matching the most-recent open conversation by
+	// (contact + inbox + normalised subject). This recovers replies whose
+	// Message-ID was rewritten by an upstream relay (Google does this) and so
+	// failed the header-based match. Gated on threading headers actually being
+	// present — automated emails (payment notifications, status updates) tend
+	// to share subject lines but have no In-Reply-To/References, and we don't
+	// want to fold those into an old conversation.
+	if conversationID == 0 && in.Subject != "" && (in.InReplyTo != "" || len(in.References) > 0) {
+		if err := m.q.FindConversationBySubjectContact.QueryRow(in.Contact.ID, in.InboxID, in.Subject).Scan(&conversationID); err != nil && err != sql.ErrNoRows {
+			m.lo.Error("error in fallback subject+contact threading", "error", err)
+		} else if conversationID > 0 {
+			m.lo.Debug("found conversation via subject+contact fallback", "conversation_id", conversationID, "subject", in.Subject)
+		}
+	}
+
 	// Conversation not found, create one.
 	if conversationID == 0 {
 		m.lo.Debug("no conversation found with in-reply-to and references, creating new conversation", "in_reply_to", in.InReplyTo, "references", in.References)
