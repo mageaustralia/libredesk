@@ -996,7 +996,7 @@ func (m *Manager) ProcessIncomingMessage(in models.IncomingMessage) (models.Mess
 	// MarkAsSpam still suppresses the notification), and unassigned
 	// conversations (the helper itself handles that).
 	if !isNewConversation && !fromSpamFolder && msg.SenderType == models.SenderTypeContact {
-		go m.notifyAssignedAgentOfReply(msg)
+		go m.notifyParticipants(msg)
 	}
 
 	// Process post-message hooks (automation rules, webhooks, SLA, etc.).
