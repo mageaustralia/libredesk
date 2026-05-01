@@ -360,15 +360,21 @@ const fetchInboxSignature = async () => {
   }
 }
 
+// EC19: marker so the messageType watcher can find and re-insert (or strip)
+// the signature when the agent toggles between reply and private note. Lives
+// in the rendered HTML as a comment, invisible to the editor + the customer.
+const SIGNATURE_MARKER = '<!-- sig -->'
+
 const insertSignatureIfEmpty = () => {
   // Only inject for fresh replies — never clobber a draft, an in-flight
-  // forward body, or a private note (private notes don't go to the
-  // customer; T2j will eventually strip the signature there too).
+  // forward body, or a private note (private notes don't go to the customer
+  // so they never get a signature; the messageType watcher below also
+  // strips it on switch-to-private and re-adds on switch-back).
   if (!inboxSignature.value) return
   if (messageType.value !== 'reply') return
   const stripped = (htmlContent.value || '').replace(/<[^>]+>/g, '').trim()
   if (stripped) return
-  htmlContent.value = '<p><br></p><p><br></p>' + inboxSignature.value
+  htmlContent.value = '<p><br></p><p><br></p>' + SIGNATURE_MARKER + inboxSignature.value
 }
 
 /**
@@ -785,6 +791,13 @@ watch(
 // Reset the forward-pre-quoted body if the agent switches away from forward
 // mode. Otherwise a stale "---- Forwarded message ----" header would carry
 // into a customer-facing reply.
+//
+// EC19: also toggle the inbox signature when switching between reply and
+// private note. Private notes are agent-internal and don't go to the
+// customer, so a signature there is noise. We stash and restore using the
+// SIGNATURE_MARKER comment that insertSignatureIfEmpty injected on initial
+// reply mount; if the marker is absent (e.g. the agent deleted it manually,
+// or never had a signature configured) the toggle is a safe no-op.
 watch(messageType, (newType, oldType) => {
   if (oldType === 'forward' && newType !== 'forward') {
     htmlContent.value = ''
@@ -792,6 +805,33 @@ watch(messageType, (newType, oldType) => {
     cc.value = ''
     bcc.value = ''
     showBcc.value = false
+    return
+  }
+
+  if (newType === 'private_note') {
+    // Strip from the marker onward — preserves anything the agent typed
+    // ABOVE the signature (the actual reply content) and discards the
+    // signature block + anything after it.
+    if (htmlContent.value && htmlContent.value.includes(SIGNATURE_MARKER)) {
+      htmlContent.value = htmlContent.value.substring(0, htmlContent.value.indexOf(SIGNATURE_MARKER))
+    }
+    return
+  }
+
+  if (oldType === 'private_note' && newType === 'reply' && inboxSignature.value) {
+    if (!htmlContent.value || !htmlContent.value.includes(SIGNATURE_MARKER)) {
+      const sigBlock = SIGNATURE_MARKER + inboxSignature.value
+      const stripped = (htmlContent.value || '').replace(/<[^>]+>/g, '').trim()
+      if (!stripped) {
+        // Editor is empty — match the fresh-reply layout from
+        // insertSignatureIfEmpty so the agent gets the same vertical spacing.
+        htmlContent.value = '<p><br></p><p><br></p>' + sigBlock
+      } else {
+        // Agent typed a private note then switched back. Append the
+        // signature below their text rather than overwriting it.
+        htmlContent.value = htmlContent.value + '<p><br></p>' + sigBlock
+      }
+    }
   }
 })
 
