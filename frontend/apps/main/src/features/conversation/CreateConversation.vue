@@ -276,9 +276,52 @@
               :showSendButton="false"
               macroPickerCommand="apply-macro-to-new-conversation"
             />
-            <Button type="submit" :disabled="isDisabled" :isLoading="loading">
-              {{ $t('globals.messages.submit') }}
-            </Button>
+            <!--
+              EC20: Submit + Set-Status split-button. Mirrors the reply-box
+              "Send & Resolve" / "Send & Close" picker so an agent who is
+              entering a back-dated conversation (e.g. logging a phone call
+              that's already been resolved) can land it in the right state
+              in one click. The chevron only renders when there's at least
+              one applicable status the admin has flagged for the picker.
+            -->
+            <div class="flex">
+              <Button
+                type="submit"
+                :disabled="isDisabled"
+                :isLoading="loading"
+                :class="submitStatuses.length > 0 ? 'rounded-r-none' : ''"
+              >
+                {{ $t('globals.messages.submit') }}
+              </Button>
+              <DropdownMenu v-if="submitStatuses.length > 0">
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    :disabled="isDisabled || loading"
+                    class="px-1.5 rounded-l-none border-l border-primary-foreground/20"
+                    :title="$t('conversation.submitAndSetStatus')"
+                  >
+                    <ChevronDown class="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <!--
+                  UX24: cap dropdown at 60vh so installs with many custom
+                  statuses don't push the menu off the bottom of the screen.
+                -->
+                <DropdownMenuContent
+                  align="end"
+                  class="w-auto min-w-[16rem] max-h-[60vh] overflow-y-auto"
+                >
+                  <DropdownMenuItem
+                    v-for="status in submitStatuses"
+                    :key="status"
+                    @click="submitWithStatus(status)"
+                  >
+                    {{ $t('conversation.submitAndSetAs', { status }) }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -296,6 +339,12 @@ import {
   DialogDescription
 } from '@shared-ui/components/ui/dialog'
 import { Button } from '@shared-ui/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem
+} from '@shared-ui/components/ui/dropdown-menu'
 import { Input } from '@shared-ui/components/ui/input'
 import EmailTagInput from '@/components/EmailTagInput.vue'
 import { useForm } from 'vee-validate'
@@ -336,7 +385,7 @@ import Editor from '@/components/editor/TextEditor.vue'
 import { useMacroStore } from '@/stores/macro'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
-import { X } from 'lucide-vue-next'
+import { X, ChevronDown } from 'lucide-vue-next'
 import api from '@/api'
 
 const dialogOpen = defineModel({
@@ -499,7 +548,49 @@ const selectContact = (contact) => {
   }
 }
 
+// EC20: Submit & Set Status. Mirrors EC1's reply-box send-and-set picker:
+// the dropdown is dynamic, sourced from the same `conversationStore.statuses`
+// list, and filtered to the same set of categories the reply-box uses
+// (`open` + `resolved`) — that keeps the two pickers consistent under one
+// admin-controlled source of truth. We additionally drop Open here because
+// it's the default state for new conversations (a no-op) and Snoozed because
+// it requires a duration that this dialog doesn't collect.
+const submitStatuses = computed(() =>
+  conversationStore.statuses
+    .filter(
+      (s) =>
+        (s.category === 'open' || s.category === 'resolved') &&
+        s.name !== 'Open' &&
+        s.name !== 'Snoozed'
+    )
+    .map((s) => s.name)
+)
+
+// Module-level rather than reactive: read once inside the handleSubmit
+// closure below. handleSubmit also clears it on success; we additionally
+// clear here in a finally so a validation failure (where handleSubmit
+// never invokes the callback) doesn't leave the choice hanging around to
+// silently ride along with the agent's next plain-Submit click.
+let pendingSubmitStatus = ''
+
+const submitWithStatus = async (status) => {
+  pendingSubmitStatus = status
+  try {
+    await createConversation()
+  } finally {
+    pendingSubmitStatus = ''
+  }
+}
+
 const createConversation = form.handleSubmit(async (values) => {
+  // EC20: snapshot the status choice and clear the module-level state
+  // immediately. Otherwise a stale value from a prior chevron-click survives
+  // a validation failure and silently rides along with the agent's next
+  // plain-Submit attempt. handleSubmit only invokes this callback on
+  // validation success, so resetting here (rather than in submitWithStatus)
+  // is safe.
+  const setStatus = pendingSubmitStatus
+  pendingSubmitStatus = ''
   loading.value = true
   try {
     // Convert ids to numbers if they are not already
@@ -515,6 +606,12 @@ const createConversation = form.handleSubmit(async (values) => {
     values.bcc = bccEmails.value || ''
     // Initiator of this conversation is always agent
     values.initiator = UserTypeAgent
+    // EC20: only attach when set — the backend treats empty as "no follow-up
+    // status change" (default Open is preserved by absence, not by sending
+    // 'Open' explicitly).
+    if (setStatus) {
+      values.set_status = setStatus
+    }
     const conversation = await api.createConversation(values)
     const conversationUUID = conversation.data.data.uuid
 

@@ -65,6 +65,10 @@ type createConversationRequest struct {
 	Attachments      []int          `json:"attachments"`
 	Initiator        string         `json:"initiator"` // "contact" | "agent"
 	CustomAttributes map[string]any `json:"custom_attributes"`
+	// EC20: Submit & Set Status. Optional follow-up status name to apply
+	// after the conversation is created. Mirrors the reply-box "Send & Set
+	// Status" picker. Empty = leave as Open (default for new conversations).
+	SetStatus string `json:"set_status,omitempty"`
 }
 
 // handleGetAllConversations retrieves all conversations.
@@ -903,6 +907,20 @@ func handleCreateConversation(r *fastglue.Request) error {
 	}
 	if req.AssignedAgentID > 0 {
 		app.conversation.UpdateConversationUserAssignee(conversationUUID, req.AssignedAgentID, user)
+	}
+
+	// EC20: Apply requested follow-up status. UpdateConversationStatus
+	// internally validates the status name via the status store, so any
+	// invalid name (or one the agent isn't allowed to set) is rejected
+	// there. We reject Open (it's the default and a no-op) and Snoozed
+	// (it requires a duration we don't collect on the create dialog) up
+	// front. Failure to apply the status is logged but doesn't fail the
+	// create — the conversation already exists and the agent can adjust
+	// the status from the header afterward.
+	if req.SetStatus != "" && req.SetStatus != cmodels.StatusOpen && req.SetStatus != cmodels.StatusSnoozed {
+		if err := app.conversation.UpdateConversationStatus(conversationUUID, 0 /**status_id**/, req.SetStatus, "" /**snoozed_until**/, user); err != nil {
+			app.lo.Warn("could not apply set_status on new conversation", "uuid", conversationUUID, "status", req.SetStatus, "error", err)
+		}
 	}
 
 	conversation, _ := app.conversation.GetConversation(conversationID, "", "")

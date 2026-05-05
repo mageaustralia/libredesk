@@ -578,6 +578,8 @@
   "conversation.subject.editTitle": "Edit subject",
   "conversation.subject.save": "Save subject",
   "conversation.subject.updated": "Subject updated",
+  "conversation.submitAndSetAs": "Submit and set as {status}",
+  "conversation.submitAndSetStatus": "Submit and set status",
   "conversation.teamAssigned": "Team assigned",
   "conversation.trash": "Trash",
   "conversation.tryAdjustingFilters": "Try adjusting filters",
