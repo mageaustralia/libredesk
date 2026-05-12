@@ -65,7 +65,7 @@ func handleWS(r *fastglue.Request, hub *ws.Hub) error {
 			FirstName: auser.FirstName,
 			Hub:       hub,
 			Conn:      conn,
-			Send:      make(chan wsmodels.WSMessage, 10000),
+			Send:      make(chan wsmodels.WSMessage, 256),
 		}
 		hub.AddClient(&c)
 		go c.Listen()
