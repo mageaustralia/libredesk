@@ -419,11 +419,18 @@ This fork is designed for self-hosting with local Docker builds. It is **not** p
 ### Docker (Recommended)
 
 ```shell
-git clone https://github.com/mageaustralia/libredesk/.git
+git clone https://github.com/mageaustralia/libredesk.git
 cd libredesk
+
+# Check out this branch
+git checkout v1.0.3-plus-enhancements
 
 cp config.sample.toml config.toml
 # Edit config.toml as needed
+
+# Compile the binary (the Dockerfile copies a pre-built binary in,
+# rather than compiling Go inside the container)
+make
 
 docker compose up -d
 
