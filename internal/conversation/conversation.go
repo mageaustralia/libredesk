@@ -1607,7 +1607,11 @@ func (m *Manager) ApplyAction(action amodels.RuleAction, conv models.Conversatio
 			return fmt.Errorf("sending private note: %w", err)
 		}
 	case amodels.ActionReply:
-		// Make recipient list.
+		// Skip if the contact has no email — QueueReply would fail downstream
+		// and we'd leak a confusing error into the automation log.
+		if conv.Contact.Email.String == "" {
+			return fmt.Errorf("auto-reply skipped: contact has no email for conversation: %s", conv.UUID)
+		}
 		to, cc, bcc, err := m.makeRecipients(conv.ID, conv.Contact.Email.String, conv.InboxMail, conv.InboxReplyTo)
 		if err != nil {
 			return fmt.Errorf("making recipients for reply action: %w", err)
@@ -1681,8 +1685,12 @@ func (m *Manager) RemoveConversationAssignee(uuid, typ string, actor umodels.Use
 	return nil
 }
 
-// SendCSATReply sends a CSAT reply message to a conversation. No-op if one was already sent.
+// SendCSATReply sends a CSAT reply message to a conversation. No-op if one was already sent or contact has no email.
 func (m *Manager) SendCSATReply(actorUserID int, conversation models.Conversation) error {
+	if conversation.Contact.Email.String == "" {
+		m.lo.Info("CSAT reply skipped: contact has no email for conversation: %s", "conversation_uuid", conversation.UUID)
+		return nil
+	}
 	csatResp, err := m.csatStore.Create(conversation.ID)
 	if err != nil {
 		if errors.Is(err, csat.ErrCSATAlreadyExists) {
