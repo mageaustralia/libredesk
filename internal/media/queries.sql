@@ -55,7 +55,7 @@ FROM media
 WHERE model_type = 'messages'
   AND (model_id IS NULL OR model_id = 0)
   AND disposition != 'inline'
-  AND created_at < NOW() - INTERVAL '1 day';
+  AND created_at < NOW() - INTERVAL '7 days';
 
 -- name: content-id-exists
 SELECT m.uuid
