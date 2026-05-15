@@ -19,6 +19,14 @@ export const useConversationStore = defineStore('conversation', () => {
   const statuses = ref([])
   const currentTo = ref([])
   const currentBCC = ref([])
+  // Timestamp of the most recent contact reassignment via the sidebar contact
+  // picker. The recipients-derivation watchEffect compares this against the
+  // latest message's created_at: if the contact was changed AFTER the latest
+  // message, replies go to the new contact's email rather than whoever the
+  // last incoming message was from. When a new message subsequently arrives,
+  // normal derivation resumes. Set via markContactChanged() from
+  // ConversationSideBarContact after a successful updateConversationContact.
+  const lastContactChangeAt = ref(0)
   const currentCC = ref([])
   const macros = ref({})
   const isNewConversationOpen = ref(false)
@@ -415,6 +423,23 @@ export const useConversationStore = defineStore('conversation', () => {
       return
     }
 
+    // FS24: contact-was-reassigned override. computeRecipientsFromMessage
+    // pulls TO from the latest message's headers — correct for the common
+    // case (reply to whoever just wrote) but wrong when the agent has
+    // explicitly changed the contact (e.g. a forwarded ticket where the
+    // forwarder shouldn't be the recipient). Marker set by
+    // markContactChanged() in the sidebar contact picker; honoured until
+    // a new message arrives.
+    const latestMessageAt = latestMessage.created_at
+      ? new Date(latestMessage.created_at).getTime()
+      : 0
+    if (lastContactChangeAt.value > latestMessageAt && conv.contact?.email) {
+      currentTo.value = [conv.contact.email]
+      currentCC.value = []
+      currentBCC.value = []
+      return
+    }
+
     const inboxStore = useInboxStore()
     const allInboxEmails = [
       ...inboxStore.inboxes.map(i => i.from).filter(Boolean),
@@ -438,6 +463,13 @@ export const useConversationStore = defineStore('conversation', () => {
     currentCC.value = cc
     currentBCC.value = bcc
   })
+
+  // Sidebar contact picker calls this immediately after a successful
+  // updateConversationContact API call. The timestamp is consumed by the
+  // recipients watchEffect (see comment in the FS24 block above).
+  function markContactChanged () {
+    lastContactChangeAt.value = Date.now()
+  }
 
   async function fetchParticipants (uuid) {
     try {
@@ -1069,6 +1101,7 @@ export const useConversationStore = defineStore('conversation', () => {
     currentTo,
     currentBCC,
     currentCC,
+    markContactChanged,
     conversationUUIDExists,
     updateConversationProp,
     addNewConversation,
