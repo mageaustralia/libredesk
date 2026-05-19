@@ -11,3 +11,12 @@ export function getThumbFilepath (filepath) {
     const filename = urlParts.pop()
     return `/uploads/thumb_${filename}`
 }
+
+const UUID_V4_RE = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i
+
+export function downloadUrl (url) {
+    if (!url) return url
+    const match = url.match(UUID_V4_RE)
+    if (!match) return url
+    return `/uploads/${match[0]}?download=1`
+}
