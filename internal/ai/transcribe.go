@@ -62,7 +62,7 @@ func (o *OpenAIClient) TranscribeAudio(audioData []byte, filename string) (strin
 		return "", fmt.Errorf("reading response: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusUnauthorized {
+	if IsAuthError(resp.StatusCode) {
 		return "", ErrInvalidAPIKey
 	}
 

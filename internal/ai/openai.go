@@ -89,7 +89,7 @@ func (o *OpenAIClient) GenerateEmbedding(text string) ([]float32, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
+	if IsAuthError(resp.StatusCode) {
 		return nil, ErrInvalidAPIKey
 	}
 	if resp.StatusCode != http.StatusOK {

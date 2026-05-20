@@ -82,20 +82,7 @@ func (c *Client) do(ctx context.Context, path string, query url.Values) (io.Read
 	if err != nil {
 		return nil, fmt.Errorf("magento2: http: %w", err)
 	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return resp.Body, nil
-	case http.StatusNotFound:
-		resp.Body.Close()
-		return nil, ecommerce.ErrNotFound
-	case http.StatusUnauthorized, http.StatusForbidden:
-		resp.Body.Close()
-		return nil, ecommerce.ErrUnauthorized
-	default:
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-		return nil, fmt.Errorf("magento2: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
+	return ecommerce.ClassifyResponse(resp, "magento2")
 }
 
 // searchCriteria builds the obnoxious nested-query-string format

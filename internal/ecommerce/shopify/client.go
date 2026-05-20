@@ -123,21 +123,15 @@ func (c *Client) do(ctx context.Context, path string, query url.Values) (io.Read
 			return nil, fmt.Errorf("shopify: http: %w", err)
 		}
 
-		switch resp.StatusCode {
-		case http.StatusOK:
-			return resp.Body, nil
-		case http.StatusNotFound:
-			resp.Body.Close()
-			return nil, ecommerce.ErrNotFound
-		case http.StatusUnauthorized, http.StatusForbidden:
-			resp.Body.Close()
-			return nil, ecommerce.ErrUnauthorized
-		case http.StatusTooManyRequests:
+		// 429 is the only retryable code; everything else delegates to the
+		// shared classifier. Shopify uses a leaky-bucket rate limit and
+		// always sends Retry-After on 429, so we honour that delay and
+		// retry up to maxRetries before giving up.
+		if resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
 			if attempt >= maxRetries {
 				return nil, fmt.Errorf("shopify: rate limited after %d retries", attempt)
 			}
-			// Honour Retry-After if present, else back off 1s.
 			delay := time.Second
 			if ra := resp.Header.Get("Retry-After"); ra != "" {
 				if secs, err := strconv.ParseFloat(ra, 64); err == nil {
@@ -150,13 +144,9 @@ func (c *Client) do(ctx context.Context, path string, query url.Values) (io.Read
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
-		default:
-			// Read a small slice of the body for the error message — Shopify
-			// puts a JSON `errors` object on most failures.
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-			return nil, fmt.Errorf("shopify: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		}
+
+		return ecommerce.ClassifyResponse(resp, "shopify")
 	}
 	return nil, fmt.Errorf("shopify: exhausted retries unexpectedly")
 }

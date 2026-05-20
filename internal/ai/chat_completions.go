@@ -135,7 +135,7 @@ func doChatCompletion(client *http.Client, lo *logf.Logger, req chatCompletionRe
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
+	if IsAuthError(resp.StatusCode) {
 		return "", ErrInvalidAPIKey
 	}
 
