@@ -31,11 +31,8 @@ import (
 
 // Client implements ecommerce.Provider for Magento 2.
 type Client struct {
-	baseURL     string // e.g. https://store.example.com (no trailing slash)
-	accessToken string
-	http        *http.Client
-	userAgent   string
-	lo          *logf.Logger
+	http *ecommerce.HTTPClient
+	lo   *logf.Logger
 }
 
 // New constructs a Magento 2 REST client.
@@ -50,12 +47,19 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 		return nil, fmt.Errorf("magento2: baseURL and clientSecret (integration token) are required")
 	}
 	baseURL := strings.TrimSuffix(strings.TrimSpace(config.BaseURL), "/")
+	token := config.ClientSecret
 	return &Client{
-		baseURL:     baseURL,
-		accessToken: config.ClientSecret,
-		http:        &http.Client{Timeout: 20 * time.Second},
-		userAgent:   ecommerce.UserAgent(),
-		lo:          lo,
+		http: &ecommerce.HTTPClient{
+			Name:      "magento2",
+			BaseURL:   baseURL + "/rest/V1",
+			UserAgent: ecommerce.UserAgent(),
+			HTTP:      &http.Client{Timeout: 20 * time.Second},
+			Auth: func(req *http.Request) error {
+				req.Header.Set("Authorization", "Bearer "+token)
+				return nil
+			},
+		},
+		lo: lo,
 	}, nil
 }
 
@@ -64,25 +68,7 @@ func (c *Client) Name() string { return "magento2" }
 
 // do issues an authenticated GET. Caller closes the returned body.
 func (c *Client) do(ctx context.Context, path string, query url.Values) (io.ReadCloser, error) {
-	u := c.baseURL + "/rest/V1" + path
-	if query != nil {
-		if encoded := query.Encode(); encoded != "" {
-			u += "?" + encoded
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("magento2: build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("magento2: http: %w", err)
-	}
-	return ecommerce.ClassifyResponse(resp, "magento2")
+	return c.http.Get(ctx, path, query)
 }
 
 // searchCriteria builds the obnoxious nested-query-string format

@@ -30,11 +30,8 @@ import (
 
 // Client implements ecommerce.Provider for WooCommerce.
 type Client struct {
-	baseURL   string // store base URL, e.g. https://spinfiresport.com (no trailing slash)
-	basicAuth string // pre-computed "Basic <base64(ck:cs)>"
-	http      *http.Client
-	userAgent string
-	lo        *logf.Logger
+	http *ecommerce.HTTPClient
+	lo   *logf.Logger
 }
 
 // New constructs a WooCommerce REST client.
@@ -51,11 +48,17 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 	creds := config.ClientID + ":" + config.ClientSecret
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(creds))
 	return &Client{
-		baseURL:   baseURL,
-		basicAuth: authHeader,
-		http:      &http.Client{Timeout: 20 * time.Second},
-		userAgent: ecommerce.UserAgent(),
-		lo:        lo,
+		http: &ecommerce.HTTPClient{
+			Name:      "woocommerce",
+			BaseURL:   baseURL + "/wp-json/wc/v3",
+			UserAgent: ecommerce.UserAgent(),
+			HTTP:      &http.Client{Timeout: 20 * time.Second},
+			Auth: func(req *http.Request) error {
+				req.Header.Set("Authorization", authHeader)
+				return nil
+			},
+		},
+		lo: lo,
 	}, nil
 }
 
@@ -64,25 +67,7 @@ func (c *Client) Name() string { return "woocommerce" }
 
 // do issues an authenticated GET against the WooCommerce REST API.
 func (c *Client) do(ctx context.Context, path string, query url.Values) (io.ReadCloser, error) {
-	u := c.baseURL + "/wp-json/wc/v3" + path
-	if query != nil {
-		if encoded := query.Encode(); encoded != "" {
-			u += "?" + encoded
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("woocommerce: build request: %w", err)
-	}
-	req.Header.Set("Authorization", c.basicAuth)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("woocommerce: http: %w", err)
-	}
-	return ecommerce.ClassifyResponse(resp, "woocommerce")
+	return c.http.Get(ctx, path, query)
 }
 
 // TestConnection implements ecommerce.Provider — /system_status is the

@@ -33,16 +33,8 @@ import (
 
 // Client implements ecommerce.Provider for Shopify.
 type Client struct {
-	// shopDomain is the {shop}.myshopify.com hostname (no scheme).
-	shopDomain string
-	// apiVersion is the Shopify Admin REST API version, e.g. "2024-10".
-	// Pinned per-deployment via ProviderConfig.ExtraConfig["api_version"];
-	// defaults to a known-good recent version if omitted.
-	apiVersion string
-	accessToken string
-	http        *http.Client
-	userAgent   string
-	lo          *logf.Logger
+	http *ecommerce.HTTPClient
+	lo   *logf.Logger
 }
 
 const defaultAPIVersion = "2024-10"
@@ -75,15 +67,19 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 		apiVersion = defaultAPIVersion
 	}
 
+	token := config.ClientSecret
 	return &Client{
-		shopDomain:  domain,
-		apiVersion:  apiVersion,
-		accessToken: config.ClientSecret,
-		http: &http.Client{
-			Timeout: 15 * time.Second,
+		http: &ecommerce.HTTPClient{
+			Name:      "shopify",
+			BaseURL:   "https://" + domain + "/admin/api/" + apiVersion,
+			UserAgent: ecommerce.UserAgent(),
+			HTTP:      &http.Client{Timeout: 15 * time.Second},
+			Auth: func(req *http.Request) error {
+				req.Header.Set("X-Shopify-Access-Token", token)
+				return nil
+			},
 		},
-		userAgent: ecommerce.UserAgent(),
-		lo:        lo,
+		lo: lo,
 	}, nil
 }
 
@@ -100,27 +96,11 @@ func (c *Client) Name() string { return "shopify" }
 // the error. Not exposed as ecommerce.ErrTooManyRequests because the
 // helpdesk treats it the same as any other transient error.
 func (c *Client) do(ctx context.Context, path string, query url.Values) (io.ReadCloser, error) {
-	if query == nil {
-		query = url.Values{}
-	}
-	u := "https://" + c.shopDomain + "/admin/api/" + c.apiVersion + path
-	if encoded := query.Encode(); encoded != "" {
-		u += "?" + encoded
-	}
-
 	const maxRetries = 2
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		resp, err := c.http.Do(ctx, "GET", path, query, nil)
 		if err != nil {
-			return nil, fmt.Errorf("shopify: build request: %w", err)
-		}
-		req.Header.Set("X-Shopify-Access-Token", c.accessToken)
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", c.userAgent)
-
-		resp, err := c.http.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("shopify: http: %w", err)
+			return nil, err
 		}
 
 		// 429 is the only retryable code; everything else delegates to the
