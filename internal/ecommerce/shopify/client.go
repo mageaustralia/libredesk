@@ -23,7 +23,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -83,35 +82,13 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 		http: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		userAgent: userAgentString(),
+		userAgent: ecommerce.UserAgent(),
 		lo:        lo,
 	}, nil
 }
 
 // Name implements ecommerce.Provider.
 func (c *Client) Name() string { return "shopify" }
-
-// userAgentString matches magento1's so Shopify-side access logs can
-// identify HelperIQ traffic consistently.
-func userAgentString() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		v := info.Main.Version
-		if v == "" || v == "(devel)" {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" && s.Value != "" {
-					rev := s.Value
-					if len(rev) > 12 {
-						rev = rev[:12]
-					}
-					return "libredesk/" + rev
-				}
-			}
-			return "libredesk/devel"
-		}
-		return "libredesk/" + v
-	}
-	return "libredesk/unknown"
-}
 
 // do issues an authenticated GET against the Shopify Admin REST API.
 // Caller is responsible for closing the response body via the returned

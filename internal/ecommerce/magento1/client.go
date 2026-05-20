@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -25,30 +24,6 @@ type Client struct {
 	lo        *logf.Logger
 }
 
-// userAgentString returns "libredesk/<version>" derived from the embedded
-// build info so Maho-side access logs can identify libredesk traffic.
-// Falls back to "libredesk/unknown" if build info isn't available (rare).
-func userAgentString() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		v := info.Main.Version
-		if v == "" || v == "(devel)" {
-			// Look for a VCS revision setting populated by `go build`.
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" && s.Value != "" {
-					rev := s.Value
-					if len(rev) > 12 {
-						rev = rev[:12]
-					}
-					return "libredesk/" + rev
-				}
-			}
-			return "libredesk/devel"
-		}
-		return "libredesk/" + v
-	}
-	return "libredesk/unknown"
-}
-
 // New creates a new Maho Commerce client.
 //
 // Maho's API Platform v2 supports the OAuth2 client_credentials grant at
@@ -58,7 +33,7 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 	if config.BaseURL == "" || config.ClientID == "" || config.ClientSecret == "" {
 		return nil, fmt.Errorf("magento1: baseURL, clientID, and clientSecret are required")
 	}
-	ua := userAgentString()
+	ua := ecommerce.UserAgent()
 	return &Client{
 		baseURL:   config.BaseURL,
 		auth:      newAuthClient(config.BaseURL, config.ClientID, config.ClientSecret, ua, lo),

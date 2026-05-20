@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -55,33 +54,13 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 		baseURL:     baseURL,
 		accessToken: config.ClientSecret,
 		http:        &http.Client{Timeout: 20 * time.Second},
-		userAgent:   userAgentString(),
+		userAgent:   ecommerce.UserAgent(),
 		lo:          lo,
 	}, nil
 }
 
 // Name implements ecommerce.Provider.
 func (c *Client) Name() string { return "magento2" }
-
-func userAgentString() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		v := info.Main.Version
-		if v == "" || v == "(devel)" {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" && s.Value != "" {
-					rev := s.Value
-					if len(rev) > 12 {
-						rev = rev[:12]
-					}
-					return "libredesk/" + rev
-				}
-			}
-			return "libredesk/devel"
-		}
-		return "libredesk/" + v
-	}
-	return "libredesk/unknown"
-}
 
 // do issues an authenticated GET. Caller closes the returned body.
 func (c *Client) do(ctx context.Context, path string, query url.Values) (io.ReadCloser, error) {
