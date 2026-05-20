@@ -426,6 +426,11 @@ const testInboxConnection = (data) =>
     headers: { "Content-Type": "application/json" },
     timeout: 30000
   })
+// saveDraft persists a reply OR a private-note draft for one conversation.
+// `data` MUST include `message_type` ('reply' or 'private_note') so the
+// backend stores it against the right per-tab slot (see V1_0_7 migration).
+// An empty message_type is treated as 'reply' on the server for back-
+// compat with any older client.
 const saveDraft = (uuid, data) =>
   http.post(`/api/v1/conversations/${uuid}/draft`, data, {
     headers: {
@@ -435,7 +440,15 @@ const saveDraft = (uuid, data) =>
 
 const getAllDrafts = () => http.get('/api/v1/drafts')
 
-const deleteDraft = (uuid) => http.delete(`/api/v1/conversations/${uuid}/draft`)
+// deleteDraft removes a single tab's draft when messageType is supplied
+// ('reply' or 'private_note'), or BOTH types when messageType is omitted
+// (used by the post-send cleanup path).
+const deleteDraft = (uuid, messageType) => {
+  const url = messageType
+    ? `/api/v1/conversations/${uuid}/draft?message_type=${encodeURIComponent(messageType)}`
+    : `/api/v1/conversations/${uuid}/draft`
+  return http.delete(url)
+}
 const getCurrentUserViews = () => http.get('/api/v1/views/me')
 const createView = (data) =>
   http.post('/api/v1/views/me', data, {
