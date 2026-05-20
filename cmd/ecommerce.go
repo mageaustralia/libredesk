@@ -251,15 +251,25 @@ func handleTestEcommerceOrderLookup(r *fastglue.Request) error {
 // createEcommerceProvider creates a provider instance from config. Returns
 // (nil, nil) for unknown provider types so callers can distinguish "type not
 // supported" from "construction failed".
+//
+// Edition split: Magento 1 / Maho is free in the Community Edition and
+// dispatched here directly. The other three (magento2, shopify,
+// woocommerce) are HelperIQ Pro extensions; their concrete imports live
+// behind a build tag in ecommerce_pro.go (with a stub in
+// ecommerce_ce.go that returns ErrLicenseRequired). This keeps the
+// default CE binary from ever linking the Pro provider code.
+//
+// The license-key check is the SECOND gate: even a Pro-built binary
+// won't construct a Pro provider without a valid license. The two gates
+// together mean (a) the CE binary literally cannot do Shopify, and
+// (b) the Pro binary still requires a paid license to activate it.
 func createEcommerceProvider(config ecommerce.ProviderConfig, lo *logf.Logger) (ecommerce.Provider, error) {
 	switch config.Type {
 	case "magento1":
+		// Free in CE — no license check, always compiled in.
 		return magento1.New(config, lo)
-	// Future providers:
-	// case "magento2":
-	//     return magento2.New(config, lo)
-	// case "shopify":
-	//     return shopify.New(config, lo)
+	case "magento2", "shopify", "woocommerce":
+		return createProEcommerceProvider(config, lo)
 	default:
 		return nil, nil
 	}
@@ -317,7 +327,14 @@ func initEcommerceManager(app *App) error {
 		return nil
 	}
 
-	app.ecommerce = ecommerce.NewManager(provider, *app.lo)
+	// Pass the dispatcher itself as the factory so the manager can build
+	// per-inbox providers without importing the concrete provider packages
+	// (would create an import cycle). The factory closes over `app.lo`
+	// so each per-inbox provider gets a logger.
+	factory := func(cfg ecommerce.ProviderConfig) (ecommerce.Provider, error) {
+		return createEcommerceProvider(cfg, app.lo)
+	}
+	app.ecommerce = ecommerce.NewManager(provider, factory, *app.lo)
 	app.lo.Info("ecommerce provider initialized", "type", providerType)
 	return nil
 }

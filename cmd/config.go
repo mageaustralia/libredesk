@@ -59,5 +59,25 @@ func handleGetConfig(r *fastglue.Request) error {
 	// Add SSO providers to the response
 	publicSettings["app.sso_providers"] = enabledProviders
 
+	// Edition info — lets the frontend grey out Pro-only options in the
+	// admin UI (e.g. the inbox Ecommerce tab's provider dropdown) and
+	// surface an "Upgrade to Pro" CTA where appropriate. Both fields are
+	// compile-time constants from edition_ce.go / edition_pro.go.
+	publicSettings["app.edition"] = Edition
+	publicSettings["app.is_pro"] = IsPro
+	publicSettings["app.ecommerce_providers"] = availableEcommerceProviders()
+
 	return r.SendEnvelope(publicSettings)
+}
+
+// availableEcommerceProviders returns the list of provider types this
+// binary can construct. CE binaries return just ["magento1"]; Pro
+// binaries return all four. The frontend uses this to populate the
+// provider dropdown rather than hard-coding the list — saves changing
+// frontend + backend in lockstep when we add the next provider.
+func availableEcommerceProviders() []string {
+	if IsPro {
+		return []string{"magento1", "magento2", "shopify", "woocommerce"}
+	}
+	return []string{"magento1"}
 }

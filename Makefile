@@ -14,6 +14,17 @@ STATIC := ${FRONTEND_DIST} i18n schema.sql static
 GOPATH ?= $(HOME)/go
 STUFFBIN ?= $(GOPATH)/bin/stuffbin
 
+# Build tags. Set BUILD_TAGS=helperiqpro to compile the Pro edition (adds
+# magento2/shopify/woocommerce providers + the ecommerce_pro.go dispatcher;
+# all gated by license.RequireFeature() at runtime regardless). CE is the
+# default — `make` and `make build` produce the Community Edition binary.
+#
+#   make                                 → CE binary (libredesk)
+#   make BUILD_TAGS=helperiqpro          → Pro binary
+#   make build-pro                       → convenience alias for the above
+BUILD_TAGS ?=
+GO_BUILD_TAGS_FLAG := $(if $(BUILD_TAGS),-tags $(BUILD_TAGS),)
+
 # The default target to run when `make` is executed.
 .DEFAULT_GOAL := build 
 
@@ -80,15 +91,22 @@ run-frontend-widget:
 # Build the backend binary.
 .PHONY: build-backend
 build-backend: $(STUFFBIN)
-	@echo "→ Building backend..."
-	@CGO_ENABLED=0 go build -a \
+	@echo "→ Building backend (tags: $(if $(BUILD_TAGS),$(BUILD_TAGS),none))..."
+	@CGO_ENABLED=0 go build -a $(GO_BUILD_TAGS_FLAG) \
 		-ldflags="-X 'main.buildString=${BUILDSTR}' -X 'main.versionString=${VERSION}' -X 'github.com/abhinavxd/libredesk/internal/version.Version=${VERSION}' -s -w" \
-		-o ${BIN} cmd/*.go
+		-o ${BIN} ./cmd
 
 # Main build target: builds both frontend and backend, then stuffs static assets into the binary.
 .PHONY: build
 build: frontend-build build-backend stuff
 	@echo "→ Build successful. Current version: $(VERSION)"
+
+# Convenience target — builds the Pro edition with the helperiqpro tag.
+# Names the binary `libredesk-pro` so CE and Pro can coexist on disk
+# without overwriting each other during local dev.
+.PHONY: build-pro
+build-pro:
+	@$(MAKE) build BUILD_TAGS=helperiqpro BIN=libredesk-pro
 
 # Stuff static assets into the binary using stuffbin.
 .PHONY: stuff
