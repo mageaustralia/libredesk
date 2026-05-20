@@ -323,7 +323,11 @@ type Priority struct {
 	Name      string    `db:"name" json:"name"`
 }
 
-// ConversationDraft represents a draft reply for a conversation.
+// ConversationDraft represents a draft (reply or private note) for a
+// conversation. MessageType discriminates the two: an agent can have a
+// reply draft AND a private-note draft on the same conversation without
+// them clobbering each other. Added in V1_0_7; legacy rows default to
+// 'reply' (the old single-slot semantic).
 type ConversationDraft struct {
 	ID               int64           `db:"id" json:"id"`
 	ConversationID   int64           `db:"conversation_id" json:"conversation_id"`
@@ -333,6 +337,7 @@ type ConversationDraft struct {
 	CreatedAt        time.Time       `db:"created_at" json:"created_at"`
 	UpdatedAt        time.Time       `db:"updated_at" json:"updated_at"`
 	Meta             json.RawMessage `db:"meta" json:"meta"`
+	MessageType      string          `db:"message_type" json:"message_type"`
 }
 
 // MentionInput represents a mention in a private note from frontend.
