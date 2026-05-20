@@ -1551,28 +1551,27 @@ func (m *Manager) uploadMessageAttachments(message *models.Message) error {
 	}
 
 	for _, attachment := range message.Attachments {
-		// Check if this attachment already exists by the content ID, as inline images can be repeated across conversations.
+		// Resolve the inline-image content ID. findExistingMedia namespaces
+		// non-`ldsk-` cids by conversation UUID (since raw cids are not
+		// globally unique — Outlook in particular reuses short cids across
+		// messages) and only reports the row as existing if it's linked to
+		// a message in THIS conversation. That scoping avoids cross-conversation
+		// collisions AND lets a retry succeed after a partial upload failure
+		// left an orphan media row.
 		contentID := attachment.ContentID
 		if contentID != "" {
-			// Make content ID MORE unique by prefixing it with the conversation UUID, as content id is not globally unique practically,
-			// different messages can have the same content ID, I do not have the message ID at this point, so I am using sticking with the conversation UUID
-			// to make it more unique.
-			contentID = message.ConversationUUID + "_" + contentID
-
-			exists, uuid, err := m.mediaStore.ContentIDExists(contentID)
-			if err != nil {
-				m.lo.Error("error checking media existence by content ID", "content_id", contentID, "error", err)
-			}
+			storedCID, exists, uuid := m.findExistingMedia(contentID, message.ConversationUUID)
+			contentID = storedCID
 
 			// This attachment already exists, replace the cid:content_id with the media relative url, not using absolute path as the root path can change.
 			if exists {
-				m.lo.Debug("attachment with content ID already exists replacing content ID with media relative URL", "content_id", contentID, "media_uuid", uuid)
+				m.lo.Debug("attachment with content ID already exists replacing content ID with media relative URL", "content_id", storedCID, "media_uuid", uuid)
 				message.Content = replaceCIDInContent(message.Content, fmt.Sprintf("cid:%s", attachment.ContentID), "/uploads/"+uuid, attachment.Name, attachment.ContentType)
 				continue
 			}
 
 			// Attachment does not exist, replace the content ID with the new more unique content ID.
-			message.Content = strings.ReplaceAll(message.Content, fmt.Sprintf("cid:%s", attachment.ContentID), fmt.Sprintf("cid:%s", contentID))
+			message.Content = strings.ReplaceAll(message.Content, fmt.Sprintf("cid:%s", attachment.ContentID), fmt.Sprintf("cid:%s", storedCID))
 		}
 
 		// Sanitize filename.
@@ -1916,4 +1915,17 @@ var spamMailboxPattern = regexp.MustCompile(`(?i)(^|/)(\[.+\]/)?(spam|junk)( ?em
 // "spam-archive" or "junkfood-orders" don't false-positive.
 func isSpamMailbox(mailbox string) bool {
 	return spamMailboxPattern.MatchString(mailbox)
+}
+
+// findExistingMedia resolves an inbound cid to its stored form: ldsk-* is left as-is, others are namespaced by conversation to avoid cross-conversation collisions.
+func (m *Manager) findExistingMedia(rawContentID, conversationUUID string) (string, bool, string) {
+	storedCID := rawContentID
+	if !strings.HasPrefix(rawContentID, "ldsk-") {
+		storedCID = conversationUUID + "_" + rawContentID
+	}
+	exists, mediaUUID, err := m.mediaStore.ContentIDExists(storedCID, conversationUUID)
+	if err != nil {
+		m.lo.Error("error checking media existence by content ID", "content_id", storedCID, "error", err)
+	}
+	return storedCID, exists, mediaUUID
 }

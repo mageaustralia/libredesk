@@ -167,7 +167,7 @@ type mediaStore interface {
 	Attach(id int, model string, modelID int) error
 	AttachByUUID(uuid, model string, modelID int) error
 	GetByModel(id int, model string) ([]mmodels.Media, error)
-	ContentIDExists(contentID string) (bool, string, error)
+	ContentIDExists(contentID, conversationUUID string) (bool, string, error)
 	Upload(fileName, contentType string, content io.ReadSeeker) (string, string, error)
 	UploadAndInsert(fileName, contentType, contentID string, modelType null.String, modelID null.Int, content io.ReadSeeker, fileSize int, disposition null.String, meta []byte) (mmodels.Media, error)
 }
