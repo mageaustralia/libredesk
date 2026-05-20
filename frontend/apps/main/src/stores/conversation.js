@@ -11,7 +11,7 @@ import { playNotificationSound } from '@shared-ui/composables/useNotificationSou
 import MessageCache from '../utils/conversation-message-cache'
 import { getI18n } from '../i18n'
 import { useDebounceFn, useStorage } from '@vueuse/core'
-import { CONVERSATION_LIST_TYPE, CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
+import { CONVERSATION_LIST_TYPE, CONVERSATION_DEFAULT_STATUSES, TAG_ACTION } from '@/constants/conversation'
 import { useUsersStore } from './users'
 import { useTeamStore } from './team'
 import api from '../api'
@@ -24,15 +24,13 @@ export const useConversationStore = defineStore('conversation', () => {
   const currentTo = ref([])
   const currentBCC = ref([])
   const currentCC = ref([])
-  // FS24: timestamp of the most recent contact reassignment via the
-  // sidebar contact picker. The recipients-derivation watchEffect compares
-  // this against the latest message's created_at — if the contact was
-  // changed AFTER the latest message, replies go to the new contact's
-  // email rather than whoever the last incoming message was from
-  // (otherwise replies on a forwarded ticket still address the forwarder).
-  // Subsequent new messages reset this implicitly: their created_at is
-  // newer, so normal derivation resumes. Set via markContactChanged()
-  // from ConversationSideBarContact after a successful API call.
+  // Timestamp of the most recent contact reassignment via the sidebar contact
+  // picker. The recipients-derivation watchEffect compares this against the
+  // latest message's created_at: if the contact was changed AFTER the latest
+  // message, replies go to the new contact's email rather than whoever the
+  // last incoming message was from. When a new message subsequently arrives,
+  // normal derivation resumes (replying to whoever just wrote is the right
+  // default). Set via markContactChanged() from ConversationSideBarContact.
   const lastContactChangeAt = ref(0)
   const macros = ref({})
   // FS8: Tracks whether the New Conversation dialog is mounted. Used by the
@@ -488,12 +486,12 @@ export const useConversationStore = defineStore('conversation', () => {
     }
 
     // FS24: contact-was-reassigned override. computeRecipientsFromMessage
-    // pulls TO from the latest message's headers — correct for the common
-    // case (reply to whoever just wrote) but wrong when the agent has
-    // explicitly changed the contact (e.g. a forwarded ticket where the
-    // forwarder shouldn't be the recipient). Marker set by
-    // markContactChanged() in the sidebar contact picker; honoured until
-    // a new message arrives (a newer created_at supersedes it).
+    // pulls TO from the latest message's headers — which is correct for the
+    // common case (reply to whoever just wrote) but wrong when the agent
+    // has explicitly changed the contact on the conversation (e.g. a
+    // forwarded ticket where the forwarder shouldn't be the recipient).
+    // The marker is set by markContactChanged() in the sidebar contact
+    // picker; we honour it as long as no message has arrived since.
     const latestMessageAt = latestMessage.created_at
       ? new Date(latestMessage.created_at).getTime()
       : 0
@@ -515,9 +513,9 @@ export const useConversationStore = defineStore('conversation', () => {
     currentBCC.value = bcc
   })
 
-  // FS24: sidebar contact picker calls this immediately after a successful
+  // Sidebar contact picker calls this immediately after a successful
   // updateConversationContact API call. The timestamp is consumed by the
-  // recipients watchEffect (see comment in the FS24 block above).
+  // recipients watchEffect (see comment above).
   function markContactChanged () {
     lastContactChangeAt.value = Date.now()
   }
@@ -875,15 +873,49 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  async function upsertTags (v) {
+  // PR #286: tag mutation now takes an explicit action (add/set/remove) so
+  // the same store method drives both the sidebar tag picker (set) and the
+  // bulk-action toolbar (add/remove on N conversations). `applyTagsLocally`
+  // patches the in-memory conversation row + the open conversation
+  // optimistically so the UI updates without a refetch.
+  function applyTagsLocally (uuid, action, tags) {
+    const targets = []
+    const listConv = conversations.data?.find((c) => c.uuid === uuid)
+    if (listConv) targets.push(listConv)
+    if (conversation.data?.uuid === uuid) targets.push(conversation.data)
+
+    for (const conv of targets) {
+      if (!Array.isArray(conv.tags)) conv.tags = []
+      if (action === TAG_ACTION.ADD) {
+        for (const t of tags) {
+          if (!conv.tags.includes(t)) conv.tags.push(t)
+        }
+      } else if (action === TAG_ACTION.SET) {
+        conv.tags = [...tags]
+      } else if (action === TAG_ACTION.REMOVE) {
+        conv.tags = conv.tags.filter((t) => !tags.includes(t))
+      }
+    }
+  }
+
+  async function updateConversationTags (uuid, action, tags) {
     try {
-      await api.upsertTags(conversation.data.uuid, v)
+      await api.upsertTags(uuid, { action, tags })
+      applyTagsLocally(uuid, action, tags)
     } catch (error) {
       emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
         variant: 'destructive',
         description: handleHTTPError(error).message
       })
+      throw error
     }
+  }
+
+  // Back-compat wrapper for callers still using the old (sidebar) shape.
+  // `v` was the new full tag array. Delegates to the action-aware path so
+  // the optimistic update + error toast behaviour stays consistent.
+  async function upsertTags (v) {
+    return updateConversationTags(conversation.data.uuid, TAG_ACTION.SET, v)
   }
 
   async function updateAssignee (type, v) {
@@ -1336,6 +1368,7 @@ export const useConversationStore = defineStore('conversation', () => {
     fetchConversationsList,
     fetchMessages,
     upsertTags,
+    updateConversationTags,
     updateAssignee,
     updatePriority,
     updateStatus,

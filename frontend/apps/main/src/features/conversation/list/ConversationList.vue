@@ -6,137 +6,11 @@
       <span class="text-xl font-semibold">{{ title }}</span>
     </div>
 
-    <!-- Bulk Action Toolbar (when items selected) -->
-    <div
-      v-if="hasSelection"
-      role="toolbar"
-      :aria-label="t('conversation.bulkActions.toolbar')"
-      class="p-2 flex items-center gap-1 border-b bg-muted/30"
-    >
-      <Checkbox
-        :checked="conversationStore.allSelected"
-        @update:checked="toggleSelectAll"
-        :aria-label="t('conversation.bulkActions.selectAll')"
-        class="ml-1 mr-1"
-      />
-      <span class="text-xs font-medium whitespace-nowrap mr-1" aria-live="polite">
-        {{ t('conversation.bulkActions.selected', conversationStore.selectedCount, { count: conversationStore.selectedCount }) }}
-      </span>
+    <!-- Bulk Action Toolbar (when items selected) — extracted into its own
+         component as part of the PR #286 merge so the bulk-action surface
+         is reusable + permission-gated by a single composable. -->
+    <ConversationBulkActionToolbar v-if="hasSelection && canBulkAct" class="border-b" />
 
-      <!-- Assign dropdown -->
-      <DropdownMenu v-if="canAssignAgent || canAssignTeam">
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" class="h-7 text-xs" :disabled="bulkLoading">
-            {{ t('conversation.bulkActions.assign') }}
-            <ChevronDown class="w-3 h-3 ml-1 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent class="max-h-60 overflow-y-auto">
-          <template v-if="canAssignAgent">
-            <DropdownMenuLabel class="text-xs text-muted-foreground">
-              {{ t('globals.terms.agent', 2) }}
-            </DropdownMenuLabel>
-            <DropdownMenuItem
-              v-for="agent in usersStore.options"
-              :key="'agent-' + agent.value"
-              @click="bulkAssignAgent(agent.value)"
-            >
-              {{ agent.label }}
-            </DropdownMenuItem>
-          </template>
-          <DropdownMenuSeparator v-if="canAssignAgent && canAssignTeam" />
-          <template v-if="canAssignTeam">
-            <DropdownMenuLabel class="text-xs text-muted-foreground">
-              {{ t('globals.terms.team', 2) }}
-            </DropdownMenuLabel>
-            <DropdownMenuItem
-              v-for="team in teamsStore.options"
-              :key="'team-' + team.value"
-              @click="bulkAssignTeam(team.value)"
-            >
-              {{ team.label }}
-            </DropdownMenuItem>
-          </template>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <!-- Status dropdown -->
-      <DropdownMenu v-if="canUpdateStatus">
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" class="h-7 text-xs" :disabled="bulkLoading">
-            {{ t('globals.terms.status', 1) }}
-            <ChevronDown class="w-3 h-3 ml-1 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem
-            v-for="status in conversationStore.statusOptionsNoSnooze"
-            :key="status.value"
-            @click="bulkUpdateStatus(status.label)"
-          >
-            {{ status.label }}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <!-- Priority dropdown -->
-      <DropdownMenu v-if="canUpdatePriority">
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" class="h-7 text-xs" :disabled="bulkLoading">
-            {{ t('globals.terms.priority', 1) }}
-            <ChevronDown class="w-3 h-3 ml-1 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem
-            v-for="priority in conversationStore.priorityOptions"
-            :key="priority.value"
-            @click="bulkUpdatePriority(priority.label)"
-          >
-            {{ priority.label }}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button
-        v-if="route.params.type !== 'trash' && route.params.type !== 'spam'"
-        variant="outline"
-        size="sm"
-        class="h-7 text-xs"
-        :disabled="bulkLoading"
-        @click="bulkMoveToTrash"
-      >
-        <Trash2 class="w-3 h-3 mr-1" />
-        {{ t('conversation.trash') }}
-      </Button>
-
-      <!-- Permanent delete (FS13): only in the trash view. Opens an AlertDialog
-           so the agent has to actively confirm the destructive action, which
-           drops the rows out of the database with no recovery path. -->
-      <Button
-        v-if="route.params.type === 'trash'"
-        variant="destructive"
-        size="sm"
-        class="h-7 text-xs"
-        :disabled="bulkLoading"
-        @click="deleteConfirmOpen = true"
-      >
-        <Trash2 class="w-3 h-3 mr-1" />
-        {{ t('conversation.bulkActions.deletePermanently') }}
-      </Button>
-
-      <Loader2 v-if="bulkLoading" class="w-4 h-4 animate-spin text-muted-foreground ml-2" />
-
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-7 text-xs ml-auto"
-        :aria-label="t('conversation.bulkActions.clearSelection')"
-        @click="conversationStore.clearSelection()"
-      >
-        <X class="w-3 h-3" />
-      </Button>
-    </div>
 
     <!-- Filters (hidden when bulk selecting) -->
     <div v-else class="p-2 flex flex-wrap items-center gap-1.5">
@@ -438,6 +312,10 @@ import ConversationFilterPanel from '@/features/conversation/list/ConversationFi
 import ConversationListItem from '@/features/conversation/list/ConversationListItem.vue'
 import ConversationListItemSkeleton from '@/features/conversation/list/ConversationListItemSkeleton.vue'
 import ConversationTableView from '@/features/conversation/list/ConversationTableView.vue'
+import ConversationBulkActionToolbar from '@/features/conversation/list/ConversationBulkActionToolbar.vue'
+import { useBulkActionPermissions } from '@/composables/useBulkActionPermissions'
+
+const { canBulkAct } = useBulkActionPermissions()
 
 const conversationStore = useConversationStore()
 const usersStore = useUsersStore()
@@ -447,8 +325,6 @@ const route = useRoute()
 const { t } = useI18n()
 const toast = useToast()
 const { viewMode, setViewMode } = useViewMode()
-const bulkLoading = ref(false)
-const deleteConfirmOpen = ref(false)
 // FS23: state for the slide-out filter panel.
 const filterPanelOpen = ref(false)
 // Drives the @click="filterPanelOpen = true" trigger label state and gates
@@ -530,14 +406,6 @@ onMounted(() => {
 
 const hasSelection = computed(() => conversationStore.selectedCount > 0)
 
-const toggleSelectAll = () => {
-  if (conversationStore.allSelected) {
-    conversationStore.clearSelection()
-  } else {
-    conversationStore.selectAll()
-  }
-}
-
 const title = computed(() => {
   const typeKey = route.meta?.typeKey?.(route)
   if (typeKey) {
@@ -560,71 +428,10 @@ const loadNextPage = () => {
   conversationStore.fetchNextConversations()
 }
 
-// Bulk action helpers
-const runBulkAction = async (actionFn) => {
-  const uuids = [...conversationStore.selectedUUIDs]
-  bulkLoading.value = true
-  const results = await Promise.allSettled(uuids.map((uuid) => actionFn(uuid)))
-  bulkLoading.value = false
-
-  const successCount = results.filter((r) => r.status === 'fulfilled').length
-  const errorCount = results.length - successCount
-
-  if (errorCount > 0) {
-    const failures = results
-      .map((r, i) => ({ uuid: uuids[i], reason: r.reason }))
-      .filter((f) => f.reason)
-    if (failures.length) {
-      console.warn('Bulk action failures:', failures)
-    }
-  }
-
-  conversationStore.clearSelection()
-  conversationStore.fetchFirstPageConversations()
-
-  if (errorCount > 0) {
-    toast.error(t('conversation.bulkActions.failedToast', {
-      success: successCount,
-      failed: errorCount,
-      total: uuids.length
-    }))
-  } else {
-    toast.success(t('conversation.bulkActions.successToast', successCount, { count: successCount }))
-  }
-}
-
-const bulkAssignAgent = (agentId) => {
-  runBulkAction((uuid) => api.updateAssignee(uuid, 'user', { assignee_id: parseInt(agentId, 10) }))
-}
-
-const bulkAssignTeam = (teamId) => {
-  runBulkAction((uuid) => api.updateAssignee(uuid, 'team', { assignee_id: parseInt(teamId, 10) }))
-}
-
-const bulkUpdateStatus = (status) => {
-  runBulkAction((uuid) => api.updateConversationStatus(uuid, { status }))
-}
-
-const bulkUpdatePriority = (priority) => {
-  runBulkAction((uuid) => api.updateConversationPriority(uuid, { priority }))
-}
-
-const bulkMoveToTrash = () => {
-  runBulkAction((uuid) => api.moveToTrash(uuid))
-}
-
-// FS13: permanent delete from trash. runBulkAction's default refresh appends
-// page-1 results to the existing data array, so deleted UUIDs would linger in
-// the in-memory list (processConversationListResponse merges, it doesn't
-// prune). Reset the store first so the follow-up fetch repopulates from a
-// clean slate. Inlined per FS4 convention; v2 prefers call-site composition
-// over a store wrapper helper.
-const bulkDeletePermanently = async () => {
-  deleteConfirmOpen.value = false
-  await runBulkAction((uuid) => api.deleteConversationPermanently(uuid))
-  conversationStore.resetConversations()
-  await conversationStore.fetchFirstPageConversations()
-}
+// Bulk-action handlers (runBulkAction, bulkAssignAgent, bulkUpdateStatus,
+// bulkMoveToTrash, bulkDeletePermanently, etc.) moved to
+// ConversationBulkActionToolbar.vue as part of the PR #286 merge — the
+// toolbar component owns its own state and emits no events back here.
 
 const hasConversations = computed(() => conversationStore.conversationsList.length !== 0)
 const hasErrored = computed(() => !!conversationStore.conversations.errorMessage)
