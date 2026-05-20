@@ -569,6 +569,28 @@ const testEcommerceOrder = (orderNumber) =>
     timeout: 30000
   })
 
+// Per-inbox ecommerce config. The GET response has `inherited: true` when
+// the inbox has no per-inbox config and is showing the global fallback —
+// useful for the UI to render a "Using global settings" badge.
+//
+// PUT body: { type, base_url, client_id, client_secret, extra_config }.
+// type === "" clears the per-inbox config (falls back to global).
+// client_secret === "" on an existing config preserves the stored value
+// (same pattern as SMTP/IMAP password masking).
+const getInboxEcommerce = (inboxID) =>
+  http.get(`/api/v1/inboxes/${inboxID}/ecommerce`)
+const updateInboxEcommerce = (inboxID, data) =>
+  http.put(`/api/v1/inboxes/${inboxID}/ecommerce`, data, {
+    headers: { 'Content-Type': 'application/json' }
+  })
+const deleteInboxEcommerce = (inboxID) =>
+  http.delete(`/api/v1/inboxes/${inboxID}/ecommerce`)
+const testInboxEcommerce = (inboxID, data) =>
+  http.post(`/api/v1/inboxes/${inboxID}/ecommerce/test`, data, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000
+  })
+
 // T3a RAG knowledge sources + generate-response endpoint.
 const getRAGSources = () => http.get('/api/v1/rag/sources')
 const getRAGSource = (id) => http.get(`/api/v1/rag/sources/${id}`)
@@ -770,6 +792,10 @@ export default {
   testEcommerceConnection,
   testEcommerceCustomer,
   testEcommerceOrder,
+  getInboxEcommerce,
+  updateInboxEcommerce,
+  deleteInboxEcommerce,
+  testInboxEcommerce,
   createAutomationRule,
   toggleAutomationRule,
   deleteAutomationRule,

@@ -81,5 +81,32 @@ export const createFormSchema = (t) => z.object({
     tls_skip_verify: z.boolean().optional(),
     hello_hostname: z.string().optional(),
     auth_protocol: z.enum(['login', 'cram', 'plain', 'none'])
-  })
+  }),
+  // Per-inbox ecommerce provider config. Falls back to the global settings
+  // when omitted or when ecommerce.type is empty. Saved through the
+  // standard inbox-update path; the backend's inbox.Update() preserves
+  // client_secret when blank (same pattern as IMAP/SMTP passwords).
+  // type === "" or undefined means "inherit from global ecommerce settings".
+  ecommerce: z
+    .object({
+      type: z.enum(['', 'magento1', 'magento2', 'shopify', 'woocommerce']).optional(),
+      base_url: z.string().optional(),
+      client_id: z.string().optional(),
+      client_secret: z.string().optional(),
+      extra_config: z.record(z.string()).optional()
+    })
+    .optional()
+    .superRefine((val, ctx) => {
+      // If a provider type is chosen, base_url is required. client_secret
+      // is intentionally NOT required at the schema level — when editing
+      // an existing inbox the form sends "" for secret to signal "keep
+      // the existing one" (matching the SMTP/IMAP password pattern).
+      if (val?.type && !val.base_url) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['base_url'],
+          message: t('validation.requiredWhenEcommerceProviderSelected')
+        })
+      }
+    })
 })

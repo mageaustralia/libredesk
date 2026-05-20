@@ -771,6 +771,122 @@
       </FormField>
     </div>
 
+    <!-- Per-inbox Ecommerce Section. Lets a multi-store deployment route
+         each inbox to its own provider (Tennis Warehouse → Maho, Spinfire
+         → WooCommerce, etc.). Defaults to "Inherit from global settings";
+         only fires the per-inbox path when an explicit provider is chosen.
+         All Pro providers are greyed out + license-tagged in the CE
+         build (config.app.ecommerce_providers drives the available list). -->
+    <div class="border-t pt-6 mt-6 space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-semibold">{{ $t('admin.inbox.ecommerce.title') }}</h3>
+          <p class="text-sm text-muted-foreground mt-1">
+            {{ $t('admin.inbox.ecommerce.description') }}
+          </p>
+        </div>
+        <Badge v-if="ecommerceInherited" variant="outline">
+          {{ $t('admin.inbox.ecommerce.usingGlobal') }}
+        </Badge>
+      </div>
+
+      <FormField v-slot="{ componentField }" name="ecommerce.type">
+        <FormItem>
+          <FormLabel>{{ $t('admin.inbox.ecommerce.provider') }}</FormLabel>
+          <FormControl>
+            <Select v-bind="componentField">
+              <SelectTrigger>
+                <SelectValue :placeholder="$t('admin.inbox.ecommerce.inheritGlobal')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">
+                  {{ $t('admin.inbox.ecommerce.inheritGlobal') }}
+                </SelectItem>
+                <SelectItem
+                  v-for="opt in ecommerceProviderOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                  :disabled="!opt.available"
+                >
+                  {{ opt.label }}
+                  <span v-if="!opt.available" class="ml-2 text-xs text-muted-foreground">
+                    ({{ $t('admin.inbox.ecommerce.proRequired') }})
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </FormControl>
+          <FormDescription>
+            {{ $t('admin.inbox.ecommerce.providerDescription') }}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+
+      <div v-if="selectedEcommerceType" class="space-y-4">
+        <FormField v-slot="{ componentField }" name="ecommerce.base_url">
+          <FormItem>
+            <FormLabel>{{ $t('admin.inbox.ecommerce.baseUrl') }}</FormLabel>
+            <FormControl>
+              <Input type="url" :placeholder="ecommerceBaseUrlPlaceholder" v-bind="componentField" />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        </FormField>
+
+        <FormField v-slot="{ componentField }" name="ecommerce.client_id">
+          <FormItem>
+            <FormLabel>{{ ecommerceClientIDLabel }}</FormLabel>
+            <FormControl>
+              <Input type="text" v-bind="componentField" />
+            </FormControl>
+            <FormDescription>
+              {{ ecommerceClientIDDescription }}
+            </FormDescription>
+          </FormItem>
+        </FormField>
+
+        <FormField v-slot="{ componentField }" name="ecommerce.client_secret">
+          <FormItem>
+            <FormLabel>{{ ecommerceClientSecretLabel }}</FormLabel>
+            <FormControl>
+              <Input
+                type="password"
+                :placeholder="ecommerceSecretSet ? '••••••••' : ''"
+                v-bind="componentField"
+              />
+            </FormControl>
+            <FormDescription>
+              {{ ecommerceSecretSet
+                ? $t('admin.inbox.ecommerce.secretPreserve')
+                : $t('admin.inbox.ecommerce.secretRequired') }}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        </FormField>
+
+        <div class="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="ecommerceTestBusy"
+            @click="testEcommerceConnection"
+          >
+            <Loader2 v-if="ecommerceTestBusy" class="w-4 h-4 mr-1 animate-spin" />
+            {{ $t('admin.inbox.ecommerce.testConnection') }}
+          </Button>
+          <span
+            v-if="ecommerceTestResult"
+            :class="ecommerceTestResult.ok ? 'text-emerald-600' : 'text-destructive'"
+            class="text-sm"
+          >
+            {{ ecommerceTestResult.message }}
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- Test Connection Section -->
     <div v-show="setupMethod === 'manual' || isOAuthInbox" class="border-t pt-6 mt-6 space-y-6">
       <h3 class="text-base font-semibold">{{ $t('admin.inbox.testConnection') }}</h3>
@@ -966,6 +1082,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@shared-ui/components/ui/select/index.js'
+import { Badge } from '@shared-ui/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -1281,5 +1398,151 @@ watch(
     form.setValues(newValues)
   },
   { deep: true, immediate: true }
+)
+
+// ─── Per-inbox Ecommerce config ─────────────────────────────────────────────
+//
+// Wires the Ecommerce section above to the form's `ecommerce.*` fields,
+// the /api/v1/config edition flags, and the dedicated test endpoint at
+// /api/v1/inboxes/{id}/ecommerce/test. The main save still goes through
+// the regular inbox update (the backend's inbox.Update() preserves
+// ecommerce.client_secret when blank, same as IMAP/SMTP).
+
+// availableEcommerceProviders comes from /api/v1/config (app.ecommerce_providers).
+// In a CE binary this is just ["magento1"]; in a Pro binary, all four.
+// We DERIVE the dropdown from this list so adding a fifth provider in
+// future doesn't require a frontend change.
+const availableEcommerceProviders = computed(() => {
+  const list = appSettingsStore.settings['app.ecommerce_providers']
+  return Array.isArray(list) ? list : ['magento1']
+})
+
+// All known providers, with availability flag derived from
+// availableEcommerceProviders. Unavailable ones still show in the
+// dropdown but are disabled + tagged "(Pro required)" — better UX than
+// hiding them entirely (admin sees the upgrade path).
+const ALL_ECOMMERCE_PROVIDERS = [
+  { value: 'magento1',    label: 'Magento 1 / Maho' },
+  { value: 'magento2',    label: 'Magento 2 / Adobe Commerce' },
+  { value: 'shopify',     label: 'Shopify' },
+  { value: 'woocommerce', label: 'WooCommerce' }
+]
+const ecommerceProviderOptions = computed(() =>
+  ALL_ECOMMERCE_PROVIDERS.map((p) => ({
+    ...p,
+    available: availableEcommerceProviders.value.includes(p.value)
+  }))
+)
+
+// Reactive view of the currently-selected provider type. Drives
+// visibility of the rest of the ecommerce fields + the per-provider
+// label overrides below.
+const selectedEcommerceType = computed(() => form.values.ecommerce?.type || '')
+
+// True when the inbox has no per-inbox config — i.e. it inherits the
+// global ecommerce settings. Shown as a badge so admins know whether
+// they're editing inbox-specific creds or about to override global.
+const ecommerceInherited = computed(() => !selectedEcommerceType.value)
+
+// True if the backend reported a saved client_secret for this inbox
+// (from /api/v1/inboxes/{id}/ecommerce GET's client_secret_set field).
+// Used to switch the secret input's placeholder/description so admins
+// know they can leave it blank to preserve the existing value.
+const ecommerceSecretSet = ref(false)
+
+// Per-provider field-label overrides. Each platform calls its
+// equivalents different things — keep the form copy honest so admins
+// who know their platform recognise the labels.
+const ecommerceClientIDLabel = computed(() => {
+  switch (selectedEcommerceType.value) {
+    case 'woocommerce': return t('admin.inbox.ecommerce.consumerKey')
+    case 'shopify':     return t('admin.inbox.ecommerce.clientIdOptional')
+    case 'magento2':    return t('admin.inbox.ecommerce.clientIdOptional')
+    default:            return t('admin.inbox.ecommerce.clientId')
+  }
+})
+const ecommerceClientSecretLabel = computed(() => {
+  switch (selectedEcommerceType.value) {
+    case 'woocommerce': return t('admin.inbox.ecommerce.consumerSecret')
+    case 'shopify':     return t('admin.inbox.ecommerce.accessToken')
+    case 'magento2':    return t('admin.inbox.ecommerce.integrationToken')
+    default:            return t('admin.inbox.ecommerce.clientSecret')
+  }
+})
+const ecommerceClientIDDescription = computed(() => {
+  switch (selectedEcommerceType.value) {
+    case 'shopify':     return t('admin.inbox.ecommerce.clientIdUnusedShopify')
+    case 'magento2':    return t('admin.inbox.ecommerce.clientIdUnusedMagento2')
+    default:            return ''
+  }
+})
+const ecommerceBaseUrlPlaceholder = computed(() => {
+  switch (selectedEcommerceType.value) {
+    case 'shopify':     return 'myshop.myshopify.com'
+    case 'woocommerce': return 'https://shop.example.com'
+    case 'magento1':
+    case 'magento2':    return 'https://store.example.com'
+    default:            return ''
+  }
+})
+
+// Test-connection state. Hits the dedicated endpoint with the CURRENT
+// form values (so admins can validate creds before save). client_secret
+// empty + ecommerceSecretSet true means "test with the persisted secret"
+// — backend handles that fallback.
+const ecommerceTestBusy = ref(false)
+const ecommerceTestResult = ref(null)
+
+const testEcommerceConnection = async () => {
+  ecommerceTestBusy.value = true
+  ecommerceTestResult.value = null
+  try {
+    const inboxID = props.initialValues?.id
+    if (!inboxID) {
+      // New inbox — there's no inbox ID yet so we can't hit the
+      // per-inbox test endpoint. Tell the admin to save first.
+      ecommerceTestResult.value = {
+        ok: false,
+        message: t('admin.inbox.ecommerce.saveFirstToTest')
+      }
+      return
+    }
+    const ec = form.values.ecommerce || {}
+    await api.testInboxEcommerce(inboxID, {
+      type: ec.type,
+      base_url: ec.base_url,
+      client_id: ec.client_id,
+      client_secret: ec.client_secret,
+      extra_config: ec.extra_config
+    })
+    ecommerceTestResult.value = { ok: true, message: t('admin.inbox.ecommerce.testOk') }
+  } catch (err) {
+    ecommerceTestResult.value = {
+      ok: false,
+      message: handleHTTPError(err).message
+    }
+  } finally {
+    ecommerceTestBusy.value = false
+  }
+}
+
+// On every initialValues swap (i.e. when editing a different inbox or
+// the parent loaded fresh data), fetch the current ecommerce config so
+// we know whether a secret is set. The form values themselves come from
+// props.initialValues; this fetch is purely for the
+// "ecommerceSecretSet" display flag.
+watch(
+  () => props.initialValues?.id,
+  async (inboxID) => {
+    ecommerceSecretSet.value = false
+    if (!inboxID) return
+    try {
+      const resp = await api.getInboxEcommerce(inboxID)
+      ecommerceSecretSet.value = !!resp?.data?.data?.client_secret_set
+    } catch {
+      // Endpoint failure is non-fatal — placeholder defaults to empty.
+    }
+  },
+  { immediate: true }
 )
 </script>
