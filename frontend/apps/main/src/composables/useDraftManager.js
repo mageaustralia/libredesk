@@ -5,6 +5,22 @@ import { MACRO_CONTEXT } from '@main/constants/conversation'
 import { getTextFromHTML } from '@shared-ui/utils/string.js'
 import api from '@main/api'
 
+// Draft meta contract — kept in lockstep with the backend
+// (internal/conversation/drafts.go). The backend treats meta as opaque
+// JSON; the shape is owned by THIS file. If you add or rename a field,
+// update the matching doc block in drafts.go AND the
+// validateMacroActions / validateAttachments helpers below so a
+// malformed draft loaded from another client doesn't blow up the editor.
+//
+// {
+//   attachments:   [{ id, size, uuid, filename, content_type }, ...],     // optional
+//   macro_actions: [{ type, value: [...], display_value: [...] }, ...],   // optional
+// }
+//
+// Empty/missing meta is fine — the draft is just text. isDraftEmpty
+// below treats a draft with no text AND no attachments AND no
+// macro_actions as deletable.
+
 /**
  * Validate macro actions have required structure
  */

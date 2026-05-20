@@ -9,6 +9,25 @@ import (
 	"github.com/abhinavxd/libredesk/internal/envelope"
 )
 
+// Draft meta contract — kept in lockstep with the frontend's expectations.
+//
+// The `meta` column on conversation_drafts is opaque JSON to this package
+// (we just round-trip it as a raw message), but BOTH the frontend
+// (frontend/apps/main/src/composables/useDraftManager.js) AND any
+// post-send handlers that hydrate a draft into a real message need to
+// agree on the shape. If you add or rename a field here, update the
+// useDraftManager.js companion doc AND the validateMacroActions /
+// validateAttachments / isDraftEmpty helpers in that file.
+//
+//	{
+//	  "attachments":   [{ id, size, uuid, filename, content_type }, ...],  // optional
+//	  "macro_actions": [{ type, value: [...], display_value: [...] }, ...], // optional
+//	}
+//
+// Both fields are optional. An empty/missing meta is fine — it means
+// the draft is text-only. isDraftEmpty (frontend) treats a draft with no
+// text AND no attachments AND no macro_actions as deletable.
+
 // UpsertConversationDraft saves or updates a draft for a conversation.
 // messageType is "reply" or "private_note"; callers without a preference
 // (older API consumers) pass "" and we default to "reply" for back-compat.
