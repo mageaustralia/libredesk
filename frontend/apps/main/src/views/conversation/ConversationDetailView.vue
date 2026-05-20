@@ -17,7 +17,7 @@
       <!-- Sidebar Panel (collapsible) -->
       <ResizablePanel
         ref="sidebarPanelRef"
-:default-size="panelSizes[1]"
+        :default-size="panelSizes[1]"
         :min-size="15"
         :max-size="40"
         :collapsible="true"

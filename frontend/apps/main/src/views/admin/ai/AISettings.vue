@@ -275,6 +275,17 @@
               </div>
             </div>
 
+            <!-- Global scope: no per-source filter exists at the
+                 global level — RAG always searches every configured
+                 knowledge source. Show a help block so admins aren't
+                 left wondering whether they're missing a control. -->
+            <div v-if="!isInboxScope" class="border-t pt-4 mt-2 space-y-1">
+              <Label class="text-sm">Knowledge Sources</Label>
+              <p class="text-xs text-muted-foreground">
+                RAG searches <strong>all</strong> configured knowledge sources at the global level. To restrict a specific inbox to a subset of sources, switch the scope dropdown above to that inbox.
+              </p>
+            </div>
+
             <!-- T3h: per-inbox knowledge source filter. Only visible
                  when an inbox is selected; drives the RAG search
                  source_id = ANY filter on the backend. Empty selection
@@ -352,7 +363,7 @@
                   id="ai-external-search-endpoints"
                   v-model="externalSearchEndpoints"
                   rows="4"
-                  :placeholder="t('admin.ai.externalSearch.endpointsPlaceholder')"
+                  placeholder='{"product": "/indexes/products/search", "category": "/indexes/categories/search", "faq": "/indexes/faqs/search"}'
                   class="font-mono text-sm"
                 />
                 <p class="text-xs text-muted-foreground">
@@ -366,7 +377,7 @@
                   id="ai-external-search-headers"
                   v-model="externalSearchHeaders"
                   rows="3"
-                  :placeholder="t('admin.ai.externalSearch.headersPlaceholder')"
+                  placeholder='{"Authorization": "Bearer ...", "User-Agent": "..."}'
                   class="font-mono text-sm"
                 />
                 <p class="text-xs text-muted-foreground">

@@ -387,7 +387,12 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	// of silently degrading the prompt.
 	var ecommerceContext string
 	var ecommerceWarnings []string
-	if req.IncludeEcommerce && req.ConversationID > 0 && app.ecommerce != nil && app.ecommerce.IsConfigured() {
+	// Per-inbox config: don't gate on IsConfigured (global) here — an
+	// inbox can have its own ecommerce config even when the global one
+	// is empty. gatherEcommerceContext resolves the inbox's config and
+	// degrades to ("", nil) when neither per-inbox nor global is set,
+	// so it's safe to call unconditionally here.
+	if req.IncludeEcommerce && req.ConversationID > 0 && app.ecommerce != nil {
 		ecommerceContext, ecommerceWarnings = app.gatherEcommerceContext(r.RequestCtx, req.ConversationID)
 	}
 
@@ -577,13 +582,22 @@ func (app *App) gatherEcommerceContext(ctx context.Context, conversationID int) 
 
 	app.lo.Info("ecommerce: gathering context", "conversation_id", conversationID, "email", customerEmail, "messages_scanned", len(messageTexts))
 
+	// Per-inbox ecommerce config: read the conversation's inbox row,
+	// extract the optional `ecommerce` block from its config JSONB. If
+	// present the manager uses those credentials; if absent it falls
+	// back to the global ecommerce settings. Lets multi-store
+	// deployments (e.g. Tennis Warehouse on Maho, Spinfire on
+	// WooCommerce) route each conversation's "+ Orders" lookup to the
+	// right platform without juggling global config.
+	inboxCfg := app.resolveInboxEcommerceConfig(conv.InboxID)
+
 	// maxOrders=5 matches v1.0.3 — 5 most-recent orders are enough to
 	// give the LLM a sense of the customer's history without bloating
 	// the prompt; per-order Stage 3 lookups bolt on full details for
 	// orders specifically referenced in the conversation.
-	eCtx, err := app.ecommerce.GatherFullContext(ctx, customerEmail, messageTexts, 5)
+	eCtx, err := app.ecommerce.GatherFullContextForInbox(ctx, conv.InboxID, inboxCfg, customerEmail, messageTexts, 5)
 	if err != nil {
-		app.lo.Warn("ecommerce: GatherFullContext failed", "email", customerEmail, "error", err)
+		app.lo.Warn("ecommerce: GatherFullContextForInbox failed", "email", customerEmail, "inbox_id", conv.InboxID, "error", err)
 		return "", nil
 	}
 
