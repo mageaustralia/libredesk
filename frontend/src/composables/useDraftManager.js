@@ -114,6 +114,17 @@ export function useDraftManager (key, uploadedFiles = null) {
     }
   }
 
+  // splitDraftKey unpacks the composite "${uuid}:${type}" produced by
+  // ReplyBox's currentDraftKey. Falls back gracefully for legacy keys
+  // that are just a uuid (treated as 'reply') so the manager keeps
+  // working during the rolling upgrade from pre-V1_0_7 deployments.
+  const splitDraftKey = (key) => {
+    if (!key) return { uuid: '', messageType: 'reply' }
+    const idx = key.indexOf(':')
+    if (idx < 0) return { uuid: key, messageType: 'reply' }
+    return { uuid: key.slice(0, idx), messageType: key.slice(idx + 1) || 'reply' }
+  }
+
   /**
    * Sync localStorage draft to backend
    */
@@ -122,15 +133,18 @@ export function useDraftManager (key, uploadedFiles = null) {
     const localDraft = getLocalDraft(draftKey)
     if (!localDraft) return
 
+    const { uuid, messageType } = splitDraftKey(draftKey)
     try {
       if (isDraftEmpty(localDraft)) {
-        // Empty draft - delete instead of save
-        await api.deleteDraft(draftKey)
+        // Empty draft - delete instead of save (scoped to THIS tab's type
+        // so the other tab's draft stays untouched).
+        await api.deleteDraft(uuid, messageType)
         conversationStore.removeDraft(draftKey)
       } else {
-        // Has content - save draft
-        await api.saveDraft(draftKey, localDraft)
-        conversationStore.setDraft(draftKey, localDraft)
+        // Has content - save with explicit message_type so the backend
+        // routes to the right per-tab slot.
+        await api.saveDraft(uuid, { ...localDraft, message_type: messageType })
+        conversationStore.setDraft(draftKey, { ...localDraft, message_type: messageType })
       }
       isDirty.value = false
     } catch (error) {
@@ -158,12 +172,13 @@ export function useDraftManager (key, uploadedFiles = null) {
     isLoading.value = true
     isDirty.value = false
     skipNextSave.value = true
+    const { uuid, messageType } = splitDraftKey(draftKey)
     try {
       // Check if there's an unsynced localStorage draft - sync it first
       const localDraft = getLocalDraft(draftKey)
       if (localDraft && !isDraftEmpty(localDraft)) {
-        await api.saveDraft(draftKey, localDraft)
-        conversationStore.setDraft(draftKey, localDraft)
+        await api.saveDraft(uuid, { ...localDraft, message_type: messageType })
+        conversationStore.setDraft(draftKey, { ...localDraft, message_type: messageType })
       }
       removeLocalDraft(draftKey)
 
@@ -177,9 +192,10 @@ export function useDraftManager (key, uploadedFiles = null) {
       const content = draft.content || ''
       const meta = draft.meta || {}
 
-      // Check if draft is empty - if so, delete it and return
+      // Check if draft is empty - if so, delete it (scoped to this type
+      // so the other tab's draft is preserved).
       if (isDraftEmpty({ content, meta })) {
-        await api.deleteDraft(draftKey)
+        await api.deleteDraft(uuid, messageType)
         conversationStore.removeDraft(draftKey)
         resetState()
         return
@@ -205,8 +221,9 @@ export function useDraftManager (key, uploadedFiles = null) {
   const clearDraft = async (draftKey) => {
     if (!draftKey) return
     removeLocalDraft(draftKey)
+    const { uuid, messageType } = splitDraftKey(draftKey)
     try {
-      await api.deleteDraft(draftKey)
+      await api.deleteDraft(uuid, messageType)
       conversationStore.removeDraft(draftKey)
       resetState()
     } catch (error) {
