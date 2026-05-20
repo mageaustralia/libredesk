@@ -336,17 +336,31 @@
 }
 
 // ER2: hide every quoted-thread wrapper email clients use, not just
-// blockquote. gmail_quote / gmail_attr wrap Gmail replies; divRplyFwdMsg is
-// Outlook's quoted-reply container. The [class*="gmail_quote"] and
-// [id*="divRplyFwdMsg"] variants catch the suffixed forms some clients
-// produce (gmail_quote_container, divRplyFwdMsg-1234, etc.).
+// blockquote. Each client signals its quoted region differently and the
+// pattern keeps growing — when a new client sneaks through with a quote
+// not collapsed under the "..." toggle, add its marker here rather than
+// in JS. Order matches upstream abhinavxd/libredesk for parity.
+//
+//   gmail_quote / gmail_attr               — Gmail replies
+//   [class*="gmail_quote"]                 — gmail_quote_container (Gmail forwards) + variants
+//   divRplyFwdMsg, [id*="divRplyFwdMsg"]   — Outlook desktop/web quoted-reply container
+//   [id$="_OLK_SRC_BODY_SECTION"]          — Outlook desktop reply wrapper + everything that follows
+//   [class*="_OutlookMessageHeader"]       — Outlook Mac / web quoted-reply header + everything that follows
+//   [class*="_yahoo_quoted"]               — Yahoo Mail
+//   .elementToProof                        — Hotmail / Outlook.com
 .hide-quoted-text {
   blockquote,
   .gmail_quote,
   .gmail_attr,
   [class*="gmail_quote"],
   #divRplyFwdMsg,
-  [id*="divRplyFwdMsg"] {
+  [id*="divRplyFwdMsg"],
+  [id$="_OLK_SRC_BODY_SECTION"],
+  [id$="_OLK_SRC_BODY_SECTION"] ~ *,
+  [class*="_OutlookMessageHeader"],
+  [class*="_OutlookMessageHeader"] ~ *,
+  [class*="_yahoo_quoted"],
+  .elementToProof {
     @apply hidden;
   }
 }
