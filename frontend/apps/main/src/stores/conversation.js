@@ -1277,6 +1277,14 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
+  // Drafts are keyed by a composite "${conversation_uuid}:${message_type}"
+  // (V2_2_20 onwards) so reply and private-note drafts coexist on the same
+  // conversation. useDraftManager composes the key; the store just stores
+  // whatever it's given.
+  function _draftKey (uuid, messageType) {
+    return `${uuid}:${messageType || 'reply'}`
+  }
+
   // Fetch all drafts for the current user
   async function fetchAllDrafts () {
     try {
@@ -1284,7 +1292,10 @@ export const useConversationStore = defineStore('conversation', () => {
       const newDrafts = new Map()
       if (resp.data?.data) {
         for (const draft of resp.data.data) {
-          newDrafts.set(draft.conversation_uuid, draft)
+          // Pre-V2_2_20 servers return drafts without message_type; treat
+          // those as 'reply' so legacy data lands under the right key.
+          const type = draft.message_type || 'reply'
+          newDrafts.set(_draftKey(draft.conversation_uuid, type), draft)
         }
       }
       drafts.value = newDrafts
@@ -1296,28 +1307,40 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  // Get draft for a specific conversation
-  function getDraft (uuid) {
-    return drafts.value.get(uuid)
+  // Get draft for a specific composite key. Accepts EITHER a pre-composed
+  // "${uuid}:${type}" string OR a bare uuid (defaults to reply) so legacy
+  // callers that only know the conversation can still query.
+  function getDraft (key) {
+    if (!key) return undefined
+    return drafts.value.get(key.includes(':') ? key : _draftKey(key))
   }
 
-  // Set draft for a specific conversation
-  function setDraft (uuid, draft) {
-    drafts.value.set(uuid, draft)
+  // Set draft. `key` is the composite "${uuid}:${type}".
+  function setDraft (key, draft) {
+    if (!key) return
+    drafts.value.set(key, draft)
     // Trigger reactivity
     drafts.value = new Map(drafts.value)
   }
 
-  // Remove draft for a specific conversation
-  function removeDraft (uuid) {
-    drafts.value.delete(uuid)
+  // Remove draft for a specific composite key.
+  function removeDraft (key) {
+    if (!key) return
+    drafts.value.delete(key)
     // Trigger reactivity
     drafts.value = new Map(drafts.value)
   }
 
-  // Check if a conversation has a draft
+  // Check if a conversation has ANY draft (either tab). Drives the
+  // "has draft" indicator on the conversation list; agents care that
+  // there's something pending, not which tab it's in.
   function hasDraft (uuid) {
-    return drafts.value.has(uuid)
+    if (!uuid) return false
+    const prefix = `${uuid}:`
+    for (const k of drafts.value.keys()) {
+      if (k.startsWith(prefix)) return true
+    }
+    return false
   }
 
 

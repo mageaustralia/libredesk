@@ -342,9 +342,11 @@ CREATE TABLE conversation_drafts (
     conversation_id BIGINT REFERENCES conversations(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     content TEXT NOT NULL,
-	meta JSONB DEFAULT '{}'::jsonb NOT NULL
+    meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+    -- Reply vs private-note drafts coexist per (conversation, user) — see V2_2_20.
+    message_type TEXT NOT NULL DEFAULT 'reply'
 );
-CREATE UNIQUE INDEX index_uniq_conversation_drafts_on_conversation_id_and_user_id ON conversation_drafts (conversation_id, user_id);
+CREATE UNIQUE INDEX index_uniq_conversation_drafts_on_conv_user_type ON conversation_drafts (conversation_id, user_id, message_type);
 
 DROP TABLE IF EXISTS macros CASCADE;
 CREATE TABLE macros (
