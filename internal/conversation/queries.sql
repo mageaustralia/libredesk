@@ -242,6 +242,7 @@ SELECT
     c.created_at,
     c.updated_at,
     c.uuid,
+    c.reference_number,
     c.subject,
     u.first_name AS "contact.first_name",
     u.last_name AS "contact.last_name",

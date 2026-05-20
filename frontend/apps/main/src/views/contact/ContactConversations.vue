@@ -27,11 +27,15 @@
             <Tooltip>
               <TooltipTrigger asChild>
                 <span class="font-medium text-sm truncate max-w-[400px]">
+                  <span
+                    v-if="conversation.reference_number"
+                    class="text-muted-foreground font-mono mr-1"
+                  >#{{ conversation.reference_number }}</span>
                   {{ conversation.subject }}
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {{ conversation.subject }}
+                <span v-if="conversation.reference_number">#{{ conversation.reference_number }} — </span>{{ conversation.subject }}
               </TooltipContent>
             </Tooltip>
             <span class="text-xs text-muted-foreground truncate max-w-[500px]">
