@@ -343,28 +343,30 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 		// unmarshals into them, mutates, and marshals back, so anything
 		// missing here is silently dropped on every save.
 		var currentCfg struct {
-			AuthType             string            `json:"auth_type"`
-			OAuth                map[string]string `json:"oauth"`
-			IMAP                 []map[string]any  `json:"imap"`
-			SMTP                 []map[string]any  `json:"smtp"`
-			ReplyTo              string            `json:"reply_to"`
-			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
-			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
-			Aliases              []string          `json:"aliases"`
-			SkipPCIScan          bool              `json:"skip_pci_scan"`
-			Signature            string            `json:"signature"`
+			AuthType             string                 `json:"auth_type"`
+			OAuth                map[string]string      `json:"oauth"`
+			IMAP                 []map[string]any       `json:"imap"`
+			SMTP                 []map[string]any       `json:"smtp"`
+			ReplyTo              string                 `json:"reply_to"`
+			EnablePlusAddressing bool                   `json:"enable_plus_addressing"`
+			AutoAssignOnReply    bool                   `json:"auto_assign_on_reply"`
+			Aliases              []string               `json:"aliases"`
+			SkipPCIScan          bool                   `json:"skip_pci_scan"`
+			Signature            string                 `json:"signature"`
+			Ecommerce            *imodels.EcommerceConfig `json:"ecommerce,omitempty"`
 		}
 		var updateCfg struct {
-			AuthType             string            `json:"auth_type"`
-			OAuth                map[string]string `json:"oauth"`
-			IMAP                 []map[string]any  `json:"imap"`
-			SMTP                 []map[string]any  `json:"smtp"`
-			ReplyTo              string            `json:"reply_to"`
-			EnablePlusAddressing bool              `json:"enable_plus_addressing"`
-			AutoAssignOnReply    bool              `json:"auto_assign_on_reply"`
-			Aliases              []string          `json:"aliases"`
-			SkipPCIScan          bool              `json:"skip_pci_scan"`
-			Signature            string            `json:"signature"`
+			AuthType             string                 `json:"auth_type"`
+			OAuth                map[string]string      `json:"oauth"`
+			IMAP                 []map[string]any       `json:"imap"`
+			SMTP                 []map[string]any       `json:"smtp"`
+			ReplyTo              string                 `json:"reply_to"`
+			EnablePlusAddressing bool                   `json:"enable_plus_addressing"`
+			AutoAssignOnReply    bool                   `json:"auto_assign_on_reply"`
+			Aliases              []string               `json:"aliases"`
+			SkipPCIScan          bool                   `json:"skip_pci_scan"`
+			Signature            string                 `json:"signature"`
+			Ecommerce            *imodels.EcommerceConfig `json:"ecommerce,omitempty"`
 		}
 
 		if err := json.Unmarshal(current.Config, &currentCfg); err != nil {
@@ -410,6 +412,17 @@ func (m *Manager) Update(id int, inbox imodels.Inbox) (imodels.Inbox, error) {
 				if updateCfg.OAuth[k] == "" {
 					updateCfg.OAuth[k] = v
 				}
+			}
+		}
+
+		// Preserve existing ecommerce client_secret if update has empty —
+		// matches the SMTP/IMAP password-preservation pattern above. The
+		// admin UI sends "" (or omits the field) when the agent didn't
+		// touch the secret; we keep the previously-encrypted value so
+		// editing other inbox settings doesn't blank out the integration.
+		if updateCfg.Ecommerce != nil && currentCfg.Ecommerce != nil {
+			if updateCfg.Ecommerce.ClientSecret == "" {
+				updateCfg.Ecommerce.ClientSecret = currentCfg.Ecommerce.ClientSecret
 			}
 		}
 

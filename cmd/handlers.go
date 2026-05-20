@@ -84,6 +84,16 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/ecommerce/test/customer", perm(handleTestEcommerceCustomerLookup, "general_settings:manage"))
 	g.GET("/api/v1/ecommerce/test/order", perm(handleTestEcommerceOrderLookup, "general_settings:manage"))
 
+	// Per-inbox ecommerce configuration. Lets multi-store deployments
+	// route each inbox's "+ Orders" lookup against its own ecommerce
+	// platform (e.g. Tennis Warehouse on Maho, Spinfire on WooCommerce).
+	// Falls back to the global settings above when an inbox has no
+	// per-inbox config. Spec: docs/superpowers/specs/2026-05-20-per-inbox-ecommerce.md
+	g.GET("/api/v1/inboxes/{id}/ecommerce", perm(handleGetInboxEcommerce, "inboxes:manage"))
+	g.PUT("/api/v1/inboxes/{id}/ecommerce", perm(handleUpdateInboxEcommerce, "inboxes:manage"))
+	g.DELETE("/api/v1/inboxes/{id}/ecommerce", perm(handleDeleteInboxEcommerce, "inboxes:manage"))
+	g.POST("/api/v1/inboxes/{id}/ecommerce/test", perm(handleTestInboxEcommerce, "inboxes:manage"))
+
 	// OpenID connect single sign-on.
 	g.GET("/api/v1/oidc", perm(handleGetAllOIDC, "oidc:manage"))
 	g.POST("/api/v1/oidc", perm(handleCreateOIDC, "oidc:manage"))

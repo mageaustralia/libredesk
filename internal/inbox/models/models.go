@@ -65,6 +65,33 @@ type Config struct {
 	// by the sender (e.g. "516240...529") — our scrubber otherwise still
 	// flags the plaintext expiry date and produces noisy false positives.
 	SkipPCIScan bool `json:"skip_pci_scan"`
+
+	// Ecommerce holds an optional per-inbox ecommerce provider config.
+	// When nil/zero, the inbox falls back to the global ecommerce
+	// settings (settings.ecommerce.*). When set, this inbox's "+ Orders"
+	// button and AI ecommerce context resolution use these credentials
+	// instead. Lets a multi-store shop (e.g. tenniswarehouse on Maho,
+	// spinfiresport on WooCommerce) drive each inbox against the correct
+	// platform without juggling global config.
+	//
+	// ClientSecret is encrypted at rest by the inbox config encryption
+	// layer in internal/inbox/inbox.go — same machinery that already
+	// encrypts SMTP/IMAP passwords.
+	Ecommerce *EcommerceConfig `json:"ecommerce,omitempty"`
+}
+
+// EcommerceConfig is the per-inbox ecommerce provider configuration.
+// Matches the shape of ecommerce.ProviderConfig but lives here to avoid
+// a circular import between internal/inbox and internal/ecommerce.
+type EcommerceConfig struct {
+	// Type is one of: "magento1", "magento2", "shopify", "woocommerce".
+	// Empty disables ecommerce for this inbox (acts the same as nil
+	// Ecommerce — falls back to global).
+	Type         string            `json:"type"`
+	BaseURL      string            `json:"base_url"`
+	ClientID     string            `json:"client_id"`
+	ClientSecret string            `json:"client_secret"`
+	ExtraConfig  map[string]string `json:"extra_config,omitempty"`
 }
 
 // OAuthConfig holds OAuth 2.0 authentication details.

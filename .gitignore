@@ -10,3 +10,7 @@ dist/
 .vscode/
 static/widget.min.js
 .worktrees
+Dockerfile.staging
+Dockerfile.staging.go-only
+config.local.toml
+docker-compose.local.yml
