@@ -251,18 +251,23 @@ import {
   SelectTrigger,
   SelectValue
 } from '@shared-ui/components/ui/select'
-import { handleHTTPError } from '@shared-ui/utils/http.js'
 import { ShoppingCart, CheckCircle, AlertCircle, RefreshCw } from 'lucide-vue-next'
 import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents'
+import { useAsyncAction } from '@/composables/useAsyncAction'
 import api from '@/api'
 
 const { t } = useI18n()
 const emitter = useEmitter()
 
-const isLoading = ref(true)
-const saving = ref(false)
-const testing = ref(false)
+// Each network action gets its own async-action instance — so e.g.
+// hitting Test while Save is still in flight doesn't share a spinner.
+const fetchAction = useAsyncAction()
+const saveAction = useAsyncAction({ defaultSuccessToast: t('globals.messages.savedSuccessfully') })
+const testAction = useAsyncAction({ defaultSuccessToast: t('admin.ecommerce.connectionSuccess') })
+const isLoading = fetchAction.isRunning
+const saving = saveAction.isRunning
+const testing = testAction.isRunning
 
 // Provider form state. providerType === '' / 'disabled' both mean "no
 // integration"; the explicit 'disabled' option exists so the Select
@@ -283,8 +288,10 @@ const testStatus = ref(null)
 // Lookup form state.
 const testEmail = ref('')
 const testOrderNumber = ref('')
-const testingCustomer = ref(false)
-const testingOrder = ref(false)
+const customerLookup = useAsyncAction()
+const orderLookup = useAsyncAction()
+const testingCustomer = customerLookup.isRunning
+const testingOrder = orderLookup.isRunning
 const customerResult = ref(null)
 const orderResult = ref(null)
 
@@ -370,8 +377,10 @@ onMounted(async () => {
 })
 
 async function fetchSettings() {
-  isLoading.value = true
-  try {
+  // 404/empty here is the normal state for a fresh install. silentOnError
+  // suppresses the destructive toast that would otherwise spook admins
+  // who land on Settings before configuring an integration.
+  await fetchAction.run(async () => {
     const res = await api.getEcommerceSettings()
     const data = res.data?.data
     if (data?.type) {
@@ -380,12 +389,7 @@ async function fetchSettings() {
       clientID.value = data.client_id || ''
       hasConfig.value = true
     }
-  } catch (err) {
-    // Not configured yet — leave defaults. Don't toast: 404/empty here
-    // is the normal state for a fresh install.
-  } finally {
-    isLoading.value = false
-  }
+  }, { silentOnError: true })
 }
 
 async function saveSettings() {
@@ -397,47 +401,32 @@ async function saveSettings() {
     showToast(t('admin.ecommerce.baseURLRequired'), 'destructive')
     return
   }
-  saving.value = true
-  try {
-    // 'disabled' is a UI-only sentinel that maps to an empty type on
-    // the backend (clears the integration).
-    const payloadType = providerType.value === 'disabled' ? '' : providerType.value
-    await api.updateEcommerceSettings({
-      type: payloadType,
-      base_url: baseURL.value,
-      client_id: clientID.value,
-      client_secret: clientSecret.value
-    })
-    showToast(t('globals.messages.savedSuccessfully'))
+  // 'disabled' is a UI-only sentinel that maps to an empty type on
+  // the backend (clears the integration).
+  const payloadType = providerType.value === 'disabled' ? '' : providerType.value
+  await saveAction.run(() => api.updateEcommerceSettings({
+    type: payloadType,
+    base_url: baseURL.value,
+    client_id: clientID.value,
+    client_secret: clientSecret.value
+  }))
+  if (!saveAction.error.value) {
     // Clear the secret input after save so it doesn't sit in the form.
     clientSecret.value = ''
     hasConfig.value = !!payloadType
     testStatus.value = null
-  } catch (err) {
-    showToast(handleHTTPError(err).message, 'destructive')
-  } finally {
-    saving.value = false
   }
 }
 
 async function testConnection() {
-  testing.value = true
   testStatus.value = null
-  try {
-    await api.testEcommerceConnection({
-      type: providerType.value,
-      base_url: baseURL.value,
-      client_id: clientID.value,
-      client_secret: clientSecret.value
-    })
-    showToast(t('admin.ecommerce.connectionSuccess'))
-    testStatus.value = 'success'
-  } catch (err) {
-    showToast(handleHTTPError(err).message, 'destructive')
-    testStatus.value = 'error'
-  } finally {
-    testing.value = false
-  }
+  await testAction.run(() => api.testEcommerceConnection({
+    type: providerType.value,
+    base_url: baseURL.value,
+    client_id: clientID.value,
+    client_secret: clientSecret.value
+  }))
+  testStatus.value = testAction.error.value ? 'error' : 'success'
 }
 
 function clearSettings() {
@@ -450,29 +439,15 @@ function clearSettings() {
 
 async function testCustomerLookup() {
   if (!testEmail.value) return
-  testingCustomer.value = true
   customerResult.value = null
-  try {
-    const resp = await api.testEcommerceCustomer(testEmail.value)
-    customerResult.value = resp.data?.data || {}
-  } catch (err) {
-    showToast(handleHTTPError(err).message, 'destructive')
-  } finally {
-    testingCustomer.value = false
-  }
+  const resp = await customerLookup.run(() => api.testEcommerceCustomer(testEmail.value))
+  if (resp) customerResult.value = resp.data?.data || {}
 }
 
 async function testOrderLookup() {
   if (!testOrderNumber.value) return
-  testingOrder.value = true
   orderResult.value = null
-  try {
-    const resp = await api.testEcommerceOrder(testOrderNumber.value)
-    orderResult.value = resp.data?.data || {}
-  } catch (err) {
-    showToast(handleHTTPError(err).message, 'destructive')
-  } finally {
-    testingOrder.value = false
-  }
+  const resp = await orderLookup.run(() => api.testEcommerceOrder(testOrderNumber.value))
+  if (resp) orderResult.value = resp.data?.data || {}
 }
 </script>
