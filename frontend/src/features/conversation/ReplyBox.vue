@@ -263,8 +263,24 @@ const {
   linkedModel: 'messages'
 })
 
-// Setup draft management composable
-const currentDraftKey = computed(() => conversationStore.current?.uuid || null)
+// Per-tab last-selected type. useStorage persists it across sessions so
+// returning to the app puts the editor back in whichever tab the agent
+// was last using. NB this is GLOBAL (one preference for all conversations) —
+// the per-conversation/per-tab DRAFT lookup is built on top via
+// currentDraftKey below, which composes uuid + messageType so reply and
+// private-note drafts can coexist.
+const messageType = useStorage('replyBoxMessageType', 'reply')
+
+// Setup draft management composable. Composite key "${uuid}:${type}"
+// keeps each tab's draft separate — switching tabs swaps to the
+// other tab's draft (or to a clean editor if none). Pre-V1_0_7 the key
+// was just the uuid which caused note↔reply content to leak between
+// tabs whenever both editors shared the same htmlContent ref.
+const currentDraftKey = computed(() =>
+  conversationStore.current?.uuid
+    ? `${conversationStore.current.uuid}:${messageType.value}`
+    : null
+)
 const {
   htmlContent,
   textContent,
@@ -280,7 +296,6 @@ const isOpenAIKeyUpdating = ref(false)
 const isEditorFullscreen = ref(false)
 const isSending = ref(false)
 const isGenerating = ref(false)
-const messageType = useStorage('replyBoxMessageType', 'reply')
 const to = ref('')
 const cc = ref('')
 const bcc = ref('')
