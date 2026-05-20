@@ -175,7 +175,7 @@
                 <span
                   class="w-2 h-2 rounded-full shrink-0"
                   :class="priorityDotClass(conversation.priority)"
-                />
+                ></span>
                 <span class="shrink-0">{{ conversation.priority || '—' }}</span>
                 <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
               </button>
@@ -190,7 +190,7 @@
                 <span
                   class="w-2 h-2 rounded-full mr-2"
                   :class="priorityDotClass(priority.label)"
-                />
+                ></span>
                 {{ priority.label }}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -199,7 +199,7 @@
             <span
               class="w-2 h-2 rounded-full shrink-0"
               :class="priorityDotClass(conversation.priority)"
-            />
+            ></span>
             <span class="text-xs text-muted-foreground truncate">
               {{ conversation.priority || '—' }}
             </span>

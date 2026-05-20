@@ -332,18 +332,23 @@ const handlePaste = (view, event) => {
 // What we strip:
 //  - The full `style` attribute on inline/block elements that have no
 //    legitimate need for it (<p>, <div>, <span>, <font>, headings,
-//    lists). Structural spacing comes from the tag itself.
+//    lists). Structural spacing comes from the tag itself, not inline
+//    styles.
 //  - The problematic CSS properties only (color, background*, font-*,
 //    text-shadow, opacity, filter) on elements where some styles ARE
 //    load-bearing (<img>, table elements) — leaves width/height/border
 //    /padding alone.
-//  - `class` attributes (usually Tailwind/etc. from the source app).
+//  - `class` attributes (usually Tailwind/etc. from the source app —
+//    won't apply in the recipient's email client anyway).
 //  - Legacy `color` and `bgcolor` HTML attributes.
-//  - `<font>` tags entirely (unwrapped to spans).
+//  - `<font>` tags entirely (unwrapped to spans — they're almost always
+//    smuggling color).
 //
-// What we keep: all structural tags (<p>, <div>, <br>, <ul>, <ol>, <li>,
-// <h1-6>, <strong>, <em>, <a>, <code>, <pre>, <blockquote>, tables, images),
-// spacing implied by block-level tags, href on links, src/alt on images.
+// What we keep:
+//  - All structural tags: <p>, <div>, <br>, <ul>, <ol>, <li>, <h1-6>,
+//    <strong>, <em>, <a>, <code>, <pre>, <blockquote>, tables, images.
+//  - Spacing implied by block-level tags.
+//  - `href` on links, `src`/`alt` on images, table structural attrs.
 const PROBLEMATIC_STYLE_PROPS = new Set([
   'color',
   'background',
@@ -361,6 +366,9 @@ const PROBLEMATIC_STYLE_PROPS = new Set([
   'caret-color'
 ])
 
+// Elements where some inline styles (width, height, border) are
+// legitimately useful — we surgically strip the problematic props and
+// keep the rest. Everywhere else, the entire style attribute is dropped.
 const PRESERVE_STYLE_ON = new Set([
   'IMG', 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD',
   'COLGROUP', 'COL'
@@ -381,6 +389,8 @@ const stripProblematicStyles = (styleAttr) => {
 const cleanPastedNode = (el, doc) => {
   if (!el || el.nodeType !== 1) return
 
+  // <font> is legacy and almost always smuggles a color attribute. Unwrap
+  // its children into a span and re-clean the span.
   if (el.tagName === 'FONT') {
     const span = doc.createElement('span')
     while (el.firstChild) span.appendChild(el.firstChild)
@@ -404,6 +414,8 @@ const cleanPastedNode = (el, doc) => {
     }
   }
 
+  // Recurse over a snapshot of children — cleanPastedNode may replace
+  // <font> elements mid-iteration.
   Array.from(el.children).forEach((child) => cleanPastedNode(child, doc))
 }
 
@@ -414,6 +426,8 @@ const transformPastedHTML = (html) => {
     cleanPastedNode(doc.body, doc)
     return doc.body.innerHTML
   } catch {
+    // Fallback: parsing failed for some reason. Better to paste the raw
+    // (potentially-styled) HTML than to drop the paste entirely.
     return html
   }
 }

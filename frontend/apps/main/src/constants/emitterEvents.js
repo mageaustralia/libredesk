@@ -24,5 +24,11 @@ export const EMITTER_EVENTS = {
     // the parent listener). Bypass via the global emitter bus — MenuBar emits these and ReplyBox
     // subscribes in onMounted. Root cause not isolated; keep the bypass until reproduced upstream.
     RAG_GENERATE: 'rag-generate',
-    RAG_GENERATE_WITH_ORDERS: 'rag-generate-with-orders'
+    RAG_GENERATE_WITH_ORDERS: 'rag-generate-with-orders',
+    // Loading-state signal. ReplyBox emits true when starting and false in
+    // the finally block; ReplyBoxMenuBar subscribes locally so the
+    // "Generating..." label + pulsing icon work even though the parent-
+    // prop chain for isGenerating has the same routing bug as the emit
+    // chain — see RAG_GENERATE comment above.
+    RAG_GENERATING: 'rag-generating'
 }

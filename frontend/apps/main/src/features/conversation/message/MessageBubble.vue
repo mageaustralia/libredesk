@@ -151,12 +151,15 @@
                 <p>{{ t('conversation.sentViaEmail') }}</p>
               </TooltipContent>
             </Tooltip>
-            <RotateCcw
-              size="10"
-              @click="retryMessage(message)"
-              class="cursor-pointer text-muted-foreground hover:text-foreground transition-colors duration-200"
+            <button
               v-if="showRetry"
-            />
+              type="button"
+              @click="retryMessage(message)"
+              class="inline-flex items-center gap-1 text-xs text-destructive hover:underline cursor-pointer transition-colors duration-200"
+            >
+              <RotateCcw :size="12" />
+              <span>{{ t('conversation.failedRetry') }}</span>
+            </button>
           </div>
 
           <!-- Edit/Delete actions for private notes (author only, hidden once deleted) -->

@@ -363,6 +363,27 @@ const fromOptions = computed(() => {
   return [...new Set(combined)]
 })
 
+// Auto-default selectedFrom to the first option (the inbox primary) when
+// options first become available or the conversation switches to a
+// different inbox. Without this, the <select v-model="selectedFrom">
+// shows blank because '' doesn't match any <option value="..."> and Vue
+// doesn't auto-pick the first. Empty selection still means "use primary"
+// on the wire — see the EC14 comment block above — but visually the
+// agent should see which address the reply is going from.
+watch(
+  fromOptions,
+  (opts) => {
+    if (!opts.length) {
+      selectedFrom.value = ''
+      return
+    }
+    if (!opts.includes(selectedFrom.value)) {
+      selectedFrom.value = opts[0]
+    }
+  },
+  { immediate: true }
+)
+
 /**
  * Fetches AI prompts from the server.
  */
@@ -476,6 +497,11 @@ const handleAiPromptSelected = async (key) => {
  */
 const handleGenerateResponse = async (includeEcommerce = false) => {
   isGenerating.value = true
+  // Mirror via the global emitter so ReplyBoxMenuBar's loading-state
+  // signal works even though the parent-prop chain for isGenerating
+  // has the same routing bug as the emit chain (see EMITTER_EVENTS
+  // for context).
+  emitter.emit(EMITTER_EVENTS.RAG_GENERATING, true)
   try {
     // Limit to bound prompt size — the backend also caps the
     // assembled customer_message to 6000 chars (T3f), but trimming
@@ -608,6 +634,7 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
     }
   } finally {
     isGenerating.value = false
+    emitter.emit(EMITTER_EVENTS.RAG_GENERATING, false)
   }
 }
 

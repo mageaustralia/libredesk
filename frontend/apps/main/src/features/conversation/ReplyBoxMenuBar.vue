@@ -116,12 +116,12 @@
         variant="outline"
         size="sm"
         class="h-8 px-3 text-xs"
-        :disabled="isGenerating"
+        :disabled="effectiveIsGenerating"
         :title="$t('replyBox.generateResponse')"
         @click="emitter.emit(EMITTER_EVENTS.RAG_GENERATE)"
       >
-        <Sparkles class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': isGenerating }" />
-        {{ isGenerating ? $t('replyBox.generating') : $t('replyBox.generateResponse') }}
+        <Sparkles class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': effectiveIsGenerating }" />
+        {{ effectiveIsGenerating ? $t('replyBox.generating') : $t('replyBox.generateResponse') }}
       </Button>
       <!--
         T3r "+ Orders" button. Only surfaces alongside the Generate
@@ -140,12 +140,12 @@
         variant="outline"
         size="sm"
         class="h-8 px-3 text-xs"
-        :disabled="isGenerating"
+        :disabled="effectiveIsGenerating"
         :title="$t('replyBox.generateWithOrders')"
         @click="emitter.emit(EMITTER_EVENTS.RAG_GENERATE_WITH_ORDERS)"
       >
-        <ShoppingCart class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': isGenerating }" />
-        {{ isGenerating ? $t('replyBox.generating') : $t('replyBox.plusOrders') }}
+        <ShoppingCart class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': effectiveIsGenerating }" />
+        {{ effectiveIsGenerating ? $t('replyBox.generating') : $t('replyBox.plusOrders') }}
       </Button>
     </div>
     <div class="flex items-center" v-if="showSendButton">
@@ -207,7 +207,7 @@
 </template>
 
 <script setup>
-import { ref, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@shared-ui/components/ui/button'
 import { Toggle } from '@shared-ui/components/ui/toggle'
@@ -238,6 +238,23 @@ import { useEmitter } from '@main/composables/useEmitter'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 
 const emitter = useEmitter()
+
+// T3a/T3r workaround #2: the parent-prop chain for `isGenerating` has the
+// same Vue routing bug as the emit chain (see EMITTER_EVENTS.RAG_GENERATE
+// comment). Track loading state locally via the same emitter bus so the
+// "Generating..." label + animate-pulse class on the Sparkles + ShoppingCart
+// icons actually render. Combined with the prop for compatibility (if the
+// prop chain ever starts working again, this stays correct).
+const isGeneratingLocal = ref(false)
+const handleRagGeneratingEvent = (active) => {
+  isGeneratingLocal.value = !!active
+}
+onMounted(() => {
+  emitter.on(EMITTER_EVENTS.RAG_GENERATING, handleRagGeneratingEvent)
+})
+onUnmounted(() => {
+  emitter.off(EMITTER_EVENTS.RAG_GENERATING, handleRagGeneratingEvent)
+})
 
 const EmojiPicker = defineAsyncComponent(async () => {
   const [mod] = await Promise.all([
@@ -319,6 +336,11 @@ const props = defineProps({
     default: false
   }
 })
+
+// Combined loading flag — prefer whichever signal arrived first. See
+// the isGeneratingLocal block at the top of the script for why the
+// emitter path exists alongside the prop.
+const effectiveIsGenerating = computed(() => props.isGenerating || isGeneratingLocal.value)
 
 onClickOutside(emojiPickerRef, () => {
   isEmojiPickerVisible.value = false
