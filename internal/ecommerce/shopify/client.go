@@ -285,20 +285,16 @@ func (sa *shopifyAddress) toEcommerce() *ecommerce.Address {
 	if sa == nil {
 		return nil
 	}
-	street := sa.Address1
-	if sa.Address2 != "" {
-		street += "\n" + sa.Address2
-	}
-	return &ecommerce.Address{
-		FirstName: sa.FirstName,
-		LastName:  sa.LastName,
-		Street:    street,
-		City:      sa.City,
-		Region:    sa.Province,
-		PostCode:  sa.Zip,
-		Country:   sa.Country,
-		Telephone: sa.Phone,
-	}
+	return ecommerce.NewAddress(ecommerce.AddressInput{
+		FirstName:   sa.FirstName,
+		LastName:    sa.LastName,
+		StreetLines: []string{sa.Address1, sa.Address2},
+		City:        sa.City,
+		Region:      sa.Province,
+		PostCode:    sa.Zip,
+		Country:     sa.Country,
+		Telephone:   sa.Phone,
+	})
 }
 
 func (so shopifyOrder) toEcommerce() ecommerce.Order {

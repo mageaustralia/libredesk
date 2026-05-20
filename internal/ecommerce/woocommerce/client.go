@@ -200,23 +200,16 @@ func parseFloat(s string) float64 {
 }
 
 func (wa wcAddress) toEcommerce() *ecommerce.Address {
-	if wa.FirstName == "" && wa.LastName == "" && wa.Address1 == "" {
-		return nil // empty address — return nil so consumers can render "no shipping address"
-	}
-	street := wa.Address1
-	if wa.Address2 != "" {
-		street += "\n" + wa.Address2
-	}
-	return &ecommerce.Address{
-		FirstName: wa.FirstName,
-		LastName:  wa.LastName,
-		Street:    street,
-		City:      wa.City,
-		Region:    wa.State,
-		PostCode:  wa.Postcode,
-		Country:   wa.Country,
-		Telephone: wa.Phone,
-	}
+	return ecommerce.NewAddress(ecommerce.AddressInput{
+		FirstName:   wa.FirstName,
+		LastName:    wa.LastName,
+		StreetLines: []string{wa.Address1, wa.Address2},
+		City:        wa.City,
+		Region:      wa.State,
+		PostCode:    wa.Postcode,
+		Country:     wa.Country,
+		Telephone:   wa.Phone,
+	})
 }
 
 func (wo wcOrder) toEcommerce() ecommerce.Order {

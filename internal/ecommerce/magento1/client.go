@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/ecommerce"
@@ -424,16 +423,19 @@ func (m *mahoOrder) toEcommerce() ecommerce.Order {
 }
 
 func convertAddress(a *mahoAddress) *ecommerce.Address {
-	return &ecommerce.Address{
-		FirstName: a.FirstName,
-		LastName:  a.LastName,
-		Street:    strings.Join(a.Street, ", "),
-		City:      a.City,
-		Region:    a.Region,
-		PostCode:  a.Postcode,
-		Country:   a.CountryID,
-		Telephone: a.Telephone,
+	if a == nil {
+		return nil
 	}
+	return ecommerce.NewAddress(ecommerce.AddressInput{
+		FirstName:   a.FirstName,
+		LastName:    a.LastName,
+		StreetLines: a.Street,
+		City:        a.City,
+		Region:      a.Region,
+		PostCode:    a.Postcode,
+		Country:     a.CountryID,
+		Telephone:   a.Telephone,
+	})
 }
 
 func parseTime(s string) time.Time {
