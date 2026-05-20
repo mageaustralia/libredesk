@@ -621,25 +621,31 @@ ORDER BY m.created_at DESC
 LIMIT 1;
 
 -- name: upsert-conversation-draft
-INSERT INTO conversation_drafts (conversation_id, user_id, content, meta, updated_at)
-VALUES ($1, $2, $3, $4, NOW())
-ON CONFLICT (conversation_id, user_id)
+-- Per-type unique key (conversation_id, user_id, message_type) — see V1_0_7.
+-- $5 = message_type ("reply" or "private_note").
+INSERT INTO conversation_drafts (conversation_id, user_id, content, meta, message_type, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW())
+ON CONFLICT (conversation_id, user_id, message_type)
 DO UPDATE SET content = EXCLUDED.content, meta = EXCLUDED.meta, updated_at = NOW()
 RETURNING *;
 
 -- name: get-all-user-drafts
-SELECT cd.id, cd.conversation_id, cd.user_id, cd.content, cd.meta, cd.created_at, cd.updated_at, c.uuid as conversation_uuid
+SELECT cd.id, cd.conversation_id, cd.user_id, cd.content, cd.meta,
+       cd.message_type, cd.created_at, cd.updated_at, c.uuid as conversation_uuid
 FROM conversation_drafts cd
 INNER JOIN conversations c ON cd.conversation_id = c.id
 WHERE cd.user_id = $1
 ORDER BY cd.updated_at DESC;
 
 -- name: delete-conversation-draft
+-- $4 = message_type ("reply" / "private_note") or NULL to drop both
+-- types on the conversation in one shot.
 DELETE FROM conversation_drafts
 WHERE conversation_id IN (
   SELECT id FROM conversations
   WHERE ($1 > 0 AND id = $1) OR ($2::uuid IS NOT NULL AND uuid = $2::uuid)
-) AND user_id = $3;
+) AND user_id = $3
+  AND ($4::text IS NULL OR message_type = $4::text);
 
 -- name: delete-stale-drafts
 DELETE FROM conversation_drafts
