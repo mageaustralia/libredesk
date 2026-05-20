@@ -445,6 +445,19 @@ func handleSendMessage(r *fastglue.Request) error {
 		sendTo = req.ForwardedTo
 	}
 
+	// EC1 status-after-send gating: stash the requested post-send status on
+	// the message meta so the send worker can apply it only after the SMTP
+	// send actually succeeds. The previous flow updated status synchronously
+	// here (before the message left the outgoing queue), which meant a
+	// "Send & Resolve" with a template/SMTP failure left the conversation
+	// marked Resolved even though the email never went out. Worker side:
+	// internal/conversation/message.go sendOutgoingMessage applies this after
+	// MessageStatusSent.
+	if req.SetStatus != "" {
+		meta["set_status_after_send"] = req.SetStatus
+		meta["set_status_actor_id"] = user.ID
+	}
+
 	message, err := app.conversation.QueueReply(media, conv.InboxID, user.ID, conv.ContactID, cuuid, req.Message, sendTo, req.CC, req.BCC, meta)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
@@ -459,32 +472,11 @@ func handleSendMessage(r *fastglue.Request) error {
 		}
 	}
 
-	// EC1: "Send & Set Status" dropdown. After the reply is queued,
-	// transition the conversation status in the same request so the agent
-	// gets a single-action send-and-resolve. Don't fail the response, since
-	// the reply itself landed and the agent can flip status manually — but
-	// log at Error (this is an unmet user-facing guarantee) and surface the
-	// error string back via the envelope so the frontend can toast a warning
-	// like "Reply sent, but couldn't set status to Resolved". Without this,
-	// "Send & Resolve" silently degrades to "Send" and the agent never knows.
-	var setStatusErr string
-	if req.SetStatus != "" {
-		if err := app.conversation.UpdateConversationStatus(cuuid, 0, req.SetStatus, "", user); err != nil {
-			app.lo.Error("failed to set status after send", "error", err, "conversation_uuid", cuuid, "set_status", req.SetStatus)
-			setStatusErr = err.Error()
-		}
-	}
-
-	if setStatusErr != "" {
-		// Inline the message fields plus a non-fatal set_status_error so
-		// existing consumers reading the message (e.g. echo replacement) still
-		// see what they expect — only the new field is additive.
-		return r.SendEnvelope(map[string]any{
-			"message":          message,
-			"set_status_error": setStatusErr,
-			"set_status":       req.SetStatus,
-		})
-	}
+	// Status-after-send transition is now deferred to the send worker
+	// (internal/conversation/message.go) so it only fires when the send
+	// actually succeeds. The frontend learns about the eventual status flip
+	// via the existing BroadcastConversationUpdate WebSocket message that
+	// UpdateConversationStatus emits.
 	return r.SendEnvelope(message)
 }
 

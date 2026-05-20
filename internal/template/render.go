@@ -73,7 +73,20 @@ func (m *Manager) RenderEmailWithTemplate(data any, content string) (string, err
 
 	contentTemplate, err := template.New(TmplContent).Funcs(m.funcMap).Parse(content)
 	if err != nil {
-		return "", fmt.Errorf("parsing content template: %w", err)
+		// Fallback: if the message body fails to parse as a Go template (rare —
+		// usually triggered by stray `{{`/`}}` in CSS or pasted snippets),
+		// retry with the content treated as a literal string. The agent loses
+		// any `{{ .Recipient.X }}` substitutions in this single message, which
+		// is a much smaller loss than the message failing to send at all and
+		// landing in the conversation with a red "Failed" border. Log so the
+		// failing content is observable.
+		m.lo.Warn("content template parse failed; falling back to literal content", "error", err)
+		safe := strings.ReplaceAll(content, "{{", "&#123;&#123;")
+		safe = strings.ReplaceAll(safe, "}}", "&#125;&#125;")
+		contentTemplate, err = template.New(TmplContent).Funcs(m.funcMap).Parse(safe)
+		if err != nil {
+			return "", fmt.Errorf("parsing content template (even after fallback): %w", err)
+		}
 	}
 
 	baseTemplate, err = baseTemplate.AddParseTree(TmplContent, contentTemplate.Tree)

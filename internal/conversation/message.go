@@ -165,6 +165,8 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 	// signature/template wraps the full body (thread included).
 	isForward := false
 	var fromOverride string
+	var setStatusAfterSend string
+	var setStatusActorID int
 	if len(message.Meta) > 0 {
 		var meta map[string]any
 		if err := json.Unmarshal(message.Meta, &meta); err != nil {
@@ -176,6 +178,13 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 			// Trusted: validated by validateInboxFromOverride at the API boundary.
 			if v, ok := meta["from"].(string); ok {
 				fromOverride = v
+			}
+			// EC1 status-after-send: applied below only on send success.
+			if v, ok := meta["set_status_after_send"].(string); ok {
+				setStatusAfterSend = v
+			}
+			if v, ok := meta["set_status_actor_id"].(float64); ok {
+				setStatusActorID = int(v)
 			}
 		}
 	}
@@ -197,9 +206,21 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 					senderName = pm.SenderEmail
 				}
 				dateStr := pm.CreatedAt.Format("Mon, Jan 2, 2006 at 3:04 PM")
+				// Sanitise `{{` and `}}` out of the prior message's content. These
+				// are Go text/template action delimiters; some email clients (em
+				// Client and others) embed literal `{{` / `}}` in CSS pseudo-element
+				// `content:` values (e.g. `._em_placeholder:before{content:'{{ ';}`)
+				// and our RenderMessageInTemplate call below would treat the run
+				// inside the braces as an action, failing with
+				// "malformed character constant". The quoted thread is never
+				// supposed to be template syntax, so the safe move is to
+				// HTML-entity-escape both delimiters before splicing into the
+				// outgoing content.
+				safeContent := strings.ReplaceAll(pm.Content, "{{", "&#123;&#123;")
+				safeContent = strings.ReplaceAll(safeContent, "}}", "&#125;&#125;")
 				quotedHTML.WriteString(fmt.Sprintf(
 					`<br><br><div class="gmail_attr" style="color:#666;font-size:12px;">On %s, %s &lt;%s&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">%s</blockquote>`,
-					dateStr, senderName, pm.SenderEmail, pm.Content))
+					dateStr, senderName, pm.SenderEmail, safeContent))
 			}
 			quotedHTML.WriteString(`</div>`)
 			message.Content += quotedHTML.String()
@@ -299,6 +320,21 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 
 	// Update status as sent.
 	m.UpdateMessageStatus(message.UUID, models.MessageStatusSent)
+
+	// EC1 status-after-send: the API handler stashed a desired conversation
+	// status on this message's meta when the agent used "Send & Resolve" /
+	// "Send & Close". Apply it now — after a successful send — so a failed
+	// SMTP delivery never leaves the conversation marked Resolved with no
+	// email actually delivered. Best-effort: a status-update failure here is
+	// logged but doesn't unwind the send.
+	if setStatusAfterSend != "" {
+		actor, aerr := m.userStore.GetAgent(setStatusActorID, "")
+		if aerr != nil {
+			m.lo.Error("EC1: could not fetch actor for deferred status change", "error", aerr, "actor_id", setStatusActorID, "message_id", message.ID)
+		} else if serr := m.UpdateConversationStatus(message.ConversationUUID, 0, setStatusAfterSend, "", actor); serr != nil {
+			m.lo.Error("EC1: deferred status update after send failed", "error", serr, "conversation_uuid", message.ConversationUUID, "status", setStatusAfterSend, "message_id", message.ID)
+		}
+	}
 
 	// Skip system user replies since we only update timestamps and SLA for human replies.
 	systemUser, err := m.userStore.GetSystemUser()
