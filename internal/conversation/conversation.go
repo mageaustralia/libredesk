@@ -18,6 +18,7 @@ import (
 
 	"github.com/abhinavxd/libredesk/internal/automation"
 	amodels "github.com/abhinavxd/libredesk/internal/automation/models"
+	authzmodels "github.com/abhinavxd/libredesk/internal/authz/models"
 	"github.com/abhinavxd/libredesk/internal/conversation/models"
 	pmodels "github.com/abhinavxd/libredesk/internal/conversation/priority/models"
 	smodels "github.com/abhinavxd/libredesk/internal/conversation/status/models"
@@ -153,6 +154,7 @@ type teamStore interface {
 type userStore interface {
 	Get(int, string, []string) (umodels.User, error)
 	GetAgent(int, string) (umodels.User, error)
+	GetAgentCachedOrLoad(int) (umodels.User, error)
 	GetSystemUser() (umodels.User, error)
 	CreateContact(user *umodels.User) error
 	UpgradeVisitorToContact(visitorID int) error
@@ -388,6 +390,10 @@ type queries struct {
 
 	// Broadcast queries.
 	GetActiveLivechatConversationsByAgent *sqlx.Stmt `query:"get-active-livechat-conversations-by-agent"`
+
+	// WS list-subscribe authz.
+	FilterAuthorizedListUUIDs     *sqlx.Stmt `query:"filter-authorized-list-uuids"`
+	GetConversationUUIDsByContact *sqlx.Stmt `query:"get-conversation-uuids-by-contact"`
 }
 
 // CreateConversation creates a new conversation. If maxConversations > 0, the insert is
@@ -429,6 +435,7 @@ func (c *Manager) CreateConversation(contactID, inboxID int, lastMessage string,
 		c.lo.Error("error inserting new conversation into the DB", "error", err)
 		return 0, "", err
 	}
+	c.BroadcastNewConversation(uuid)
 	return id, uuid, nil
 }
 
@@ -2549,4 +2556,32 @@ func (c *Manager) GetRecentActivities(page, pageSize int) ([]models.RecentActivi
 		total = activities[0].Total
 	}
 	return activities, total, nil
+}
+
+// FilterAuthorizedListUUIDs returns the subset of UUIDs the agent can read, mirroring the conversation read-permission chain.
+func (c *Manager) FilterAuthorizedListUUIDs(agentID int, uuids []string) ([]string, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	user, err := c.userStore.GetAgentCachedOrLoad(agentID)
+	if err != nil {
+		return nil, err
+	}
+	var authorized []string
+	err = c.q.FilterAuthorizedListUUIDs.Select(&authorized,
+		pq.Array(uuids),
+		user.ID,
+		pq.Array(user.Teams.IDs()),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsRead),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsReadAll),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsReadAssigned),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsReadTeamAll),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsReadTeamInbox),
+		slices.Contains(user.Permissions, authzmodels.PermConversationsReadUnassigned),
+	)
+	if err != nil {
+		c.lo.Error("error filtering authorized list uuids", "agent_id", agentID, "error", err)
+		return nil, err
+	}
+	return authorized, nil
 }

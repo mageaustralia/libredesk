@@ -102,7 +102,7 @@ func handleUpdateAgentAvailability(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("errors.parsingRequest"), nil, envelope.InputError)
 	}
 
-	agent, err := app.user.GetAgent(auser.ID, "")
+	agent, err := app.user.GetAgentCachedOrLoad(auser.ID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -130,7 +130,7 @@ func handleUpdateAgentAvailability(r *fastglue.Request) error {
 		}
 	}
 
-	agent, err = app.user.GetAgent(auser.ID, "")
+	agent, err = app.user.GetAgentCachedOrLoad(auser.ID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -167,7 +167,7 @@ func handleUpdateCurrentAgent(r *fastglue.Request) error {
 
 	// Upload avatar?
 	if ok && len(files) > 0 {
-		agent, err := app.user.GetAgent(auser.ID, "")
+		agent, err := app.user.GetAgentCachedOrLoad(auser.ID)
 		if err != nil {
 			return sendErrorEnvelope(r, err)
 		}
@@ -177,7 +177,7 @@ func handleUpdateCurrentAgent(r *fastglue.Request) error {
 	}
 
 	// Fetch updated agent and return.
-	agent, err := app.user.GetAgent(auser.ID, "")
+	agent, err := app.user.GetAgentCachedOrLoad(auser.ID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -346,7 +346,7 @@ func handleGetCurrentAgent(r *fastglue.Request) error {
 		app   = r.Context.(*App)
 		auser = r.RequestCtx.UserValue("user").(amodels.User)
 	)
-	u, err := app.user.GetAgent(auser.ID, "")
+	u, err := app.user.GetAgentCachedOrLoad(auser.ID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -361,7 +361,7 @@ func handleDeleteCurrentAgentAvatar(r *fastglue.Request) error {
 	)
 
 	// Get user
-	agent, err := app.user.GetAgent(auser.ID, "")
+	agent, err := app.user.GetAgentCachedOrLoad(auser.ID)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}

@@ -18,22 +18,31 @@ function getCSRFToken () {
   return ''
 }
 
-// Request interceptor.
+// Route-scoped abort, opt-in via { abortOnRoute: true }. Default no-abort protects in-flight saves.
+let routeAbort = new AbortController()
+export function abortRouteScope () {
+  routeAbort.abort()
+  routeAbort = new AbortController()
+}
+
 http.interceptors.request.use((request) => {
   const token = getCSRFToken()
   if (token) {
     request.headers['X-CSRFTOKEN'] = token
   }
 
-  // Set content type for POST/PUT requests if the content type is not set.
   if ((request.method === 'post' || request.method === 'put') && !request.headers['Content-Type']) {
     request.headers['Content-Type'] = 'application/json'
   }
-  
+
   if (request.headers['Content-Type'] === 'application/x-www-form-urlencoded') {
     request.data = qs.stringify(request.data)
   }
-  
+
+  if (request.abortOnRoute && request.signal === undefined) {
+    request.signal = routeAbort.signal
+  }
+
   return request
 })
 
@@ -357,14 +366,14 @@ const updatePrivateNote = (cuuid, uuid, content) =>
 const deletePrivateNote = (cuuid, uuid) =>
   http.delete(`/api/v1/conversations/${cuuid}/messages/${uuid}/note`)
 const getConversationMessages = (uuid, params) =>
-  http.get(`/api/v1/conversations/${uuid}/messages`, { params })
+  http.get(`/api/v1/conversations/${uuid}/messages`, { params, abortOnRoute: true })
 const sendMessage = (uuid, data) =>
   http.post(`/api/v1/conversations/${uuid}/messages`, data, {
     headers: {
       'Content-Type': 'application/json'
     }
   })
-const getConversation = (uuid) => http.get(`/api/v1/conversations/${uuid}`)
+const getConversation = (uuid) => http.get(`/api/v1/conversations/${uuid}`, { abortOnRoute: true })
 const getConversationParticipants = (uuid) => http.get(`/api/v1/conversations/${uuid}/participants`)
 // UX5: followers system. follow/unfollow are self-only; addConversationFollower/
 // removeConversationFollower target another agent. The latter pair return
@@ -398,17 +407,19 @@ const applyMacro = (uuid, id, data) =>
     }
   })
 const getTeamUnassignedConversations = (teamID, params) =>
-  http.get(`/api/v1/teams/${teamID}/conversations/unassigned`, { params })
-const getAssignedConversations = (params) => http.get('/api/v1/conversations/assigned', { params })
+  http.get(`/api/v1/teams/${teamID}/conversations/unassigned`, { params, abortOnRoute: true })
+const getAssignedConversations = (params) =>
+  http.get('/api/v1/conversations/assigned', { params, abortOnRoute: true })
 const getUnassignedConversations = (params) =>
-  http.get('/api/v1/conversations/unassigned', { params })
-const getAllConversations = (params) => http.get('/api/v1/conversations/all', { params })
+  http.get('/api/v1/conversations/unassigned', { params, abortOnRoute: true })
+const getAllConversations = (params) =>
+  http.get('/api/v1/conversations/all', { params, abortOnRoute: true })
 const getMentionedConversations = (params) =>
-  http.get('/api/v1/conversations/mentioned', { params })
+  http.get('/api/v1/conversations/mentioned', { params, abortOnRoute: true })
 const getSpamConversations = (params) =>
-  http.get('/api/v1/conversations/spam', { params })
+  http.get('/api/v1/conversations/spam', { params, abortOnRoute: true })
 const getTrashConversations = (params) =>
-  http.get('/api/v1/conversations/trash', { params })
+  http.get('/api/v1/conversations/trash', { params, abortOnRoute: true })
 const moveToTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/trash`)
 const restoreFromTrash = (uuid) => http.put(`/api/v1/conversations/${uuid}/restore`)
 const deleteConversationPermanently = (uuid) => http.delete(`/api/v1/conversations/${uuid}`)
@@ -419,7 +430,7 @@ const mergeConversations = (data) => http.post('/api/v1/conversations/merge', da
 })
 const getConversationByRef = (ref) => http.get(`/api/v1/conversations/by-ref/${encodeURIComponent(ref)}`)
 const getViewConversations = (id, params) =>
-  http.get(`/api/v1/views/${id}/conversations`, { params })
+  http.get(`/api/v1/views/${id}/conversations`, { params, abortOnRoute: true })
 const uploadMedia = (data) =>
   http.post('/api/v1/media', data, {
     headers: {

@@ -6,7 +6,7 @@ import { deepMerge } from '@shared-ui/utils/object.js'
 import { computeRecipientsFromMessage } from '../utils/email-recipients'
 import { useEmitter } from '../composables/useEmitter'
 import { EMITTER_EVENTS } from '../constants/emitterEvents'
-import { subscribeToConversation, sendTypingIndicator } from '@main/websocket'
+import { subscribeToConversation, sendTypingIndicator, subscribeListReplace } from '@main/websocket'
 import { playNotificationSound } from '@shared-ui/composables/useNotificationSound'
 import MessageCache from '../utils/conversation-message-cache'
 import { getI18n } from '../i18n'
@@ -153,6 +153,8 @@ export const useConversationStore = defineStore('conversation', () => {
   }
 
   let typingTimeout = null
+  const typingByUUID = reactive({})
+  const typingTimeoutsByUUID = new Map()
 
   const conversations = reactive({
     data: [],
@@ -200,6 +202,10 @@ export const useConversationStore = defineStore('conversation', () => {
   })
 
   let seenConversationUUIDs = new Map()
+  // Convos whose message cache is stale; drained lazily by fetchMessages on next open.
+  let staleConversationUUIDs = new Set()
+  // Bumped on resetConversations() so in-flight requests can drop stale responses.
+  let contextSeq = 0
   const emitter = useEmitter()
 
   const incrementMessageVersion = () => setTimeout(() => messages.version++, 0)
@@ -439,6 +445,12 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
+  function incrementUnread (uuid) {
+    const row = conversations.data.find(c => c.uuid === uuid)
+    if (!row) return
+    row.unread_message_count = Math.min((row.unread_message_count || 0) + 1, 10)
+  }
+
   const currentContactName = computed(() => {
     if (!conversation.data?.contact) return ''
     return conversation.data?.contact.first_name + ' ' + conversation.data?.contact.last_name
@@ -546,7 +558,6 @@ export const useConversationStore = defineStore('conversation', () => {
         clearTimeout(typingTimeout)
         typingTimeout = null
       }
-      // Do a websocket subscription to the conversation.
       subscribeToConversation(uuid)
     } catch (error) {
       conversation.errorMessage = handleHTTPError(error).message
@@ -583,14 +594,38 @@ export const useConversationStore = defineStore('conversation', () => {
     return serverMs > cachedMs
   }
 
-  /**
-   * Fetches messages for a conversation if not already present in the cache.
-   *
-   * @param {string} uuid
-   * @returns
-   */
+  // Fetches messages for a conversation if not already cached.
   async function fetchMessages (uuid, fetchNextPage = false) {
-    // Messages are already cached?
+    // Silently refetch page 1 for stale-cache conversations; cached messages stay visible, new ones merge in.
+    if (staleConversationUUIDs.has(uuid) && messages.data.hasConversation(uuid)) {
+      staleConversationUUIDs.delete(uuid)
+      try {
+        const response = await api.getConversationMessages(uuid, { page: 1, page_size: MESSAGE_LIST_PAGE_SIZE })
+        const newMessages = response.data?.data?.results || []
+        let lastAdded = null
+        for (const m of newMessages) {
+          if (!messages.data.hasMessage(uuid, m.uuid)) {
+            messages.data.addMessage(uuid, m)
+            lastAdded = m
+          }
+        }
+        if (lastAdded) {
+          incrementMessageVersion()
+          setTimeout(() => {
+            emitter.emit(EMITTER_EVENTS.NEW_MESSAGE, {
+              conversation_uuid: uuid,
+              message: lastAdded
+            })
+          }, 100)
+        }
+      } catch (error) {
+        emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+          variant: 'destructive',
+          description: handleHTTPError(error).message
+        })
+      }
+    }
+
     let hasMessages = messages.data.getAllPagesMessages(uuid)
     if (hasMessages.length > 0 && !fetchNextPage) {
       // Cache hit. But if the row in `conversations.data` reports a newer
@@ -608,16 +643,13 @@ export const useConversationStore = defineStore('conversation', () => {
       }
     }
 
-    // Fetch messages from server.
     messages.loading = true
-    // Increment page number
     let page = messages.data.getLastFetchedPage(uuid) + 1
     try {
       const response = await api.getConversationMessages(uuid, { page: page, page_size: MESSAGE_LIST_PAGE_SIZE })
       const result = response.data?.data || {}
       const newMessages = result.results || []
       markConversationAsRead(uuid)
-      // Cache messages
       messages.data.addMessages(uuid, newMessages, result.page, result.total_pages)
       incrementMessageVersion()
     } catch (error) {
@@ -822,10 +854,26 @@ export const useConversationStore = defineStore('conversation', () => {
     if (apiResponse.total_pages <= conversations.page) conversations.hasMore = false
     else conversations.hasMore = true
     if (!conversations.data) conversations.data = []
-    conversations.data.push(...newConversations)
+    if (apiResponse.page === 1) {
+      conversations.data.unshift(...newConversations)
+    } else {
+      conversations.data.push(...newConversations)
+    }
     conversations.total = apiResponse.total
 
+    // Cap the visible list at currentPage * pageSize.
+    const maxLen = conversations.page * CONV_LIST_PAGE_SIZE
+    if (conversations.data.length > maxLen) {
+      const dropped = conversations.data.splice(maxLen)
+      for (const c of dropped) {
+        seenConversationUUIDs.delete(c.uuid)
+      }
+    }
+
+    subscribeListReplace(conversations.data.map(c => c.uuid))
+
     // Play notification sound for new conversations that were pending.
+    // Re-check document.hidden in case the user returned while the refresh was in flight.
     if (pendingNotificationUUIDs.size > 0) {
       let shouldPlay = false
       for (const uuid of pendingNotificationUUIDs) {
@@ -834,7 +882,7 @@ export const useConversationStore = defineStore('conversation', () => {
         }
       }
       pendingNotificationUUIDs.clear()
-      if (shouldPlay) {
+      if (shouldPlay && document.hidden) {
         playNotificationSound()
       }
     }
@@ -943,11 +991,7 @@ export const useConversationStore = defineStore('conversation', () => {
 
   async function updateAssigneeLastSeen (uuid) {
     markConversationAsRead(uuid)
-    try {
-      await api.updateAssigneeLastSeen(uuid)
-    } catch (error) {
-      // pass
-    }
+    api.updateAssigneeLastSeen(uuid).catch(() => {})
   }
 
   function updateParticipants (newParticipants) {
@@ -972,6 +1016,9 @@ export const useConversationStore = defineStore('conversation', () => {
   // Debounced to coalesce rapid successive fetches of conversation
   // participants triggered by message-update bursts.
   const debouncedFetchParticipants = useDebounceFn(fetchParticipants, 400)
+
+  // trailing=true: fires one final refresh after a burst so the list converges to latest state.
+  const throttledFetchFirstPage = useThrottleFn(fetchFirstPageConversations, 30000, true)
 
   // Called from the WebSocket new-message handler. If the conversation is
   // already in the visible list, the in-list row gets updated by the
@@ -1000,14 +1047,10 @@ export const useConversationStore = defineStore('conversation', () => {
    */
   async function updateConversationMessage (message) {
     if (conversation.data?.uuid !== message.conversation_uuid) {
-      // Not the open conversation. If we have cached messages for it,
-      // fetch the new message to keep the cache fresh.
-      if (messages.data.getLastFetchedPage(message.conversation_uuid) > 0) {
-        const fetchedMessage = await fetchMessage(message.conversation_uuid, message.uuid)
-        if (fetchedMessage) {
-          // Update last message in conversation list (preview)
-          updateConversationLastMessage(message.conversation_uuid, fetchedMessage)
-        }
+      // Lazy invalidation: refresh the cache when the user next opens this convo,
+      // not on every WS event.
+      if (messages.data.hasConversation(message.conversation_uuid)) {
+        staleConversationUUIDs.add(message.conversation_uuid)
       }
       return
     }
@@ -1248,25 +1291,34 @@ export const useConversationStore = defineStore('conversation', () => {
     macros.value = { ...macros.value, [context]: {} }
   }
 
-  // Typing indicators
   function updateTypingStatus (typingData) {
-    const { conversation_uuid, is_typing } = typingData
+    const { conversation_uuid: uuid, is_typing } = typingData
 
-    // Only update typing status for the current conversation
-    if (conversation.data?.uuid !== conversation_uuid) return
-
-    if (typingTimeout) {
-      clearTimeout(typingTimeout)
-      typingTimeout = null
+    if (conversation.data?.uuid === uuid) {
+      if (typingTimeout) {
+        clearTimeout(typingTimeout)
+        typingTimeout = null
+      }
+      conversation.isTyping = is_typing
+      if (is_typing) {
+        typingTimeout = setTimeout(() => {
+          conversation.isTyping = false
+          typingTimeout = null
+        }, TYPING_RECEIVE_TIMEOUT)
+      }
     }
 
-    conversation.isTyping = is_typing
-
+    const prev = typingTimeoutsByUUID.get(uuid)
+    if (prev) clearTimeout(prev)
     if (is_typing) {
-      typingTimeout = setTimeout(() => {
-        conversation.isTyping = false
-        typingTimeout = null
-      }, TYPING_RECEIVE_TIMEOUT)
+      typingByUUID[uuid] = true
+      typingTimeoutsByUUID.set(uuid, setTimeout(() => {
+        delete typingByUUID[uuid]
+        typingTimeoutsByUUID.delete(uuid)
+      }, TYPING_RECEIVE_TIMEOUT))
+    } else {
+      delete typingByUUID[uuid]
+      typingTimeoutsByUUID.delete(uuid)
     }
   }
 
@@ -1385,6 +1437,7 @@ export const useConversationStore = defineStore('conversation', () => {
     mergeMessageUpdate,
     updateAssigneeLastSeen,
     markAsUnread,
+    incrementUnread,
     updateConversationMessage,
     snoozeConversation,
     fetchConversation,
@@ -1423,6 +1476,7 @@ export const useConversationStore = defineStore('conversation', () => {
     statusOptionsNoSnooze,
     statusOptions,
     updateTypingStatus,
+    typingByUUID,
     sendTyping,
     drafts,
     fetchAllDrafts,

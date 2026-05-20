@@ -133,7 +133,10 @@
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <p class="text-sm flex-1 min-w-0 truncate text-muted-foreground">
-                      <template v-if="hasDraftForConversation">
+                      <template v-if="isTyping">
+                        <span class="italic text-primary">{{ $t('globals.terms.typing') }}...</span>
+                      </template>
+                      <template v-else-if="hasDraftForConversation">
                         <span class="font-medium text-primary">{{ $t('globals.terms.draft') }}:</span>
                         {{ draftPreview }}
                       </template>
@@ -147,7 +150,7 @@
                     </p>
                   </TooltipTrigger>
                   <TooltipContent
-                    v-if="!hasDraftForConversation && (conversation.first_message || conversation.last_message)"
+                    v-if="!isTyping && !hasDraftForConversation && (conversation.first_message || conversation.last_message)"
                     side="bottom"
                     align="start"
                     class="max-w-md p-3 text-xs leading-relaxed bg-popover text-popover-foreground border shadow-lg space-y-2"
@@ -401,6 +404,8 @@ const hasSlaDeadlines = computed(() => {
 const hasDraftForConversation = computed(() => {
   return conversationStore.hasDraft(props.conversation.uuid)
 })
+
+const isTyping = computed(() => conversationStore.typingByUUID[props.conversation.uuid] === true)
 
 const draftPreview = computed(() => {
   const draft = conversationStore.getDraft(props.conversation.uuid)
