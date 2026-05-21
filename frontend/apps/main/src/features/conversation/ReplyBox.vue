@@ -217,7 +217,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { parseEmailList } from '@shared-ui/utils/string'
 import { useToast } from '@main/composables/useToast'
@@ -1101,7 +1101,20 @@ watch(
 // SIGNATURE_MARKER comment that insertSignatureIfEmpty injected on initial
 // reply mount; if the marker is absent (e.g. the agent deleted it manually,
 // or never had a signature configured) the toggle is a safe no-op.
-watch(messageType, (newType, oldType) => {
+watch(messageType, async (newType, oldType) => {
+  // CRITICAL race fix: useDraftManager.loadDraft is async and resets
+  // htmlContent to the NEW tab's draft. This watcher fires synchronously
+  // alongside it. Without awaiting the load, we read the OLD tab's
+  // htmlContent (e.g. a private note) and append a signature to it — that
+  // contaminated content then debounce-saves as the NEW tab's draft.
+  // First nextTick covers useDraftManager's sync resetState path; the
+  // bounded loop covers its async tail (delete-on-empty etc.). 30-tick
+  // cap so a stuck load can't deadlock the watcher.
+  await nextTick()
+  for (let i = 0; i < 30 && isDraftLoading.value; i++) {
+    await nextTick()
+  }
+
   if (oldType === 'forward' && newType !== 'forward') {
     htmlContent.value = ''
     to.value = ''

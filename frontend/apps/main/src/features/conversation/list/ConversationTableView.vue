@@ -168,16 +168,24 @@
         <TableCell class="px-2 py-2" @click.stop>
           <DropdownMenu v-if="canUpdatePriority">
             <DropdownMenuTrigger asChild>
+              <!-- Layout flex lives on the inner span, NOT the button: radix
+                   asChild drops a child's static-only `class` (the Status and
+                   Agent triggers survive only because they also carry a
+                   dynamic :style / :class). Keeping the inline-flex on a span
+                   we control means the dot/label/chevron stay on one row
+                   regardless of whether the button's class is merged. -->
               <button
                 type="button"
-                class="text-xs inline-flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer whitespace-nowrap text-muted-foreground"
+                class="text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
               >
-                <span
-                  class="w-2 h-2 rounded-full shrink-0"
-                  :class="priorityDotClass(conversation.priority)"
-                ></span>
-                <span class="shrink-0">{{ conversation.priority || '—' }}</span>
-                <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
+                <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <span
+                    class="w-2 h-2 rounded-full shrink-0"
+                    :class="priorityDotClass(conversation.priority)"
+                  ></span>
+                  <span class="shrink-0">{{ conversation.priority || '—' }}</span>
+                  <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
+                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -206,6 +214,76 @@
           </div>
         </TableCell>
 
+        <!-- Agent -->
+        <TableCell v-if="canAssignAgent" class="px-2 py-2" @click.stop>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                class="text-xs inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer whitespace-nowrap max-w-full"
+                :class="conversation.assigned_user_name ? 'text-muted-foreground' : 'text-orange-500 dark:text-orange-400'"
+              >
+                <User class="w-3 h-3 shrink-0" />
+                <span class="truncate">{{ conversation.assigned_user_name || t('globals.terms.unassigned') }}</span>
+                <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" class="max-h-96 overflow-y-auto">
+              <DropdownMenuItem
+                v-if="conversation.assigned_user_name"
+                @click="unassignAgent(conversation)"
+                class="text-xs text-muted-foreground"
+              >
+                {{ t('globals.terms.none') }}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator v-if="conversation.assigned_user_name" />
+              <DropdownMenuItem
+                v-for="agent in usersStore.options"
+                :key="'agent-' + agent.value"
+                @click="assignAgent(conversation, agent)"
+                class="text-xs"
+              >
+                {{ agent.label }}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+
+        <!-- Team -->
+        <TableCell v-if="canAssignTeam" class="px-2 py-2" @click.stop>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                class="text-xs inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer whitespace-nowrap text-muted-foreground max-w-full"
+                :class="conversation.assigned_team_name ? '' : 'opacity-50'"
+              >
+                <Users class="w-3 h-3 shrink-0" />
+                <span class="truncate">{{ conversation.assigned_team_name || t('globals.terms.noTeam') }}</span>
+                <ChevronDown class="w-2.5 h-2.5 opacity-50 shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" class="max-h-96 overflow-y-auto">
+              <DropdownMenuItem
+                v-if="conversation.assigned_team_name"
+                @click="unassignTeam(conversation)"
+                class="text-xs text-muted-foreground"
+              >
+                {{ t('globals.terms.none') }}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator v-if="conversation.assigned_team_name" />
+              <DropdownMenuItem
+                v-for="team in teamsStore.options"
+                :key="'team-' + team.value"
+                @click="assignTeam(conversation, team)"
+                class="text-xs"
+              >
+                {{ team.label }}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+
         <!-- Updated -->
         <TableCell class="px-2 py-2 text-right">
           <span class="text-xs text-muted-foreground whitespace-nowrap">
@@ -231,11 +309,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@shared-ui/components/ui/dropdown-menu'
+import { DropdownMenuSeparator } from '@shared-ui/components/ui/dropdown-menu'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared-ui/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
+import { User, Users } from 'lucide-vue-next'
 import { getRelativeTime } from '@shared-ui/utils/datetime.js'
 import { useConversationStore } from '@/stores/conversation'
 import { useUserStore } from '@/stores/user'
+import { useUsersStore } from '@/stores/users'
+import { useTeamStore } from '@/stores/team'
 import { useConversationRoute } from '@/composables/useConversationRoute'
 import { useToast } from '@/composables/useToast'
 import { permissions as p } from '@/constants/permissions'
@@ -245,12 +327,16 @@ import api from '@/api'
 const { t } = useI18n()
 const conversationStore = useConversationStore()
 const userStore = useUserStore()
+const usersStore = useUsersStore()
+const teamsStore = useTeamStore()
 const router = useRouter()
 const toast = useToast()
 const { buildConversationRoute } = useConversationRoute()
 
 const canUpdateStatus = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_STATUS))
 const canUpdatePriority = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_PRIORITY))
+const canAssignAgent = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_USER_ASSIGNEE))
+const canAssignTeam = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_TEAM_ASSIGNEE))
 
 const now = ref(new Date())
 let timer = null
@@ -259,7 +345,15 @@ defineProps({
   conversations: { type: Array, required: true }
 })
 
-const resizableCols = ['contact', 'subject', 'status', 'priority', 'updated']
+// Agent/Team columns only appear when the viewer can assign — otherwise
+// they'd be dead read-only columns eating horizontal space.
+const resizableCols = computed(() => {
+  const cols = ['contact', 'subject', 'status', 'priority']
+  if (canAssignAgent.value) cols.push('agent')
+  if (canAssignTeam.value) cols.push('team')
+  cols.push('updated')
+  return cols
+})
 
 // Column widths persist per-browser.
 const defaultWidths = {
@@ -268,6 +362,8 @@ const defaultWidths = {
   subject: 220,
   status: 100,
   priority: 100,
+  agent: 120,
+  team: 120,
   updated: 90
 }
 const MIN_WIDTH = 60
@@ -376,6 +472,42 @@ const updatePriority = async (conversation, priority) => {
   try {
     await api.updateConversationPriority(conversation.uuid, { priority })
     conversationStore.updateConversationField(conversation.uuid, 'priority', priority)
+  } catch (error) {
+    toast.error(error)
+  }
+}
+
+const assignAgent = async (conversation, agent) => {
+  try {
+    await api.updateAssignee(conversation.uuid, 'user', { assignee_id: parseInt(agent.value) })
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_user_name', agent.label)
+  } catch (error) {
+    toast.error(error)
+  }
+}
+
+const unassignAgent = async (conversation) => {
+  try {
+    await api.removeAssignee(conversation.uuid, 'user')
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_user_name', null)
+  } catch (error) {
+    toast.error(error)
+  }
+}
+
+const assignTeam = async (conversation, team) => {
+  try {
+    await api.updateAssignee(conversation.uuid, 'team', { assignee_id: parseInt(team.value) })
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_team_name', team.label)
+  } catch (error) {
+    toast.error(error)
+  }
+}
+
+const unassignTeam = async (conversation) => {
+  try {
+    await api.removeAssignee(conversation.uuid, 'team')
+    conversationStore.updateConversationField(conversation.uuid, 'assigned_team_name', null)
   } catch (error) {
     toast.error(error)
   }

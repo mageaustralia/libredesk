@@ -64,19 +64,23 @@
         >
           <!-- T3y PCI Data Warning. Detected on ingest by go-pci-scrub;
                banner stays visible until the agent clicks Redact Now or
-               the 7-day auto-redact safety net fires. -->
+               the 7-day auto-redact safety net fires.
+               Single-row layout: shield + warning text (truncated if needed)
+               + Redact button, all on one line. truncate on the text span
+               handles the rare narrow-bubble case so the button never
+               wraps onto its own row. -->
           <div
             v-if="message.has_pci_data"
-            class="flex items-center gap-2 mb-2 px-3 py-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md"
+            class="flex items-center gap-2 mb-2 px-3 py-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md min-w-0"
           >
             <ShieldAlert class="w-4 h-4 text-red-500 shrink-0" />
-            <span class="text-xs text-red-700 dark:text-red-300 font-medium flex-1">
+            <span class="text-xs text-red-700 dark:text-red-300 font-medium flex-1 min-w-0 truncate">
               {{ t('conversation.pciDataWarning') }}
             </span>
             <button
               v-if="!redacting"
               type="button"
-              class="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 underline"
+              class="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 underline shrink-0 whitespace-nowrap"
               @click="redactPCI"
             >
               {{ t('conversation.pciRedactNow') }}
@@ -92,7 +96,7 @@
           <!-- Message Content -->
           <div
             v-if="message.content_type === 'text'"
-            class="mb-1 native-html whitespace-pre-wrap"
+            class="mb-1 native-html whitespace-pre-wrap break-words"
             :class="{ 'mb-3': message.attachments.length > 0 }"
           >
             {{ sanitizedContent }}
@@ -155,9 +159,9 @@
               v-if="showRetry"
               type="button"
               @click="retryMessage(message)"
-              class="inline-flex items-center gap-1 text-xs text-destructive hover:underline cursor-pointer transition-colors duration-200"
+              class="inline-flex items-center gap-1 text-xs text-destructive hover:underline cursor-pointer transition-colors duration-200 shrink-0 whitespace-nowrap"
             >
-              <RotateCcw :size="12" />
+              <RotateCcw class="shrink-0" :size="12" />
               <span>{{ t('conversation.failedRetry') }}</span>
             </button>
           </div>

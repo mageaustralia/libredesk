@@ -218,10 +218,15 @@
   @apply flex flex-col px-4 pt-2 pb-3 w-fit min-w-[30%] max-w-full border overflow-x-auto rounded shadow-sm;
   overflow-wrap: break-all;
 
-  // ER6: width:100% (not max-width). Keeps every child filling the bubble's
-  // available width so a forwarded email's nested table doesn't shrink to
-  // its content's intrinsic width and leave whitespace on the right edge.
-  * {
+  // ER6: width:100% (not max-width) on MESSAGE CONTENT only, so a forwarded
+  // email's nested table fills the bubble instead of shrinking to its
+  // content's intrinsic width and leaving whitespace on the right edge.
+  // Scoped to .native-html (both the HTML-email Letter wrapper and the
+  // plain-text branch carry that class) — a bare `.message-bubble *` also
+  // stretched UI chrome (the Failed/retry button, status-icon strip, PCI
+  // banner), splitting their flex children to opposite edges and forcing a
+  // horizontal scrollbar.
+  .native-html * {
     width: 100%;
   }
 
