@@ -191,7 +191,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { handleHTTPError } from '@/utils/http'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
@@ -682,8 +682,26 @@ watch(() => conversationStore.current?.uuid, async (newUuid) => {
   }, 200)
 }, { immediate: true })
 
-// Toggle signature when switching between reply and private note
-watch(messageType, (newType, oldType) => {
+// Toggle signature + quoted thread when switching between reply and private
+// note. CRITICAL: must wait for useDraftManager.loadDraft to settle before
+// touching htmlContent, otherwise we see the OLD tab's draft (e.g. a private
+// note) sitting in htmlContent and append a signature to it — that
+// contaminated content then gets debounce-saved as the NEW tab's draft via
+// the saveDraftLocal pipeline (V1_0_7 per-type drafts regression). The
+// isDraftLoading flag from useDraftManager goes true while loadDraft is in
+// flight; we await it dropping back to false (with a hard cap so a stuck
+// load can't deadlock the watcher).
+watch(messageType, async (newType, oldType) => {
+  // First yield — let the useDraftManager watch on currentDraftKey run
+  // through its sync path (resetState or assignment from store).
+  await nextTick()
+  // Cover the async tail of loadDraft (delete-on-empty, save localDraft).
+  // Capped at 30 ticks (~30 microtasks) — beyond that something else is
+  // wrong and we'd rather no-op the signature than spin forever.
+  for (let i = 0; i < 30 && isDraftLoading.value; i++) {
+    await nextTick()
+  }
+
   const sigMarker = '<!-- sig -->'
   if (newType === 'forward') {
     // Forward mode — no thread, just the forwarded message content
