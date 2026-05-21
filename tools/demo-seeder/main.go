@@ -940,11 +940,24 @@ func seedSharedViews(c *Client, ex *ExistingData, sum *Summary) error {
 	if _, ok := ex.ViewsByName[name]; ok {
 		return nil
 	}
-	// Filter shape mirrors what the frontend posts: an array of {field, operator, value}.
-	// See cmd/views.go validateSharedView for accepted shape.
+	// Filter shape: array of {model, field, operator, value}. Both `model`
+	// and `field` are validated against the per-model allow-list in
+	// internal/conversation/conversation.go (conversationsAllowedFields,
+	// conversationStatusAllowedFields, usersAllowedFields). Using a
+	// model/field combo outside the allow-list 500s the view's
+	// conversations endpoint.
+	//
+	// - Status by name: model=conversation_statuses, field=name (the
+	//   conversations table only has status_id, not a string status).
+	// - Unassigned: model=conversations, field=assigned_user_id (NOT
+	//   "assigned_user" — that field isn't in the allow-list).
+	// Operators are validated in dbutil/builder.go — use "not set" (with a
+	// space), NOT "is_not_set". Valid set: equals, not equals, greater than,
+	// less than, set, not set, in, not_in, in_or_null, relative_date,
+	// between, ilike.
 	filters := []map[string]any{
-		{"field": "status", "operator": "equals", "value": "Open"},
-		{"field": "assigned_user", "operator": "is_not_set", "value": ""},
+		{"model": "conversation_statuses", "field": "name", "operator": "equals", "value": "Open"},
+		{"model": "conversations", "field": "assigned_user_id", "operator": "not set", "value": ""},
 	}
 	filtersBytes, _ := json.Marshal(filters)
 	payload := map[string]any{
