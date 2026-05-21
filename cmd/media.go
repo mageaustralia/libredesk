@@ -101,7 +101,7 @@ func handleMediaUpload(r *fastglue.Request) error {
 
 	// Generate and upload thumbnail and store image dimensions in the media meta.
 	var meta = []byte("{}")
-	if slices.Contains(image.Exts, srcExt) {
+	if slices.Contains(image.Exts, srcExt) || image.IsImageByContent(file) {
 		file.Seek(0, 0)
 		thumbFile, err := image.CreateThumb(image.DefThumbSize, file)
 		if err != nil {
@@ -214,6 +214,11 @@ func serveMediaFile(r *fastglue.Request, app *App, uuid string, media *mmodels.M
 		media = &m
 	}
 
+	// `?download=1` forces an attachment disposition even for normally-inline
+	// types (images/pdf/etc.) so a "Download" link can save the file instead
+	// of opening it in the browser tab.
+	forceDownload := string(r.RequestCtx.QueryArgs().Peek("download")) == "1"
+
 	consts := app.consts.Load().(*constants)
 	switch consts.UploadProvider {
 	case "fs":
@@ -222,7 +227,8 @@ func serveMediaFile(r *fastglue.Request, app *App, uuid string, media *mmodels.M
 		// Inline images/videos/audio/pdfs. SVG excluded. Audio is inline
 		// (T3v) so the in-thread <audio> player in MessageAttachmentPreview
 		// can stream the file directly instead of forcing a download.
-		if media.ContentType != "image/svg+xml" &&
+		if !forceDownload &&
+			media.ContentType != "image/svg+xml" &&
 			(strings.HasPrefix(media.ContentType, "image/") ||
 				strings.HasPrefix(media.ContentType, "video/") ||
 				strings.HasPrefix(media.ContentType, "audio/") ||
@@ -236,7 +242,11 @@ func serveMediaFile(r *fastglue.Request, app *App, uuid string, media *mmodels.M
 
 		fasthttp.ServeFile(r.RequestCtx, filepath.Join(ko.String("upload.fs.upload_path"), uuid))
 	case "s3":
-		r.RequestCtx.Redirect(app.media.GetURL(uuid, media.ContentType, media.Filename), http.StatusFound)
+		url := app.media.GetURL(uuid, media.ContentType, media.Filename)
+		if forceDownload {
+			url = app.media.GetURLForDownload(uuid, media.Filename)
+		}
+		r.RequestCtx.Redirect(url, http.StatusFound)
 	}
 	return nil
 }

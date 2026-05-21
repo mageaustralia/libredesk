@@ -236,6 +236,13 @@ func (m *Manager) GetURL(uuid, contentType, fileName string) string {
 	return m.store.GetURL(uuid, disposition, fileName)
 }
 
+// GetURLForDownload returns a URL that always forces an attachment
+// disposition, regardless of content type — used by "Download" links that
+// should save the file rather than open it inline.
+func (m *Manager) GetURLForDownload(uuid, fileName string) string {
+	return m.store.GetURL(uuid, "attachment", fileName)
+}
+
 // GetSignedURL generates a signed URL for secure media access if the store supports it.
 // Returns a regular URL if the store doesn't support signed URLs.
 func (m *Manager) GetSignedURL(name string) string {

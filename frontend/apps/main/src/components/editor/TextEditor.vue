@@ -171,6 +171,7 @@ import { useConversationStore } from '@main/stores/conversation'
 import { useEmitter } from '@main/composables/useEmitter'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents'
 import api from '@main/api'
+import { getI18n } from '@main/i18n'
 import mentionSuggestion from './mentionSuggestion'
 
 const textContent = defineModel('textContent', { default: '' })
@@ -576,10 +577,11 @@ const ResizableImage = Image.extend({
         }).run()
       }
 
+      const t = getI18n().global.t
       const sizes = [
-        { label: 'Small', value: 400 },
-        { label: 'Best fit', value: 'fit' },
-        { label: 'Original', value: 'original' }
+        { label: t('globals.terms.small'), value: 400 },
+        { label: t('globals.messages.bestFit'), value: 'fit' },
+        { label: t('globals.terms.original'), value: 'original' }
       ]
       // Toolbar buttons use pointerdown so touch + pen + mouse all work.
       // preventDefault avoids stealing focus from the editor.
@@ -594,11 +596,19 @@ const ResizableImage = Image.extend({
             img.style.width = naturalWidth ? naturalWidth + 'px' : 'auto'
             commitWidth(naturalWidth || null)
           } else if (value === 'fit') {
-            img.style.width = ''
-            commitWidth(null)
+            // Best fit = the smaller of the image's natural width and the
+            // editor's content width, committed as an explicit px width so
+            // it survives round-trips (an empty width let huge images
+            // overflow the editor on reload).
+            const editorWidth = nodeEditor.view.dom.clientWidth
+            const fitWidth = naturalWidth ? Math.min(naturalWidth, editorWidth) : editorWidth
+            img.style.width = fitWidth + 'px'
+            commitWidth(fitWidth)
           } else {
-            img.style.width = value + 'px'
-            commitWidth(value)
+            // Never upscale past the natural width.
+            const w = naturalWidth ? Math.min(value, naturalWidth) : value
+            img.style.width = w + 'px'
+            commitWidth(w)
           }
         })
         toolbar.appendChild(btn)
@@ -609,7 +619,7 @@ const ResizableImage = Image.extend({
       toolbar.appendChild(sep)
 
       const removeBtn = document.createElement('button')
-      removeBtn.textContent = 'Remove'
+      removeBtn.textContent = t('globals.terms.remove')
       removeBtn.type = 'button'
       removeBtn.classList.add('image-toolbar-remove')
       removeBtn.addEventListener('pointerdown', (e) => {
