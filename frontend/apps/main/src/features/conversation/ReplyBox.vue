@@ -1066,11 +1066,20 @@ watch(
     collisionWarning.value = false
     collisionAgentName.value = ''
     customerReplyWarning.value = false
-    // EC14: reset From override on conversation switch. The new
-    // conversation may belong to a different inbox with a different
-    // alias set; carrying the previous selection over would either
-    // pick a now-invalid alias or silently spoof the agent's intent.
-    selectedFrom.value = ''
+    // EC14: re-default the From override to the new conversation's inbox
+    // primary on conversation switch. The new conversation may belong to a
+    // different inbox with a different alias set; carrying the previous
+    // selection over would pick a now-invalid alias or spoof the agent.
+    //
+    // Re-default to fromOptions[0] (NOT blank) so this is order-independent
+    // vs the async fromOptions watcher: on a cold first-open the inbox list
+    // is still loading, so fromOptions is [] here and we land on '' — the
+    // fromOptions watcher fills in the primary once inboxes resolve. On a
+    // warm open inboxes are cached, fromOptions[0] is the primary, and we
+    // set it directly. Blanking unconditionally (the old behaviour) raced:
+    // it could clobber the primary the fromOptions watcher had just set,
+    // leaving the From field empty until the second visit.
+    selectedFrom.value = fromOptions.value[0] || ''
     if (messageType.value === 'forward') {
       messageType.value = 'reply'
       to.value = ''
