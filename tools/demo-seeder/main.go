@@ -261,6 +261,11 @@ func runSeed(c *Client, rng *rand.Rand, cfg Config, sum *Summary) error {
 		return fmt.Errorf("load existing: %w", err)
 	}
 
+	fmt.Println("==> Pinning app.root_url to the demo base URL")
+	if err := seedGeneralSettings(c); err != nil {
+		sum.Warnings = append(sum.Warnings, fmt.Sprintf("general settings (root_url): %v", err))
+	}
+
 	fmt.Println("==> Seeding agents")
 	agents, err := seedAgents(c, existing, sum)
 	if err != nil {
@@ -906,6 +911,38 @@ func seedRAGSources(c *Client, ex *ExistingData, sum *Summary) error {
 		_ = json.Unmarshal(data, &created)
 		ex.RAGByName[macroName] = created.ID
 		sum.KnowledgeSources++
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// General settings — pin app.root_url to the seeder's own base URL.
+//
+// schema.sql hardcodes app.root_url to http://localhost:9000 (the in-container
+// port). The local demo is exposed on host port 9001, so signed media URLs
+// (built from app.root_url) point at :9000 and the browser can't reach them
+// (ERR_CONNECTION_REFUSED on inline image loads). Re-asserting root_url here
+// means a fresh `down -v` + seed comes up with working image URLs without a
+// manual DB poke.
+//
+// GET-modify-PUT (not a partial PUT) because Update() replaces the whole
+// General struct — a partial body would blank site_name/timezone/etc.
+// ---------------------------------------------------------------------------
+
+func seedGeneralSettings(c *Client) error {
+	data, err := c.do(http.MethodGet, "/api/v1/settings/general", nil)
+	if err != nil {
+		return err
+	}
+	var general map[string]any
+	if err := json.Unmarshal(data, &general); err != nil {
+		return fmt.Errorf("decode general settings: %w", err)
+	}
+	general["app.root_url"] = c.baseURL
+	general["app.logo_url"] = c.baseURL + "/logo.png"
+	general["app.favicon_url"] = c.baseURL + "/favicon.ico"
+	if _, err := c.do(http.MethodPut, "/api/v1/settings/general", general); err != nil {
+		return err
 	}
 	return nil
 }
