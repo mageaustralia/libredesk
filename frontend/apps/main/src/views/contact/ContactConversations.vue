@@ -44,13 +44,13 @@
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div class="flex gap-1 items-center text-xs text-muted-foreground flex-shrink-0">
-                <span v-if="conversation.created_at">
-                  {{ getRelativeTime(new Date(conversation.created_at)) }}
-                </span>
-                <span v-if="conversation.last_message_at">•</span>
-                <span v-if="conversation.last_message_at">
-                  {{ getRelativeTime(new Date(conversation.last_message_at)) }}
+              <!-- Single relative time = last activity (last message, falling
+                   back to created). created • last-message read as a pointless
+                   duplicate when both fell in the same coarse bucket. Both
+                   exact times remain in the tooltip below. -->
+              <div class="text-xs text-muted-foreground flex-shrink-0">
+                <span v-if="conversation.last_message_at || conversation.created_at">
+                  {{ getRelativeTime(new Date(conversation.last_message_at || conversation.created_at)) }}
                 </span>
               </div>
             </TooltipTrigger>
