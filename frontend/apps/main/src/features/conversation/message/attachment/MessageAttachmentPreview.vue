@@ -11,24 +11,10 @@
           :attachment="attachment"
           @preview="openLightbox"
         />
-        <div
+        <AudioAttachmentPreview
           v-else-if="isAudio(attachment)"
-          class="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2"
-        >
-          <audio controls preload="auto" class="h-8 max-w-[260px]">
-            <source :src="attachment.url" />
-          </audio>
-          <a
-            :href="attachment.url"
-            download
-            class="p-1 rounded hover:bg-muted shrink-0"
-            :title="t('imageLightbox.download')"
-            :aria-label="t('imageLightbox.download')"
-            @click.stop
-          >
-            <Download class="w-4 h-4 text-muted-foreground" />
-          </a>
-        </div>
+          :attachment="attachment"
+        />
         <FileAttachmentPreview v-else :attachment="attachment" />
       </div>
     </div>
@@ -43,17 +29,14 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { Download } from 'lucide-vue-next'
 import ImageAttachmentPreview from '@/features/conversation/message/attachment/ImageAttachmentPreview.vue'
+import AudioAttachmentPreview from '@/features/conversation/message/attachment/AudioAttachmentPreview.vue'
 import FileAttachmentPreview from '@/features/conversation/message/attachment/FileAttachmentPreview.vue'
 import ImageLightbox from '@/components/ImageLightbox.vue'
 
 const props = defineProps({
   attachments: { type: Array, required: true }
 })
-
-const { t } = useI18n()
 
 const isImage = (attachment) => (attachment.content_type || '').startsWith('image/')
 const isAudio = (attachment) => (attachment.content_type || '').startsWith('audio/')
