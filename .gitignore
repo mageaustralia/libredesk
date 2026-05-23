@@ -15,3 +15,4 @@ Dockerfile.staging.go-only
 config.local.toml
 docker-compose.local.yml
 .dev/
+uploads-local/

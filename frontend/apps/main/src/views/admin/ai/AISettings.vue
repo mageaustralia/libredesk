@@ -344,6 +344,23 @@
             </div>
 
             <div v-if="externalSearchEnabled" class="space-y-4">
+              <div class="space-y-2 max-w-[280px]">
+                <Label>{{ t('admin.ai.externalSearch.mode') }}</Label>
+                <Select v-model="externalSearchMode">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="meilisearch">{{ t('admin.ai.externalSearch.modeMeilisearch') }}</SelectItem>
+                    <SelectItem value="generic_get">{{ t('admin.ai.externalSearch.modeGenericGet') }}</SelectItem>
+                    <SelectItem value="generic_post">{{ t('admin.ai.externalSearch.modeGenericPost') }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p class="text-xs text-muted-foreground">
+                  {{ t('admin.ai.externalSearch.modeHelp') }}
+                </p>
+              </div>
+
               <div class="space-y-2">
                 <Label for="ai-external-search-url">{{ t('admin.ai.externalSearch.url') }}</Label>
                 <Input
@@ -396,6 +413,36 @@
                 />
                 <p class="text-xs text-muted-foreground">
                   {{ t('admin.ai.externalSearch.maxResultsHelp') }}
+                </p>
+              </div>
+
+              <div class="space-y-2 max-w-[200px]">
+                <Label for="ai-external-search-timeout">{{ t('admin.ai.externalSearch.timeoutMs') }}</Label>
+                <Input
+                  id="ai-external-search-timeout"
+                  v-model.number="externalSearchTimeoutMs"
+                  type="number"
+                  min="100"
+                  max="30000"
+                  step="100"
+                />
+                <p class="text-xs text-muted-foreground">
+                  {{ t('admin.ai.externalSearch.timeoutMsHelp') }}
+                </p>
+              </div>
+
+              <div v-if="isGenericMode" class="space-y-2 max-w-[200px]">
+                <Label for="ai-external-search-maxchars">{{ t('admin.ai.externalSearch.maxChars') }}</Label>
+                <Input
+                  id="ai-external-search-maxchars"
+                  v-model.number="externalSearchMaxChars"
+                  type="number"
+                  min="200"
+                  max="50000"
+                  step="100"
+                />
+                <p class="text-xs text-muted-foreground">
+                  {{ t('admin.ai.externalSearch.maxCharsHelp') }}
                 </p>
               </div>
             </div>
@@ -543,6 +590,11 @@ const externalSearchURL = ref('')
 const externalSearchMaxResults = ref(3)
 const externalSearchEndpoints = ref('')
 const externalSearchHeaders = ref('')
+// T3d2 generic-backend support.
+const externalSearchMode = ref('meilisearch')
+const externalSearchMaxChars = ref(4000)
+const externalSearchTimeoutMs = ref(1000)
+const isGenericMode = computed(() => externalSearchMode.value === 'generic_get' || externalSearchMode.value === 'generic_post')
 
 // T3h inbox-scope state. selectedInboxId === 'global' edits the
 // ai.* settings rows (existing behaviour); otherwise edits the
@@ -695,6 +747,15 @@ async function loadAISettings() {
     if (data['ai.external_search_headers'] !== undefined) {
       externalSearchHeaders.value = data['ai.external_search_headers'] || ''
     }
+    if (data['ai.external_search_mode']) {
+      externalSearchMode.value = data['ai.external_search_mode']
+    }
+    if (data['ai.external_search_max_chars']) {
+      externalSearchMaxChars.value = data['ai.external_search_max_chars']
+    }
+    if (data['ai.external_search_timeout_ms']) {
+      externalSearchTimeoutMs.value = data['ai.external_search_timeout_ms']
+    }
   } catch (err) {
     showToast(handleHTTPError(err).message, 'destructive')
   }
@@ -730,6 +791,9 @@ function buildInboxPayload() {
     external_search_max_results: parseInt(externalSearchMaxResults.value, 10) || 3,
     external_search_endpoints: externalSearchEndpoints.value || '',
     external_search_headers: externalSearchHeaders.value || '',
+    external_search_mode: externalSearchMode.value || 'meilisearch',
+    external_search_max_chars: parseInt(externalSearchMaxChars.value, 10) || 4000,
+    external_search_timeout_ms: parseInt(externalSearchTimeoutMs.value, 10) || 1000,
     knowledge_source_ids: (selectedKnowledgeSourceIds.value || []).map(Number)
   }
 }
@@ -821,7 +885,10 @@ async function saveExternalSearchSettings() {
         'ai.external_search_url': externalSearchURL.value || '',
         'ai.external_search_max_results': maxResults,
         'ai.external_search_endpoints': endpointsRaw,
-        'ai.external_search_headers': headersRaw
+        'ai.external_search_headers': headersRaw,
+        'ai.external_search_mode': externalSearchMode.value || 'meilisearch',
+        'ai.external_search_max_chars': parseInt(externalSearchMaxChars.value, 10) || 4000,
+        'ai.external_search_timeout_ms': parseInt(externalSearchTimeoutMs.value, 10) || 1000
       })
     }
     showToast(t('globals.messages.savedSuccessfully'))
@@ -867,7 +934,10 @@ function snapshotGlobalForm() {
     externalSearchURL: externalSearchURL.value,
     externalSearchMaxResults: externalSearchMaxResults.value,
     externalSearchEndpoints: externalSearchEndpoints.value,
-    externalSearchHeaders: externalSearchHeaders.value
+    externalSearchHeaders: externalSearchHeaders.value,
+    externalSearchMode: externalSearchMode.value,
+    externalSearchMaxChars: externalSearchMaxChars.value,
+    externalSearchTimeoutMs: externalSearchTimeoutMs.value
   }
 }
 
@@ -881,6 +951,9 @@ function restoreGlobalForm() {
   externalSearchMaxResults.value = globalSnapshot.externalSearchMaxResults
   externalSearchEndpoints.value = globalSnapshot.externalSearchEndpoints
   externalSearchHeaders.value = globalSnapshot.externalSearchHeaders
+  externalSearchMode.value = globalSnapshot.externalSearchMode
+  externalSearchMaxChars.value = globalSnapshot.externalSearchMaxChars
+  externalSearchTimeoutMs.value = globalSnapshot.externalSearchTimeoutMs
   selectedKnowledgeSourceIds.value = []
 }
 
@@ -899,6 +972,9 @@ function applyInboxRow(row) {
     externalSearchMaxResults.value = row.external_search_max_results || 3
     externalSearchEndpoints.value = row.external_search_endpoints || ''
     externalSearchHeaders.value = row.external_search_headers || ''
+    externalSearchMode.value = row.external_search_mode || 'meilisearch'
+    externalSearchMaxChars.value = row.external_search_max_chars || 4000
+    externalSearchTimeoutMs.value = row.external_search_timeout_ms || 1000
     let ks = row.knowledge_source_ids
     if (typeof ks === 'string') {
       try { ks = JSON.parse(ks) } catch { ks = [] }

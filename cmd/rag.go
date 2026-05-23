@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -668,9 +669,11 @@ Rules:
 // reserved ranges unless ai.allowed_hosts CIDR-allowlists them. Returns
 // a generic "blocked by SSRF guard" wrap on dial-deny so the caller's
 // log makes the cause visible without leaking internal IPs.
-func (app *App) queryExternalSearch(searchURL, query string, limit int, headers map[string]string) (*ExternalSearchResponse, error) {
+func (app *App) queryExternalSearch(searchURL, query string, limit, timeoutMs int, headers map[string]string) (*ExternalSearchResponse, error) {
 	payload := fmt.Sprintf(`{"q":%q,"limit":%d}`, query, limit)
-	req, err := http.NewRequest(http.MethodPost, searchURL, bytes.NewBufferString(payload))
+	ctx, cancel := context.WithTimeout(context.Background(), extSearchTimeout(timeoutMs))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, searchURL, bytes.NewBufferString(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -730,7 +733,7 @@ func (app *App) queryExternalSearch(searchURL, query string, limit int, headers 
 // response (not an error) so the caller's "no hits" branch handles it
 // uniformly. Mirrors v1.0.3 cf97cb06 — adapted to take an App receiver
 // so the SSRF client and UA header are shared with queryExternalSearch.
-func (app *App) queryExternalMultiSearch(searchURL, indexUid, query string, limit int, filter string, headers map[string]string) (*ExternalSearchResponse, error) {
+func (app *App) queryExternalMultiSearch(searchURL, indexUid, query string, limit, timeoutMs int, filter string, headers map[string]string) (*ExternalSearchResponse, error) {
 	qObj := map[string]interface{}{
 		"indexUid": indexUid,
 		"q":        query,
@@ -746,7 +749,9 @@ func (app *App) queryExternalMultiSearch(searchURL, indexUid, query string, limi
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, searchURL, bytes.NewBuffer(payload))
+	ctx, cancel := context.WithTimeout(context.Background(), extSearchTimeout(timeoutMs))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, searchURL, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -789,6 +794,103 @@ func (app *App) queryExternalMultiSearch(searchURL, indexUid, query string, limi
 	return &multiResult.Results[0], nil
 }
 
+// extSearchTimeout converts a configured millisecond value into a Duration,
+// defaulting to 1s when unset/non-positive. Caps the per-request wait
+// regardless of the shared client's longer transport timeout.
+func extSearchTimeout(timeoutMs int) time.Duration {
+	if timeoutMs <= 0 {
+		return time.Second
+	}
+	return time.Duration(timeoutMs) * time.Millisecond
+}
+
+// truncateForPrompt clips a raw response to maxChars on a UTF-8 boundary so
+// a large generic-backend payload can't blow up the prompt token budget.
+func truncateForPrompt(s string, maxChars int) string {
+	if maxChars <= 0 {
+		maxChars = 4000
+	}
+	if len(s) <= maxChars {
+		return s
+	}
+	// Back off to a rune boundary so we never split a multibyte char.
+	cut := maxChars
+	for cut > 0 && !utf8RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "\n…(truncated)"
+}
+
+// utf8RuneStart reports whether b is the first byte of a UTF-8 sequence
+// (i.e. not a 10xxxxxx continuation byte).
+func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
+
+// queryExternalGeneric issues one request against an arbitrary search
+// backend and returns the RAW response body (untruncated; the caller
+// truncates so it can label the section first).
+//
+//   - "generic_get": GET <fullURL>?q=<query>&limit=<n>
+//   - "generic_post": POST <fullURL> with {"q":<query>,"limit":<n>}
+//
+// No response parsing — the body is whatever JSON (or text) the backend
+// returns, handed to the LLM as-is. Uses the same SSRF-guarded client and
+// per-request timeout as the Meilisearch path.
+func (app *App) queryExternalGeneric(method, fullURL, query string, limit, timeoutMs int, headers map[string]string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), extSearchTimeout(timeoutMs))
+	defer cancel()
+
+	var req *http.Request
+	var err error
+	if method == http.MethodGet {
+		u, perr := url.Parse(fullURL)
+		if perr != nil {
+			return "", perr
+		}
+		q := u.Query()
+		q.Set("q", query)
+		q.Set("limit", strconv.Itoa(limit))
+		u.RawQuery = q.Encode()
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	} else {
+		payload := fmt.Sprintf(`{"q":%q,"limit":%d}`, query, limit)
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewBufferString(payload))
+	}
+	if err != nil {
+		return "", err
+	}
+	if method != http.MethodGet {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Libredesk/2")
+	}
+
+	client := app.extSearchClient
+	if client == nil {
+		return "", fmt.Errorf("external search HTTP client not initialised")
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "blocked") || strings.Contains(err.Error(), "denied") {
+			return "", fmt.Errorf("blocked by SSRF guard: %w", err)
+		}
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("external search returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return string(body), nil
+}
+
 // performExternalSearch fans out one HTTP call per matched intent and
 // formats the hits into a Markdown-ish context block fed into the
 // system prompt via {{external_search_results}}. Empty endpoint config,
@@ -828,11 +930,38 @@ func (app *App) performExternalSearch(aiSettings settingmodels.InboxAISettings, 
 	}
 
 	baseURL := strings.TrimRight(aiSettings.ExternalSearchURL, "/")
+	timeoutMs := aiSettings.ExternalSearchTimeoutMs
+	mode := aiSettings.ExternalSearchMode
+	if mode == "" {
+		mode = "meilisearch"
+	}
 
 	var sections []string
 	for _, intent := range intents {
 		endpointPath, ok := endpoints[intent.Type]
 		if !ok {
+			continue
+		}
+
+		// T3d2 generic modes: skip the typed Meilisearch parse entirely.
+		// POST/GET the configured endpoint and feed the RAW (truncated)
+		// response straight into the prompt — works with any backend that
+		// returns JSON of any shape.
+		if mode == "generic_get" || mode == "generic_post" {
+			method := http.MethodPost
+			if mode == "generic_get" {
+				method = http.MethodGet
+			}
+			raw, err := app.queryExternalGeneric(method, baseURL+endpointPath, intent.Query, maxResults, timeoutMs, headers)
+			if err != nil {
+				app.lo.Warn("external search (generic) query failed", "type", intent.Type, "query", intent.Query, "error", err)
+				continue
+			}
+			raw = strings.TrimSpace(truncateForPrompt(raw, aiSettings.ExternalSearchMaxChars))
+			if raw == "" {
+				continue
+			}
+			sections = append(sections, fmt.Sprintf("=== %s results (from external search) ===\n%s", intent.Type, raw))
 			continue
 		}
 
@@ -855,10 +984,10 @@ func (app *App) performExternalSearch(aiSettings settingmodels.InboxAISettings, 
 				filter = parts[2]
 			}
 			fullURL := baseURL + "/multi-search"
-			results, err = app.queryExternalMultiSearch(fullURL, indexUid, intent.Query, maxResults, filter, headers)
+			results, err = app.queryExternalMultiSearch(fullURL, indexUid, intent.Query, maxResults, timeoutMs, filter, headers)
 		} else {
 			searchURL := baseURL + endpointPath
-			results, err = app.queryExternalSearch(searchURL, intent.Query, maxResults, headers)
+			results, err = app.queryExternalSearch(searchURL, intent.Query, maxResults, timeoutMs, headers)
 		}
 		if err != nil {
 			app.lo.Warn("external search query failed", "type", intent.Type, "query", intent.Query, "error", err)

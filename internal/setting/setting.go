@@ -271,11 +271,23 @@ func (m *Manager) UpsertInboxAISettings(s models.InboxAISettings) (models.InboxA
 	if s.KnowledgeSourceIDs == nil || len(s.KnowledgeSourceIDs) == 0 {
 		s.KnowledgeSourceIDs = []byte("[]")
 	}
+	// Defaults for the T3d2 fields so a partial payload (or pre-T3d2 client)
+	// can't write an invalid mode / zero guards into NOT NULL columns.
+	if s.ExternalSearchMode == "" {
+		s.ExternalSearchMode = "meilisearch"
+	}
+	if s.ExternalSearchMaxChars <= 0 {
+		s.ExternalSearchMaxChars = 4000
+	}
+	if s.ExternalSearchTimeoutMs <= 0 {
+		s.ExternalSearchTimeoutMs = 1000
+	}
 	if err := m.q.UpsertInboxAISettings.Get(&out,
 		s.InboxID, s.SystemPrompt, s.MaxContextChunks,
 		s.SimilarityThreshold, s.ExternalSearchEnabled, s.ExternalSearchURL,
 		s.ExternalSearchMaxResults, s.ExternalSearchEndpoints, s.ExternalSearchHeaders,
 		s.KnowledgeSourceIDs,
+		s.ExternalSearchMode, s.ExternalSearchMaxChars, s.ExternalSearchTimeoutMs,
 	); err != nil {
 		m.lo.Error("error upserting inbox AI settings", "inbox_id", s.InboxID, "error", err)
 		return out, envelope.NewError(envelope.GeneralError, "Error saving inbox AI settings", nil)
@@ -325,6 +337,9 @@ func (m *Manager) GetEffectiveAISettings(inboxID int) (models.InboxAISettings, e
 		ExternalSearchMaxResults: global.ExternalSearchMaxResults,
 		ExternalSearchEndpoints:  global.ExternalSearchEndpoints,
 		ExternalSearchHeaders:    global.ExternalSearchHeaders,
+		ExternalSearchMode:       global.ExternalSearchMode,
+		ExternalSearchMaxChars:   global.ExternalSearchMaxChars,
+		ExternalSearchTimeoutMs:  global.ExternalSearchTimeoutMs,
 		KnowledgeSourceIDs:       []byte("[]"),
 	}, nil
 }

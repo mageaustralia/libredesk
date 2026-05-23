@@ -685,6 +685,9 @@ CREATE TABLE inbox_ai_settings (
 	external_search_max_results INT NOT NULL DEFAULT 3,
 	external_search_endpoints TEXT NOT NULL DEFAULT '',
 	external_search_headers TEXT NOT NULL DEFAULT '',
+	external_search_mode TEXT NOT NULL DEFAULT 'meilisearch',
+	external_search_max_chars INT NOT NULL DEFAULT 4000,
+	external_search_timeout_ms INT NOT NULL DEFAULT 1000,
 	knowledge_source_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
 	CONSTRAINT unique_inbox_ai_settings UNIQUE (inbox_id)
 );
@@ -862,7 +865,12 @@ VALUES
     ('ai.external_search_url', '""'::jsonb),
     ('ai.external_search_max_results', '3'::jsonb),
     ('ai.external_search_endpoints', '""'::jsonb),
-    ('ai.external_search_headers', '""'::jsonb);
+    ('ai.external_search_headers', '""'::jsonb),
+    ('ai.external_search_mode', '"meilisearch"'::jsonb),
+    ('ai.external_search_max_chars', '4000'::jsonb),
+    ('ai.external_search_timeout_ms', '1000'::jsonb),
+    ('pci.notify_agent_id', '0'::jsonb),
+    ('pci.notify_method', '"both"'::jsonb);
 
 -- Default conversation priorities
 INSERT INTO conversation_priorities (name) VALUES

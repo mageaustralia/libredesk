@@ -120,6 +120,15 @@ type AISettings struct {
 	ExternalSearchMaxResults int     `json:"ai.external_search_max_results" db:"ai.external_search_max_results"`
 	ExternalSearchEndpoints  string  `json:"ai.external_search_endpoints" db:"ai.external_search_endpoints"`
 	ExternalSearchHeaders    string  `json:"ai.external_search_headers" db:"ai.external_search_headers"`
+	// T3d2 generic-backend support. Mode is "meilisearch" (default; typed
+	// hits parse + structured formatting), "generic_get" (GET
+	// <base><path>?q=&limit=, raw JSON), or "generic_post" (POST {q,limit},
+	// raw JSON). MaxChars caps each generic response before it enters the
+	// prompt (token guard; ignored for meilisearch). TimeoutMs caps the
+	// per-request wait for all modes (0 falls back to 1000ms).
+	ExternalSearchMode      string `json:"ai.external_search_mode" db:"ai.external_search_mode"`
+	ExternalSearchMaxChars  int    `json:"ai.external_search_max_chars" db:"ai.external_search_max_chars"`
+	ExternalSearchTimeoutMs int    `json:"ai.external_search_timeout_ms" db:"ai.external_search_timeout_ms"`
 }
 
 // InboxAISettings holds per-inbox AI/RAG configuration (T3h). Mirrors the
@@ -161,5 +170,9 @@ type InboxAISettings struct {
 	ExternalSearchMaxResults int             `db:"external_search_max_results" json:"external_search_max_results"`
 	ExternalSearchEndpoints  string          `db:"external_search_endpoints" json:"external_search_endpoints"`
 	ExternalSearchHeaders    string          `db:"external_search_headers" json:"external_search_headers"`
+	// T3d2 — see AISettings for semantics.
+	ExternalSearchMode      string          `db:"external_search_mode" json:"external_search_mode"`
+	ExternalSearchMaxChars  int             `db:"external_search_max_chars" json:"external_search_max_chars"`
+	ExternalSearchTimeoutMs int             `db:"external_search_timeout_ms" json:"external_search_timeout_ms"`
 	KnowledgeSourceIDs       json.RawMessage `db:"knowledge_source_ids" json:"knowledge_source_ids"`
 }
