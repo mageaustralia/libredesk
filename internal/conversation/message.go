@@ -859,6 +859,15 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 			lastMessage = "Please rate your experience with us"
 		}
 
+		// T3y H4: mask card data in the stored conversation-list preview.
+		// The full message body is left raw (agents open the conversation
+		// to lift the digits for charging), but the last_message preview
+		// fans out to every agent who can see this conversation in their
+		// list, so a PAN must not appear there until redaction.
+		if message.HasPCIData {
+			lastMessage = pciscrub.Scrub(lastMessage)
+		}
+
 		// If no text content but has media, set last message preview based on media type.
 		if strings.TrimSpace(lastMessage) == "" && len(message.Media) > 0 {
 			lastMessage = m.getMediaPreview(message.Media[0])

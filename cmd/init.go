@@ -1117,6 +1117,32 @@ func initExternalSearchClient() *http.Client {
 	})
 }
 
+// initEcommerceClient builds the SSRF-guarded http.Client shared by all
+// ecommerce providers (Magento 1/2, Shopify, WooCommerce). The store
+// BaseURL is admin-controlled (DB settings / per-inbox config), so the
+// dialer MUST reject loopback/RFC1918/link-local/IPv6-reserved targets
+// to stop a compromised admin session pivoting to AWS IMDS or internal
+// hosts via the "test connection" / order-lookup paths.
+// ecommerce.allowed_hosts is the operator-controlled (config-file, not
+// admin-UI) CIDR escape hatch for stores that legitimately live on a
+// private subnet — mirrors ai/webhook/oidc allowed_hosts.
+//
+// 60s overall timeout matches the most generous legacy provider budget
+// (Magento 1). Per-request context timeouts still apply where callers
+// set them.
+func initEcommerceClient() *http.Client {
+	lo := initLogger("ecommerce")
+	return httputil.NewSSRFGuardedClient(httputil.SSRFGuardedClientOpts{
+		AllowedHosts:          ko.Strings("ecommerce.allowed_hosts"),
+		Lo:                    lo,
+		HostsConfigName:       "ecommerce",
+		Timeout:               60 * time.Second,
+		DialTimeout:           5 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+	})
+}
+
 // initWebhook inits webhook manager.
 func initWebhook(db *sqlx.DB, i18n *i18n.I18n) *webhook.Manager {
 	var lo = initLogger("webhook")

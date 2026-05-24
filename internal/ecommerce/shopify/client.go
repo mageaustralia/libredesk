@@ -73,7 +73,7 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 			Name:      "shopify",
 			BaseURL:   "https://" + domain + "/admin/api/" + apiVersion,
 			UserAgent: ecommerce.UserAgent(),
-			HTTP:      &http.Client{Timeout: 15 * time.Second},
+			HTTP:      ecommerce.HTTPClientOrDefault(config.HTTPClient, 15*time.Second),
 			Auth: func(req *http.Request) error {
 				req.Header.Set("X-Shopify-Access-Token", token)
 				return nil

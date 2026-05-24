@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhinavxd/libredesk/internal/ecommerce"
 	"github.com/zerodha/logf"
 )
 
@@ -35,20 +36,16 @@ type authClient struct {
 	lo *logf.Logger
 }
 
-// debugLogOnce gates a one-time raw response body log so we can confirm the
-// wire format from Maho without spamming the logs every refresh.
-var debugLogOnce sync.Once
-
 // jwtPattern matches a JWT-shaped string (three base64-url chunks separated by dots).
 var jwtPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
 
-func newAuthClient(baseURL, clientID, clientSecret, userAgent string, lo *logf.Logger) *authClient {
+func newAuthClient(baseURL, clientID, clientSecret, userAgent string, httpClient *http.Client, lo *logf.Logger) *authClient {
 	return &authClient{
 		baseURL:      baseURL,
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		userAgent:    userAgent,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   ecommerce.HTTPClientOrDefault(httpClient, 30*time.Second),
 		lo:           lo,
 	}
 }
@@ -100,7 +97,9 @@ func (a *authClient) refreshToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	// Cap the read: the token endpoint is admin-configured, so a hostile
+	// or compromised target could otherwise stream an unbounded body.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, ecommerce.MaxResponseBytes))
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyStr := string(respBody)
@@ -111,16 +110,8 @@ func (a *authClient) refreshToken() (string, error) {
 		return "", fmt.Errorf("POST %s returned %d: %s", tokenURL, resp.StatusCode, bodyStr)
 	}
 
-	// One-time debug log of raw response body so we can confirm the
-	// wire format from Maho. Truncated to keep logs readable.
-	debugLogOnce.Do(func() {
-		preview := string(respBody)
-		if len(preview) > 500 {
-			preview = preview[:500] + "...(truncated)"
-		}
-		a.lo.Debug("raw token response (one-time)", "status", resp.StatusCode, "body", preview)
-	})
-
+	// NOTE: never log respBody here — on the success path it contains the
+	// bearer JWT, which must not land in logs.
 	var tokenResp tokenResponse
 	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
 		return "", fmt.Errorf("failed to decode token response: %w", err)

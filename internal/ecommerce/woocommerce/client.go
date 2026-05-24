@@ -52,7 +52,7 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 			Name:      "woocommerce",
 			BaseURL:   baseURL + "/wp-json/wc/v3",
 			UserAgent: ecommerce.UserAgent(),
-			HTTP:      &http.Client{Timeout: 20 * time.Second},
+			HTTP:      ecommerce.HTTPClientOrDefault(config.HTTPClient, 20*time.Second),
 			Auth: func(req *http.Request) error {
 				req.Header.Set("Authorization", authHeader)
 				return nil

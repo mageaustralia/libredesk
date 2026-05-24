@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/abhinavxd/libredesk/internal/ecommerce"
@@ -10,7 +12,6 @@ import (
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/valyala/fasthttp"
 	"github.com/zerodha/fastglue"
-	"github.com/zerodha/logf"
 )
 
 const (
@@ -92,6 +93,14 @@ func handleUpdateEcommerceSettings(r *fastglue.Request) error {
 		}
 	}
 
+	// Reject non-http(s) / malformed base URLs at save time so a bad
+	// scheme (file://, gopher://) can't slip past the IP-level SSRF guard.
+	if req.BaseURL != "" {
+		if err := validateEcommerceBaseURL(req.BaseURL); err != nil {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
+		}
+	}
+
 	// Build the settings map in the flat format used by the settings package.
 	// The setting manager will auto-encrypt ecommerce.client_secret since it's
 	// in encryptedFields.
@@ -156,6 +165,9 @@ func handleTestEcommerceConnection(r *fastglue.Request) error {
 	if req.ClientSecret == "" {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.required", "name", "{globals.terms.clientSecret}"), nil, envelope.InputError)
 	}
+	if err := validateEcommerceBaseURL(req.BaseURL); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
+	}
 
 	// Create provider for testing.
 	config := ecommerce.ProviderConfig{
@@ -166,7 +178,7 @@ func handleTestEcommerceConnection(r *fastglue.Request) error {
 		ExtraConfig:  req.ExtraConfig,
 	}
 
-	provider, err := createEcommerceProvider(config, app.lo)
+	provider, err := createEcommerceProvider(app, config)
 	if err != nil {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
 	}
@@ -263,13 +275,38 @@ func handleTestEcommerceOrderLookup(r *fastglue.Request) error {
 // won't construct a Pro provider without a valid license. The two gates
 // together mean (a) the CE binary literally cannot do Shopify, and
 // (b) the Pro binary still requires a paid license to activate it.
-func createEcommerceProvider(config ecommerce.ProviderConfig, lo *logf.Logger) (ecommerce.Provider, error) {
+// validateEcommerceBaseURL rejects malformed or non-http(s) store URLs.
+// The IP-level SSRF guard blocks private targets at dial time, but the
+// scheme must still be http/https — file://, gopher:// etc. should never
+// be accepted as a store base URL. Belt-and-braces defence at the input
+// boundary so a bad value is rejected with a clear error rather than
+// failing opaquely later.
+func validateEcommerceBaseURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("base URL must use http or https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("base URL must include a host")
+	}
+	return nil
+}
+
+func createEcommerceProvider(app *App, config ecommerce.ProviderConfig) (ecommerce.Provider, error) {
+	// Inject the shared SSRF-guarded client so no provider ever dials an
+	// admin-supplied BaseURL with an unguarded client. Single chokepoint:
+	// every build site (global init, per-inbox factory, both test-
+	// connection handlers) funnels through here.
+	config.HTTPClient = app.ecommerceClient
 	switch config.Type {
 	case "magento1":
 		// Free in CE — no license check, always compiled in.
-		return magento1.New(config, lo)
+		return magento1.New(config, app.lo)
 	case "magento2", "shopify", "woocommerce":
-		return createProEcommerceProvider(config, lo)
+		return createProEcommerceProvider(config, app.lo)
 	default:
 		return nil, nil
 	}
@@ -314,7 +351,7 @@ func initEcommerceManager(app *App) error {
 		ExtraConfig:  extraConfig,
 	}
 
-	provider, err := createEcommerceProvider(config, app.lo)
+	provider, err := createEcommerceProvider(app, config)
 	if err != nil {
 		app.lo.Error("failed to create ecommerce provider", "error", err)
 		app.ecommerce = nil
@@ -332,7 +369,7 @@ func initEcommerceManager(app *App) error {
 	// (would create an import cycle). The factory closes over `app.lo`
 	// so each per-inbox provider gets a logger.
 	factory := func(cfg ecommerce.ProviderConfig) (ecommerce.Provider, error) {
-		return createEcommerceProvider(cfg, app.lo)
+		return createEcommerceProvider(app, cfg)
 	}
 	app.ecommerce = ecommerce.NewManager(provider, factory, *app.lo)
 	app.lo.Info("ecommerce provider initialized", "type", providerType)

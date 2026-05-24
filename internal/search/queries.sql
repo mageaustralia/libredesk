@@ -33,7 +33,9 @@ SELECT
 FROM conversation_messages m
     JOIN conversations c ON m.conversation_id = c.id
     LEFT JOIN conversation_statuses cs ON c.status_id = cs.id
-WHERE m.type != 'activity' and m.text_content ILIKE '%' || $1 || '%'
+-- T3y H4: skip messages flagged as containing card data so a raw PAN is
+-- never returned (or made findable) via search before it's redacted.
+WHERE m.type != 'activity' and m.has_pci_data = false and m.text_content ILIKE '%' || $1 || '%'
 LIMIT 30;
 
 -- name: search-contacts
@@ -69,14 +71,18 @@ SELECT *, COUNT(*) OVER() AS total FROM (
         COALESCE(
             -- Prefer the latest message containing the search term (highlights
             -- the actual hit when the user searched message body).
+            -- T3y H4: never surface a PCI-flagged message as the snippet
+            -- (would leak the raw PAN into search results).
             (SELECT m.text_content FROM conversation_messages m
              WHERE m.conversation_id = c.id AND m.type != 'activity'
+             AND m.has_pci_data = false
              AND m.text_content ILIKE '%' || $1 || '%'
              ORDER BY m.created_at DESC LIMIT 1),
             -- Fall back to the first incoming message (gives subject/refnum
             -- matches a body snippet to display).
             (SELECT m.text_content FROM conversation_messages m
              WHERE m.conversation_id = c.id AND m.type = 'incoming' AND m.sender_type = 'contact'
+             AND m.has_pci_data = false
              ORDER BY m.id ASC LIMIT 1),
             ''
         ) AS snippet
@@ -88,7 +94,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
        OR u.email = $1
        OR c.id IN (
            SELECT m.conversation_id FROM conversation_messages m
-           WHERE m.type != 'activity' AND m.text_content ILIKE '%' || $1 || '%'
+           WHERE m.type != 'activity' AND m.has_pci_data = false AND m.text_content ILIKE '%' || $1 || '%'
        )
     ORDER BY c.id
 ) sub

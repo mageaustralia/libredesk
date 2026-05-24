@@ -117,6 +117,11 @@ type App struct {
 	// unless ai.allowed_hosts CIDR-allowlists them. Reuses the same
 	// ssrfguard pattern as auth/oidc and webhook.
 	extSearchClient *http.Client
+	// ecommerceClient is the SSRF-guarded HTTP client shared by every
+	// ecommerce provider. Store BaseURLs are admin-supplied, so guarded
+	// egress is mandatory; injected into ProviderConfig.HTTPClient at
+	// every provider build site (see createEcommerceProvider).
+	ecommerceClient  *http.Client
 	search           *search.Manager
 	activityLog      *activitylog.Manager
 	notifier         *notifier.Service
@@ -350,6 +355,7 @@ func main() {
 		rag:              ragMgr,
 		ragSync:          ragSyncMgr,
 		extSearchClient:  initExternalSearchClient(),
+		ecommerceClient:  initEcommerceClient(),
 		importer:         initImporter(i18n),
 		webhook:          webhook,
 		contextLink:      initContextLink(db, i18n),

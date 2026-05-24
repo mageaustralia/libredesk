@@ -53,7 +53,7 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 			Name:      "magento2",
 			BaseURL:   baseURL + "/rest/V1",
 			UserAgent: ecommerce.UserAgent(),
-			HTTP:      &http.Client{Timeout: 20 * time.Second},
+			HTTP:      ecommerce.HTTPClientOrDefault(config.HTTPClient, 20*time.Second),
 			Auth: func(req *http.Request) error {
 				req.Header.Set("Authorization", "Bearer "+token)
 				return nil

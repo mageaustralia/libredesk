@@ -155,6 +155,9 @@ func handleUpdateInboxEcommerce(r *fastglue.Request) error {
 		if req.BaseURL == "" {
 			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.required", "name", "base_url"), nil, envelope.InputError)
 		}
+		if err := validateEcommerceBaseURL(req.BaseURL); err != nil {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
+		}
 	}
 
 	// Read the current inbox row, modify the ecommerce block in its
@@ -279,15 +282,22 @@ func handleTestInboxEcommerce(r *fastglue.Request) error {
 		ClientSecret: req.ClientSecret,
 		ExtraConfig:  req.ExtraConfig,
 	}
-	provider, err := createEcommerceProvider(cfg, app.lo)
+	if err := validateEcommerceBaseURL(req.BaseURL); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.InputError)
+	}
+	provider, err := createEcommerceProvider(app, cfg)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	if provider == nil {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.invalid", "name", "{globals.terms.provider}"), nil, envelope.InputError)
 	}
+	// Mirror the global handler (SS3): log the full upstream error
+	// server-side, return a generic message so internal hostnames /
+	// backend details aren't leaked to the client.
 	if err := provider.TestConnection(r.RequestCtx); err != nil {
-		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, err.Error(), nil, envelope.GeneralError)
+		app.lo.Error("per-inbox ecommerce connection test failed", "inbox_id", r.RequestCtx.UserValue("id"), "error", err)
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("admin.ecommerce.connectionFailed"), nil, envelope.GeneralError)
 	}
 	return r.SendEnvelope(true)
 }

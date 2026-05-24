@@ -1,6 +1,9 @@
 package ecommerce
 
-import "time"
+import (
+	"net/http"
+	"time"
+)
 
 // Order represents a customer order from any ecommerce platform
 type Order struct {
@@ -90,4 +93,13 @@ type ProviderConfig struct {
 	ClientID     string            `json:"client_id"`
 	ClientSecret string            `json:"client_secret"` // Encrypted in database
 	ExtraConfig  map[string]string `json:"extra_config"`  // Provider-specific settings
+
+	// HTTPClient is the SSRF-guarded http.Client every provider MUST use
+	// for outbound calls. BaseURL is admin-supplied, so an unguarded
+	// client would let a compromised admin session pivot to internal
+	// services (AWS IMDS, RFC1918 hosts). The cmd layer injects the
+	// shared guarded client (cmd/init.go initEcommerceClient) at every
+	// provider build site; a nil value falls back to a plain client and
+	// is only expected in tests. json:"-" keeps it out of configHash.
+	HTTPClient *http.Client `json:"-"`
 }

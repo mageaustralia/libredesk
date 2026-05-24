@@ -33,10 +33,11 @@ func New(config ecommerce.ProviderConfig, lo *logf.Logger) (*Client, error) {
 		return nil, fmt.Errorf("magento1: baseURL, clientID, and clientSecret are required")
 	}
 	ua := ecommerce.UserAgent()
+	httpClient := ecommerce.HTTPClientOrDefault(config.HTTPClient, 60*time.Second)
 	return &Client{
 		baseURL:   config.BaseURL,
-		auth:      newAuthClient(config.BaseURL, config.ClientID, config.ClientSecret, ua, lo),
-		http:      &http.Client{Timeout: 60 * time.Second},
+		auth:      newAuthClient(config.BaseURL, config.ClientID, config.ClientSecret, ua, httpClient, lo),
+		http:      httpClient,
 		userAgent: ua,
 		lo:        lo,
 	}, nil
@@ -72,7 +73,7 @@ func (c *Client) doRequest(ctx context.Context, endpoint string, params url.Valu
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, ecommerce.MaxResponseBytes))
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}

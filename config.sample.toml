@@ -154,6 +154,15 @@ allowed_hosts = []
 # loopback / RFC1918 / link-local / IPv6 reserved ranges are blocked.
 allowed_hosts = []
 
+[ecommerce]
+# CIDR ranges allowed to bypass SSRF protection on ecommerce provider
+# calls (Magento 1/2, Shopify, WooCommerce). Set this if your store /
+# OAuth endpoint runs on a private subnet (e.g. ["10.0.0.0/8"]). Empty by
+# default — all loopback / RFC1918 / link-local / IPv6 reserved ranges are
+# blocked. The store base URL is admin-configurable, so this guard stops a
+# compromised admin session pivoting to internal services.
+allowed_hosts = []
+
 [conversation]
 # How often to check for conversations to unsnooze
 unsnooze_interval = "5m"

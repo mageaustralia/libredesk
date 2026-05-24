@@ -6,7 +6,27 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
+
+// MaxResponseBytes caps how much of a provider response we read into
+// memory. Ecommerce REST payloads (a customer + a few orders) are well
+// under this; the cap stops a malicious or compromised store — reachable
+// precisely because BaseURL is admin-supplied — from streaming an
+// unbounded body and OOM-ing the host (it runs on 1.8GB).
+const MaxResponseBytes = 8 << 20 // 8 MiB
+
+// HTTPClientOrDefault returns c when non-nil, otherwise a plain client
+// with the given timeout. Providers call this so a caller that injects
+// the SSRF-guarded client (production) gets it, while direct callers
+// (tests) still get a working client. Production build sites always
+// inject, so the fallback is not an SSRF hole in normal operation.
+func HTTPClientOrDefault(c *http.Client, timeout time.Duration) *http.Client {
+	if c != nil {
+		return c
+	}
+	return &http.Client{Timeout: timeout}
+}
 
 // HTTPClient is the small base every provider (Magento 2, Shopify,
 // WooCommerce, future ones) plugs into to get a consistent request
@@ -76,7 +96,20 @@ func (c *HTTPClient) Do(ctx context.Context, method, path string, query url.Valu
 	if err != nil {
 		return nil, fmt.Errorf("%s: http: %w", c.Name, err)
 	}
+	resp.Body = capBody(resp.Body)
 	return resp, nil
+}
+
+// cappedBody bounds reads to MaxResponseBytes while delegating Close to
+// the original body, so every consumer of Do/Get is protected from an
+// oversized response without each having to remember an io.LimitReader.
+type cappedBody struct {
+	io.Reader
+	io.Closer
+}
+
+func capBody(rc io.ReadCloser) io.ReadCloser {
+	return cappedBody{Reader: io.LimitReader(rc, MaxResponseBytes), Closer: rc}
 }
 
 // Get is the common-case convenience wrapper around Do+ClassifyResponse:

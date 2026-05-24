@@ -44,11 +44,20 @@ type PCIRedactMessage struct {
 
 // RedactMessagePCI scrubs PCI data from a message's content and text_content
 // in the DB. Returns the pre-redaction message metadata so the caller can
-// drive IMAP cleanup + activity note insertion. The caller is responsible
-// for permission checks (cmd/messages.go enforces conversation access first).
-func (m *Manager) RedactMessagePCI(msgUUID string) (PCIRedactMessage, error) {
+// drive IMAP cleanup + activity note insertion. The caller enforces
+// conversation access on convUUID; this method additionally verifies the
+// target message actually belongs to that conversation, so a caller with
+// access to conversation A can't redact a message in conversation B by
+// supplying its UUID (the message UUID alone is not an authorization
+// boundary).
+func (m *Manager) RedactMessagePCI(msgUUID, convUUID string) (PCIRedactMessage, error) {
 	var msg PCIRedactMessage
 	if err := m.q.GetMessageForRedact.Get(&msg, msgUUID); err != nil {
+		return msg, envelope.NewError(envelope.GeneralError, "Message not found", nil)
+	}
+	if msg.ConversationUUID != convUUID {
+		m.lo.Warn("PCI redact: message does not belong to the authorized conversation",
+			"message_uuid", msgUUID, "message_conversation_uuid", msg.ConversationUUID, "requested_conversation_uuid", convUUID)
 		return msg, envelope.NewError(envelope.GeneralError, "Message not found", nil)
 	}
 

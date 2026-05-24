@@ -565,7 +565,7 @@ func handleRedactMessagePCI(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
-	msg, err := app.conversation.RedactMessagePCI(uuid)
+	msg, err := app.conversation.RedactMessagePCI(uuid, cuuid)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
