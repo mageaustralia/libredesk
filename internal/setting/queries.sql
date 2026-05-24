@@ -2,11 +2,16 @@
 SELECT JSON_OBJECT_AGG(key, value) AS settings FROM (SELECT * FROM settings ORDER BY key) t;
 
 -- name: update
-UPDATE settings AS s
-SET value = c.value,
-    updated_at = now()
-FROM (SELECT * FROM jsonb_each($1)) AS c(key, value)
-WHERE s.key = c.key;
+-- UPSERT (not a bare UPDATE): a plain UPDATE silently no-ops for keys that
+-- don't already exist, so any setting not pre-seeded in schema.sql/a
+-- migration can never be saved (the class of bug behind the PCI 500).
+-- INSERT ... ON CONFLICT inserts missing keys and updates existing ones.
+INSERT INTO settings (key, value, updated_at)
+SELECT key, value, now()
+FROM jsonb_each($1)
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value,
+    updated_at = now();
 
 -- name: get-by-prefix
 -- COALESCE to '{}' because JSON_OBJECT_AGG returns NULL (not an empty object)
