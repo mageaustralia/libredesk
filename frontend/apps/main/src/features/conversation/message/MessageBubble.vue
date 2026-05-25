@@ -377,9 +377,11 @@ const bubbleClasses = computed(() => ({
   'opacity-50 animate-pulse': isOutgoing.value && props.message.status === 'pending',
   'border-destructive': isOutgoing.value && props.message.status === 'failed',
   relative: isOutgoing.value,
-  // Incoming-specific: quoted text visibility
+  // Incoming-specific: quoted text visibility. Gate the hide on
+  // hasQuotedContent so a message whose entire body is a quote (nothing to
+  // separate out) is never hidden — otherwise the bubble renders blank.
   'show-quoted-text': !isOutgoing.value && showQuotedText.value,
-  'hide-quoted-text': !isOutgoing.value && !showQuotedText.value
+  'hide-quoted-text': !isOutgoing.value && hasQuotedContent.value && !showQuotedText.value
 }))
 
 // Outgoing-only computed properties
@@ -395,26 +397,29 @@ const retryMessage = (msg) => {
 
 // T3y manual redact. Confirm-then-fire because the redaction is irreversible
 // at the DB level (the original content is rewritten in-place; even rolling
-// back from a backup would expose the card again). Reload after success so
-// the scrubbed content + cleared has_pci_data flag both refresh — cheaper
-// than a per-message store mutation since this is a rare/destructive path.
+// back from a backup would expose the card again). The endpoint returns the
+// scrubbed content so we merge it (and clear has_pci_data) in place — no full
+// page reload, so the agent's in-progress editor/draft state survives.
 const redacting = ref(false)
 const redactPCI = async () => {
-  if (
-    !confirm(
-      t('conversation.pciRedactConfirm') ||
-        'This will permanently redact credit card data from this message and attempt to delete the original email. This cannot be undone.'
-    )
-  ) {
+  if (!confirm(t('conversation.pciRedactConfirm'))) {
     return
   }
   redacting.value = true
   try {
-    await api.redactMessagePCI(convStore.current.uuid, props.message.uuid)
-    window.location.reload()
+    const { data } = await api.redactMessagePCI(convStore.current.uuid, props.message.uuid)
+    const redacted = data?.data || {}
+    convStore.mergeMessageUpdate({
+      conversation_uuid: convStore.current.uuid,
+      uuid: props.message.uuid,
+      content: redacted.content ?? props.message.content,
+      text_content: redacted.text_content ?? props.message.text_content,
+      has_pci_data: false
+    })
   } catch (err) {
+    toast.error(err?.response?.data?.message || err.message || t('conversation.pciRedactFailed'))
+  } finally {
     redacting.value = false
-    toast.error(err?.response?.data?.message || err.message || 'Redaction failed')
   }
 }
 
@@ -512,13 +517,27 @@ const showQuotedText = ref(false)
 // replies but Outlook in particular doesn't use blockquote — the original
 // "include quoted text" toggle missed them entirely, so the prior thread
 // always rendered inline.
-const hasQuotedContent = computed(
-  () =>
-    !isOutgoing.value &&
-    (sanitizedContent.value.includes('<blockquote') ||
-      sanitizedContent.value.includes('gmail_quote') ||
-      sanitizedContent.value.includes('divRplyFwdMsg'))
-)
+const hasQuotedContent = computed(() => {
+  if (isOutgoing.value) return false
+  const c = sanitizedContent.value
+  if (!(c.includes('<blockquote') || c.includes('gmail_quote') || c.includes('divRplyFwdMsg'))) {
+    return false
+  }
+  // If removing the quoted blocks leaves no visible text, the entire message
+  // lives inside the quote (some Apple Mail / Outlook replies wrap the new body
+  // in <blockquote type="cite">). Treating it as quoted would hide everything
+  // behind "Show quoted text" and render the bubble blank, so show it inline.
+  // DOMParser handles arbitrary nesting safely.
+  try {
+    const doc = new DOMParser().parseFromString(c, 'text/html')
+    doc
+      .querySelectorAll('blockquote, .gmail_quote, [id*="divRplyFwdMsg"], [class*="gmail_quote"]')
+      .forEach((el) => el.remove())
+    return (doc.body.textContent || '').trim() !== ''
+  } catch {
+    return true
+  }
+})
 const toggleQuote = () => {
   showQuotedText.value = !showQuotedText.value
 }
