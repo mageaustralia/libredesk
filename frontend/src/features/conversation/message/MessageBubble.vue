@@ -394,6 +394,47 @@ const avatarFallback = computed(() => {
 })
 
 // Content sanitization - different processing for incoming vs outgoing
+// unwrapWrappingBlockquote removes a single outermost <blockquote> that wraps
+// the ENTIRE message body. Some clients (Apple Mail / Outlook) put the new
+// reply AND the quoted thread together inside one <blockquote type="cite">, so
+// the reply ends up inside a quote. Stripping just that outer wrapper lifts the
+// reply back to top level while leaving the inner quote blockquotes intact, so
+// the normal "hide quoted text" collapse works (reply shown, quote collapsed).
+// No-op for normal replies (text exists before the first blockquote) and for
+// malformed/unbalanced markup.
+function unwrapWrappingBlockquote(html) {
+  const open = html.search(/<blockquote\b/i)
+  if (open === -1) return html
+  const prefix = html
+    .slice(0, open)
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .trim()
+  if (prefix !== '') return html
+  const tagRe = /<(\/?)blockquote\b[^>]*>/gi
+  tagRe.lastIndex = open
+  let depth = 0
+  let openEnd = -1
+  let closeStart = -1
+  let closeEnd = -1
+  let m
+  while ((m = tagRe.exec(html)) !== null) {
+    if (m[1] !== '/') {
+      if (depth === 0) openEnd = tagRe.lastIndex
+      depth++
+    } else {
+      depth--
+      if (depth === 0) {
+        closeStart = m.index
+        closeEnd = tagRe.lastIndex
+        break
+      }
+    }
+  }
+  if (closeStart === -1) return html
+  return html.slice(0, open) + html.slice(openEnd, closeStart) + html.slice(closeEnd)
+}
+
 const sanitizedContent = computed(() => {
   let content = props.message.content || ''
 
@@ -408,6 +449,7 @@ const sanitizedContent = computed(() => {
     content = content.replace(/src="\/uploads\//g, `src="${baseUrl}/uploads/`)
     // Strip runs of 3+ consecutive empty paragraphs down to one (preserve intentional spacing)
     content = content.replace(/(<p[^>]*>\s*(&nbsp;|\u00a0|\s|<br\s*\/?>)*\s*<\/p>\s*){3,}/gi, '<p>&nbsp;</p>')
+    content = unwrapWrappingBlockquote(content)
     return content
   }
 })
