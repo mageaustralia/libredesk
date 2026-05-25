@@ -51,20 +51,12 @@
         </Button>
       </div>
 
-      <!-- Filter pills + add-filter button (inline alongside the status counter) -->
-      <FilterBar
-        :fields="pillBarFields"
-        :model-value="adHocFilters"
-        @update:model-value="handleFiltersChange"
-      />
-
       <!-- Right-side controls -->
       <div class="flex items-center gap-1 ml-auto shrink-0">
-        <!-- FS23: slide-out filter panel trigger. Coexists with the pill bar:
-             pill bar handles arbitrary fields/operators, the panel surfaces
-             the named-field UX (Status/Agent/Team/Priority/Tags/Dates) that
-             agents are used to from Freshdesk. Badge shows the count of
-             panel-tracked sections that are non-default. -->
+        <!-- FS23: slide-out filter panel trigger. The single filter UI (the v2
+             ad-hoc pill bar was removed for v1.0.3 parity): a named-field UX
+             (Status/Agent/Team/Priority/Tags/Dates) agents know from Freshdesk.
+             Badge shows the count of panel-tracked sections that are non-default. -->
         <Button
           variant="ghost"
           size="sm"
@@ -271,7 +263,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessageCircleQuestion, MessageCircleWarning, ChevronDown, Loader2, X, LayoutList, Table2, Trash2, RefreshCw, SlidersHorizontal } from 'lucide-vue-next'
@@ -302,11 +294,9 @@ import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
 import { useUserStore } from '@/stores/user'
 import { useToast } from '@/composables/useToast'
-import { useConversationFilters } from '@/composables/useConversationFilters'
 import { permissions as p } from '@/constants/permissions'
 import api from '@/api'
 import { useViewMode } from '@/composables/useViewMode'
-import FilterBar from '@/components/filter/FilterBar.vue'
 import EmptyList from '@/features/conversation/list/ConversationEmptyList.vue'
 import ConversationFilterPanel from '@/features/conversation/list/ConversationFilterPanel.vue'
 import ConversationListItem from '@/features/conversation/list/ConversationListItem.vue'
@@ -353,46 +343,6 @@ const activePanelFilterCount = computed(() => {
   return count
 })
 const hasActivePanelFilters = computed(() => activePanelFilterCount.value > 0)
-const { conversationsPillBarFields: pillBarFields } = useConversationFilters()
-// Local mirror of store-side adHocFilters: FilterBar drives this directly,
-// the store debounces the actual fetch. Keeping a local ref means the UI
-// stays snappy while the user toggles checkboxes inside a pill popover.
-// Seed from the store so persisted/restored filters (per-view persistence)
-// show up as pills on initial mount and on view-switch — without this watch
-// the pill bar would render empty even when the store has restored values.
-const adHocFilters = ref([...(conversationStore.conversations.adHocFilters || [])])
-watch(
-  () => conversationStore.conversations.adHocFilters,
-  (next) => {
-    // Skip updates that originate from this component (handleFiltersChange
-    // already set adHocFilters.value); only mirror external changes (route
-    // switch via InboxView restore). Cheap shallow equality is enough — the
-    // store builds a fresh array on every mutation.
-    if (next === adHocFilters.value) return
-    adHocFilters.value = [...(next || [])]
-  },
-  { deep: false }
-)
-
-function handleFiltersChange (filters) {
-  // Dedupe by field key (UI shouldn't allow duplicates but defend in depth)
-  // and forward to the store. Store strips empty arrays before they hit the
-  // wire, but we also drop them locally so the pill UI doesn't flash an
-  // active-but-empty pill while the user is mid-edit.
-  const seen = new Map()
-  for (const f of filters) {
-    seen.set(f.field, f)
-  }
-  const deduped = Array.from(seen.values())
-  adHocFilters.value = deduped
-  // `set` / `not set` operators are intentionally valueless (they translate
-  // to IS NOT NULL / IS NULL on the backend) so don't strip them out.
-  const meaningful = deduped.filter(f =>
-    (f.value && f.value !== '[]' && f.value !== '') ||
-    f.operator === 'not set' || f.operator === 'set'
-  )
-  conversationStore.setAdHocFilters(meaningful)
-}
 
 const canAssignAgent = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_USER_ASSIGNEE))
 const canAssignTeam = computed(() => userStore.can(p.CONVERSATIONS_UPDATE_TEAM_ASSIGNEE))
