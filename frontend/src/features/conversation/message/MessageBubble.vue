@@ -477,9 +477,27 @@ const retryMessage = (msg) => {
 
 // Incoming-only: quoted text toggle
 const showQuotedText = ref(false)
-const hasQuotedContent = computed(
-  () => sanitizedContent.value.includes('<blockquote') || sanitizedContent.value.includes('gmail_quote') || sanitizedContent.value.includes('divRplyFwdMsg')
-)
+const hasQuotedContent = computed(() => {
+  const c = sanitizedContent.value
+  if (!(c.includes('<blockquote') || c.includes('gmail_quote') || c.includes('divRplyFwdMsg'))) {
+    return false
+  }
+  // If removing the quoted blocks leaves no visible text, the entire message
+  // lives inside the quote (some Apple Mail / Outlook replies wrap the new
+  // body in <blockquote type="cite">). Hiding it would render the bubble blank
+  // behind "Show quoted text", so treat it as having no separable quote and
+  // show everything inline. DOMParser handles arbitrary nesting safely.
+  try {
+    const doc = new DOMParser().parseFromString(c, 'text/html')
+    doc
+      .querySelectorAll('blockquote, .gmail_quote, [id*="divRplyFwdMsg"], [class*="gmail_quote"]')
+      .forEach((el) => el.remove())
+    const remaining = (doc.body.textContent || '').replace(/ /g, ' ').trim()
+    return remaining !== ''
+  } catch {
+    return true
+  }
+})
 const toggleQuote = () => {
   showQuotedText.value = !showQuotedText.value
 }
