@@ -336,6 +336,47 @@ const avatarFallback = computed(() => {
   return firstName.toUpperCase().substring(0, 2)
 })
 
+// unwrapWrappingBlockquote removes a single outermost <blockquote> that wraps
+// the ENTIRE message body. Some clients (Apple Mail / Outlook) put the new
+// reply AND the quoted thread together inside one <blockquote type="cite">, so
+// the reply ends up inside a quote. Stripping just that outer wrapper lifts the
+// reply back to top level while leaving the inner quote blockquotes intact, so
+// the normal "hide quoted text" collapse works (reply shown, quote collapsed).
+// No-op for normal replies (text exists before the first blockquote) and for
+// malformed/unbalanced markup.
+function unwrapWrappingBlockquote(html) {
+  const open = html.search(/<blockquote\b/i)
+  if (open === -1) return html
+  const prefix = html
+    .slice(0, open)
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .trim()
+  if (prefix !== '') return html
+  const tagRe = /<(\/?)blockquote\b[^>]*>/gi
+  tagRe.lastIndex = open
+  let depth = 0
+  let openEnd = -1
+  let closeStart = -1
+  let closeEnd = -1
+  let m
+  while ((m = tagRe.exec(html)) !== null) {
+    if (m[1] !== '/') {
+      if (depth === 0) openEnd = tagRe.lastIndex
+      depth++
+    } else {
+      depth--
+      if (depth === 0) {
+        closeStart = m.index
+        closeEnd = tagRe.lastIndex
+        break
+      }
+    }
+  }
+  if (closeStart === -1) return html
+  return html.slice(0, open) + html.slice(openEnd, closeStart) + html.slice(closeEnd)
+}
+
 const sanitizedContent = computed(() => {
   if (props.message.meta?.is_csat) {
     return t('globals.messages.pleaseRateConversation')
@@ -347,6 +388,9 @@ const sanitizedContent = computed(() => {
   // long messages hard to read.
   if (props.message.content_type !== 'text') {
     content = content.replace(/<p[^>]*>\s*(&nbsp;| |\s|<br\s*\/?>)*\s*<\/p>/gi, '')
+    if (!isOutgoing.value) {
+      content = unwrapWrappingBlockquote(content)
+    }
   }
   return content
 })
