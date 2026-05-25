@@ -771,7 +771,13 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 	}
 	if len(message.Content) > 50000 {
 		if idx := strings.Index(message.Content, "<blockquote"); idx > 0 && idx < 50000 {
-			message.Content = message.Content[:idx]
+			// Only strip at the first blockquote when the prefix before it still
+			// carries the actual reply. Some clients (Apple Mail) wrap the entire
+			// new message inside a <blockquote type="cite">, so an unconditional
+			// cut would delete the whole body and render the message blank.
+			if strings.TrimSpace(stringutil.HTML2Text(message.Content[:idx])) != "" {
+				message.Content = message.Content[:idx]
+			}
 		}
 	}
 
