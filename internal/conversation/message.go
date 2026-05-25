@@ -19,6 +19,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/image"
 	inboxpkg "github.com/abhinavxd/libredesk/internal/inbox"
+	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	mmodels "github.com/abhinavxd/libredesk/internal/media/models"
 	"github.com/abhinavxd/libredesk/internal/sla"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
@@ -27,7 +28,6 @@ import (
 	"github.com/lib/pq"
 	pciscrub "github.com/mageaustralia/go-pci-scrub"
 	"github.com/volatiletech/null/v9"
-	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 )
 
 const (
@@ -634,10 +634,17 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 
 	// Keep the quoted thread on outgoing messages so the SMTP worker dispatches it.
 	// The frontend strips nested gmail_quote blocks when building new threads, so DB growth stays bounded.
-	// For incoming emails, strip excessively large blockquote chains (> 50KB).
+	// For incoming emails, strip excessively large blockquote chains (> 50KB) to
+	// bound DB growth — but ONLY when the part before the first blockquote still
+	// carries the actual reply. Some clients (e.g. Apple Mail) wrap the entire
+	// new message inside a <blockquote type="cite">, so cutting at the first
+	// blockquote unconditionally would delete the whole body and render the
+	// message blank. Guard on the prefix having real text before trimming.
 	if len(message.Content) > 50000 {
 		if idx := strings.Index(message.Content, "<blockquote"); idx > 0 && idx < 50000 {
-			message.Content = message.Content[:idx]
+			if strings.TrimSpace(stringutil.HTML2Text(message.Content[:idx])) != "" {
+				message.Content = message.Content[:idx]
+			}
 		}
 	}
 
@@ -1413,7 +1420,6 @@ func isSpamMailbox(mailbox string) bool {
 	lower := strings.ToLower(mailbox)
 	return strings.Contains(lower, "spam") || strings.Contains(lower, "junk")
 }
-
 
 // imgSrcUploadsPattern matches an <img> tag whose src attribute points at
 // our /uploads/<uuid> path. Restricting to the src attribute (rather than
