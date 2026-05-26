@@ -929,6 +929,16 @@ func handleCreateConversation(r *fastglue.Request) error {
 	ccList := stringutil.SplitEmailList(req.CC)
 	bccList := stringutil.SplitEmailList(req.BCC)
 
+	// Assign team/agent BEFORE sending the initial message so post-message
+	// hooks and automations see the assignee that the agent picked on the
+	// create dialog. Team first — it clears any prior agent assignment.
+	if req.AssignedTeamID > 0 {
+		app.conversation.UpdateConversationTeamAssignee(conversationUUID, req.AssignedTeamID, user)
+	}
+	if req.AssignedAgentID > 0 {
+		app.conversation.UpdateConversationUserAssignee(conversationUUID, req.AssignedAgentID, user)
+	}
+
 	// Send initial message based on the initiator of conversation.
 	switch req.Initiator {
 	case umodels.UserTypeAgent:
@@ -956,14 +966,6 @@ func handleCreateConversation(r *fastglue.Request) error {
 	default:
 		// Guard anyway.
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.InputError)
-	}
-
-	// Assign the conversation to team/agent if provided, always assign team first as it clears assigned agent.
-	if req.AssignedTeamID > 0 {
-		app.conversation.UpdateConversationTeamAssignee(conversationUUID, req.AssignedTeamID, user)
-	}
-	if req.AssignedAgentID > 0 {
-		app.conversation.UpdateConversationUserAssignee(conversationUUID, req.AssignedAgentID, user)
 	}
 
 	// EC20: Apply requested follow-up status. UpdateConversationStatus
