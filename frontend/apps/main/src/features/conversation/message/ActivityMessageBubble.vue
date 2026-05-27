@@ -4,12 +4,10 @@
       {{ message.content }}
       <Tooltip>
         <TooltipTrigger>
-          <span class="text-xs ml-1">{{ format(message.updated_at, 'h:mm a') }}</span>
+          <span class="text-xs ml-1">{{ formatActivityTimestamp(message.updated_at) }}</span>
         </TooltipTrigger>
         <TooltipContent>
-          <p>
-            {{ format(message.updated_at, "MMMM dd, yyyy 'at' HH:mm") }}
-          </p>
+          <p>{{ formatFullTimestamp(message.updated_at) }}</p>
         </TooltipContent>
       </Tooltip>
     </div>
@@ -17,8 +15,8 @@
 </template>
 
 <script setup>
-import { format } from 'date-fns'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@shared-ui/components/ui/tooltip'
+import { formatActivityTimestamp, formatFullTimestamp } from '@shared-ui/utils/datetime.js'
 
 defineProps({
   message: Object
