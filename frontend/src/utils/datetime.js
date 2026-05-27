@@ -1,4 +1,4 @@
-import { format, differenceInMinutes, differenceInHours, differenceInDays, differenceInMonths, differenceInYears } from 'date-fns'
+import { format, differenceInMinutes, differenceInHours, differenceInDays, differenceInMonths, differenceInYears, isToday, isYesterday, isSameYear } from 'date-fns'
 
 export function getRelativeTime (timestamp, now = new Date()) {
   try {
@@ -53,4 +53,21 @@ export const formatMessageTimestamp = (time) => {
 
 export const formatFullTimestamp = (time) => {
   return format(time, "EEE, d MMM yyyy 'at' h:mm a")
+}
+
+// formatActivityTimestamp is the compact label used by activity-log entries in
+// the conversation thread. Plain "h:mm a" was misleading for events older than
+// today (a 5-day-old "Assigned to X 4:22 PM" reads as today). This grows the
+// label just enough to disambiguate, while staying short for inline use:
+//   today      → "4:22 PM"
+//   yesterday  → "Yesterday, 4:22 PM"
+//   this year  → "21 May, 4:22 PM"
+//   older      → "21 May 2025, 4:22 PM"
+// Callers typically pair this with a tooltip showing formatFullTimestamp.
+export const formatActivityTimestamp = (time) => {
+  const date = time instanceof Date ? time : new Date(time)
+  if (isToday(date)) return format(date, 'h:mm a')
+  if (isYesterday(date)) return `Yesterday, ${format(date, 'h:mm a')}`
+  if (isSameYear(date, new Date())) return format(date, 'd MMM, h:mm a')
+  return format(date, 'd MMM yyyy, h:mm a')
 }
