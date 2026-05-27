@@ -61,12 +61,29 @@ func (m *Manager) RedactMessagePCI(msgUUID, convUUID string) (PCIRedactMessage, 
 		return msg, envelope.NewError(envelope.GeneralError, "Message not found", nil)
 	}
 
-	scrubbedContent := pciscrub.Scrub(msg.Content)
-	scrubbedText := pciscrub.Scrub(msg.TextContent)
+	scrubbedContent, scrubbedText, err := m.scrubAndPersistPCI(msgUUID, msg.Content, msg.TextContent)
+	if err != nil {
+		m.lo.Error("error redacting PCI data from message", "error", err, "message_uuid", msgUUID)
+		return msg, envelope.NewError(envelope.GeneralError, "Failed to redact message", nil)
+	}
+	// Return the post-redaction content so the caller can refresh the UI in
+	// place (mergeMessageUpdate) instead of forcing a full reload.
+	msg.Content = scrubbedContent
+	msg.TextContent = scrubbedText
 
-	// RETURNING shape mirrors v1.0.3 (id, conversation_id, source_id, type)
-	// even though we don't read the result here — keeps the SQL stable for
-	// any future caller that does want it.
+	m.lo.Info("PCI data redacted from message", "message_uuid", msgUUID, "conversation_uuid", msg.ConversationUUID)
+	return msg, nil
+}
+
+// scrubAndPersistPCI scrubs card data from a message's content + text_content,
+// writes the redacted versions back, clears has_pci_data, and returns the
+// scrubbed strings — the single DB-write shared by the manual and auto-redact
+// entry points. The RETURNING shape mirrors v1.0.3 (id, conversation_id,
+// source_id, type); we don't read it here but keep the SQL stable for any
+// future caller that wants it.
+func (m *Manager) scrubAndPersistPCI(msgUUID, content, textContent string) (string, string, error) {
+	scrubbedContent := pciscrub.Scrub(content)
+	scrubbedText := pciscrub.Scrub(textContent)
 	var result struct {
 		ID             int         `db:"id"`
 		ConversationID int         `db:"conversation_id"`
@@ -74,12 +91,9 @@ func (m *Manager) RedactMessagePCI(msgUUID, convUUID string) (PCIRedactMessage, 
 		Type           string      `db:"type"`
 	}
 	if err := m.q.RedactMessagePCI.Get(&result, msgUUID, scrubbedContent, scrubbedText); err != nil {
-		m.lo.Error("error redacting PCI data from message", "error", err, "message_uuid", msgUUID)
-		return msg, envelope.NewError(envelope.GeneralError, "Failed to redact message", nil)
+		return "", "", err
 	}
-
-	m.lo.Info("PCI data redacted from message", "message_uuid", msgUUID, "conversation_uuid", msg.ConversationUUID)
-	return msg, nil
+	return scrubbedContent, scrubbedText, nil
 }
 
 // InsertPCIRedactActivityNote logs the redaction to the conversation activity
@@ -141,7 +155,7 @@ func (m *Manager) NotifyPCIIMAPDeleteFailed(conversationUUID string, msgUUID str
 	}
 
 	title := "PCI: Failed to delete email from Gmail for conversation"
-	body := fmt.Sprintf("Card data was redacted from a message but the original email could not be deleted from Gmail. Please delete it manually. Conversation: %s", conversationUUID)
+	body := fmt.Sprintf("Card data was redacted from a message but the original email could not be deleted from Gmail. Please delete it manually. Conversation: %s (message %s)", conversationUUID, msgUUID)
 
 	n := notifier.Notification{
 		// Custom NotificationType — not registered in nmodels constants since
@@ -158,28 +172,23 @@ func (m *Manager) NotifyPCIIMAPDeleteFailed(conversationUUID string, msgUUID str
 		method = "both"
 	}
 
-	switch method {
-	case "in_app":
-		m.dispatcher.Send(n)
-	case "email":
-		if agent.Email.Valid && agent.Email.String != "" {
-			n.Email = &notifier.EmailNotification{
-				Recipients: []string{agent.Email.String},
-				Subject:    title,
-				Content:    fmt.Sprintf("<p>%s</p>", body),
-			}
-			m.dispatcher.Send(n)
+	// Attach the email payload once for any method that wants email and has a
+	// deliverable address.
+	if method != "in_app" && agent.Email.Valid && agent.Email.String != "" {
+		n.Email = &notifier.EmailNotification{
+			Recipients: []string{agent.Email.String},
+			Subject:    title,
+			Content:    fmt.Sprintf("<p>%s</p>", body),
 		}
-	case "both":
-		if agent.Email.Valid && agent.Email.String != "" {
-			n.Email = &notifier.EmailNotification{
-				Recipients: []string{agent.Email.String},
-				Subject:    title,
-				Content:    fmt.Sprintf("<p>%s</p>", body),
-			}
-		}
-		m.dispatcher.Send(n)
 	}
+
+	// "email" delivers ONLY via email — skip entirely if no address was
+	// attachable. "in_app" and "both" always fire the in-app notification
+	// (with the email rider attached when present).
+	if method == "email" && n.Email == nil {
+		return
+	}
+	m.dispatcher.Send(n)
 }
 
 // RunPCIAutoRedact is the hourly safety net that scrubs anything still
@@ -214,16 +223,7 @@ func (m *Manager) runPCIAutoRedactCycle(ctx context.Context, deleteIMAPFunc func
 	m.lo.Info(fmt.Sprintf("auto-redacting PCI data from %d messages", len(messages)))
 
 	for _, msg := range messages {
-		scrubbedContent := pciscrub.Scrub(msg.Content)
-		scrubbedText := pciscrub.Scrub(msg.TextContent)
-
-		var result struct {
-			ID             int         `db:"id"`
-			ConversationID int         `db:"conversation_id"`
-			SourceID       null.String `db:"source_id"`
-			Type           string      `db:"type"`
-		}
-		if err := m.q.RedactMessagePCI.Get(&result, msg.UUID, scrubbedContent, scrubbedText); err != nil {
+		if _, _, err := m.scrubAndPersistPCI(msg.UUID, msg.Content, msg.TextContent); err != nil {
 			m.lo.Error("error auto-redacting PCI message", "error", err, "message_uuid", msg.UUID)
 			continue
 		}

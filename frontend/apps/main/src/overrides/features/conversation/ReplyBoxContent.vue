@@ -90,7 +90,7 @@
           parseCC / parseBCC keep working untouched.
         -->
         <div class="flex items-center space-x-2">
-          <label class="w-12 text-sm font-medium text-muted-foreground">TO:</label>
+          <label class="w-12 text-sm font-medium text-muted-foreground">{{ t('replyBox.toLabel') }}:</label>
           <EmailTagInput
             v-model="to"
             :placeholder="t('replyBox.emailAddresess')"
@@ -99,7 +99,7 @@
           />
         </div>
         <div class="flex items-center space-x-2">
-          <label class="w-12 text-sm font-medium text-muted-foreground">CC:</label>
+          <label class="w-12 text-sm font-medium text-muted-foreground">{{ t('replyBox.ccLabel') }}:</label>
           <EmailTagInput
             v-model="cc"
             :placeholder="t('replyBox.emailAddresess')"
@@ -115,7 +115,7 @@
           </Button>
         </div>
         <div v-if="showBcc" class="flex items-center space-x-2">
-          <label class="w-12 text-sm font-medium text-muted-foreground">BCC:</label>
+          <label class="w-12 text-sm font-medium text-muted-foreground">{{ t('replyBox.bccLabel') }}:</label>
           <EmailTagInput
             v-model="bcc"
             :placeholder="t('replyBox.emailAddresess')"

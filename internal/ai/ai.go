@@ -95,7 +95,7 @@ func (m *Manager) Completion(k string, prompt string) (string, error) {
 			return "", envelope.NewError(envelope.InputError, m.i18n.Ts("ai.apiKeyNotSet", "provider", providerName), nil)
 		}
 		m.lo.Error("error sending prompt to provider", "error", err)
-		return "", envelope.NewError(envelope.GeneralError, err.Error(), nil)
+		return "", envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
 	return response, nil
@@ -216,7 +216,10 @@ func (m *Manager) TestProvider(provider, apiKey, model string) error {
 		if errors.Is(err, ErrApiKeyNotSet) {
 			return envelope.NewError(envelope.InputError, m.i18n.Ts("ai.apiKeyNotSet", "provider", provider), nil)
 		}
-		return envelope.NewError(envelope.GeneralError, err.Error(), nil)
+		// Log the full provider error server-side, return a generic message
+		// so a raw upstream/network error string isn't surfaced to the client.
+		m.lo.Error("error testing AI provider", "provider", provider, "error", err)
+		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 	return nil
 }
@@ -455,7 +458,7 @@ func (m *Manager) CompletionWithPayload(payload PromptPayload) (string, error) {
 			return "", envelope.NewError(envelope.InputError, m.i18n.Ts("ai.apiKeyNotSet", "provider", providerName), nil)
 		}
 		m.lo.Error("error sending prompt to provider", "error", err)
-		return "", envelope.NewError(envelope.GeneralError, err.Error(), nil)
+		return "", envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 	return response, nil
 }

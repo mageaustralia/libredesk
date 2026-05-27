@@ -270,7 +270,7 @@ const uploadImage = async (file) => {
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
-      description: handleHTTPError(error).message || 'Failed to upload image'
+      description: handleHTTPError(error).message || getI18n().global.t('editor.imageUploadFailed')
     })
     return null
   } finally {

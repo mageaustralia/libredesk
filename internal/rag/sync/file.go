@@ -11,6 +11,15 @@ import (
 	"github.com/zerodha/logf"
 )
 
+// parsedDoc is one indexable unit produced by the format parsers below
+// (a txt chunk, a csv row, or a json object). Named so the parse helpers
+// and Sync share one type instead of re-declaring the same anonymous
+// struct at each return site.
+type parsedDoc struct {
+	Title   string
+	Content string
+}
+
 // FileSyncer indexes uploaded files. The full file body is captured at
 // upload time (FileConfig.Content), so re-syncs are local: parse +
 // re-embed, no network. Three formats: txt (chunked), csv (one
@@ -29,10 +38,7 @@ func NewFileSyncer(ragMgr *rag.Manager, lo *logf.Logger) *FileSyncer {
 func (s *FileSyncer) Sync(sourceID int, config models.FileConfig) error {
 	s.lo.Info("starting file sync", "source_id", sourceID, "filename", config.Filename, "type", config.FileType)
 
-	var documents []struct {
-		Title   string
-		Content string
-	}
+	var documents []parsedDoc
 	switch config.FileType {
 	case "txt":
 		documents = s.parseTXT(config.Content)
@@ -72,28 +78,28 @@ func (s *FileSyncer) Sync(sourceID int, config models.FileConfig) error {
 }
 
 // parseTXT chunks plain text on line boundaries with a soft 2KB cap.
-func (s *FileSyncer) parseTXT(content string) []struct{ Title, Content string } {
-	var docs []struct{ Title, Content string }
+func (s *FileSyncer) parseTXT(content string) []parsedDoc {
+	var docs []parsedDoc
 	lines := strings.Split(content, "\n")
 	var chunk strings.Builder
 	for _, line := range lines {
 		if chunk.Len()+len(line) > 2000 && chunk.Len() > 0 {
-			docs = append(docs, struct{ Title, Content string }{Content: strings.TrimSpace(chunk.String())})
+			docs = append(docs, parsedDoc{Content: strings.TrimSpace(chunk.String())})
 			chunk.Reset()
 		}
 		chunk.WriteString(line)
 		chunk.WriteString("\n")
 	}
 	if chunk.Len() > 0 {
-		docs = append(docs, struct{ Title, Content string }{Content: strings.TrimSpace(chunk.String())})
+		docs = append(docs, parsedDoc{Content: strings.TrimSpace(chunk.String())})
 	}
 	return docs
 }
 
 // parseCSV makes one document per row, formatted as `header: value;
 // header: value`. The first row is treated as headers.
-func (s *FileSyncer) parseCSV(content string) []struct{ Title, Content string } {
-	var docs []struct{ Title, Content string }
+func (s *FileSyncer) parseCSV(content string) []parsedDoc {
+	var docs []parsedDoc
 	reader := csv.NewReader(strings.NewReader(content))
 	records, err := reader.ReadAll()
 	if err != nil {
@@ -112,7 +118,7 @@ func (s *FileSyncer) parseCSV(content string) []struct{ Title, Content string } 
 			}
 		}
 		if len(parts) > 0 {
-			docs = append(docs, struct{ Title, Content string }{
+			docs = append(docs, parsedDoc{
 				Title:   fmt.Sprintf("Row %d", i+1),
 				Content: strings.Join(parts, "; "),
 			})
@@ -124,14 +130,14 @@ func (s *FileSyncer) parseCSV(content string) []struct{ Title, Content string } 
 // parseJSON treats the input as either an array (one doc per element)
 // or a single object (one doc total). Each parsed item is re-marshalled
 // to canonical JSON for consistent embedding.
-func (s *FileSyncer) parseJSON(content string) []struct{ Title, Content string } {
-	var docs []struct{ Title, Content string }
+func (s *FileSyncer) parseJSON(content string) []parsedDoc {
+	var docs []parsedDoc
 
 	var arr []map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &arr); err == nil {
 		for i, item := range arr {
 			if text, err := json.Marshal(item); err == nil {
-				docs = append(docs, struct{ Title, Content string }{
+				docs = append(docs, parsedDoc{
 					Title:   fmt.Sprintf("Item %d", i+1),
 					Content: string(text),
 				})
@@ -143,7 +149,7 @@ func (s *FileSyncer) parseJSON(content string) []struct{ Title, Content string }
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &obj); err == nil {
 		if text, err := json.Marshal(obj); err == nil {
-			docs = append(docs, struct{ Title, Content string }{Content: string(text)})
+			docs = append(docs, parsedDoc{Content: string(text)})
 		}
 	}
 	return docs

@@ -1198,7 +1198,10 @@ SELECT m.id,
 FROM conversation_messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE m.has_pci_data = true
-  AND m.pci_detected_at < NOW() - INTERVAL '7 days';
+  -- pci_detected_at is nullable; a flagged row with a NULL timestamp must
+  -- still be caught by the safety net (never let card data linger because
+  -- the detection time wasn't recorded).
+  AND (m.pci_detected_at IS NULL OR m.pci_detected_at < NOW() - INTERVAL '7 days');
 
 -- name: get-message-for-redact
 -- Single-message fetch used by the manual "Redact Now" handler. Mirrors the

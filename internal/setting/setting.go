@@ -2,8 +2,10 @@
 package setting
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/abhinavxd/libredesk/internal/crypto"
@@ -321,7 +323,14 @@ func (m *Manager) GetEffectiveAISettings(inboxID int) (models.InboxAISettings, e
 		if err == nil {
 			return out, nil
 		}
-		// Not found -> fall through to global.
+		// Only "no override row" falls through to global. A real DB error
+		// (connection drop, scan failure) must NOT be silently masked as
+		// "no override" — that would quietly widen RAG search to all
+		// sources and drop the inbox's curated config. Log + return it.
+		if !errors.Is(err, sql.ErrNoRows) {
+			m.lo.Error("error fetching inbox AI settings, not falling back to global", "inbox_id", inboxID, "error", err)
+			return models.InboxAISettings{}, envelope.NewError(envelope.GeneralError, "Error fetching inbox AI settings", nil)
+		}
 	}
 
 	global, err := m.GetAISettings()

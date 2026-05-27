@@ -1237,8 +1237,11 @@ func handleRAGFileUpload(r *fastglue.Request) error {
 	}
 	defer file.Close()
 
-	content := make([]byte, fileHeader.Size)
-	if _, err := file.Read(content); err != nil {
+	// io.ReadAll, not a single file.Read into a pre-sized buffer: a
+	// multipart file backed by a temp file on disk can return fewer bytes
+	// than requested with err==nil, which would index a truncated source.
+	content, err := io.ReadAll(file)
+	if err != nil {
 		app.lo.Error("error reading file", "error", err)
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.GeneralError)
 	}

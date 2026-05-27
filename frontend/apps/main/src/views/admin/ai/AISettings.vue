@@ -280,9 +280,9 @@
                  knowledge source. Show a help block so admins aren't
                  left wondering whether they're missing a control. -->
             <div v-if="!isInboxScope" class="border-t pt-4 mt-2 space-y-1">
-              <Label class="text-sm">Knowledge Sources</Label>
+              <Label class="text-sm">{{ t('admin.ai.knowledgeSourcesLabel') }}</Label>
               <p class="text-xs text-muted-foreground">
-                RAG searches <strong>all</strong> configured knowledge sources at the global level. To restrict a specific inbox to a subset of sources, switch the scope dropdown above to that inbox.
+                {{ t('admin.ai.knowledgeSourcesGlobalHelp') }}
               </p>
             </div>
 

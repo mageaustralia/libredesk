@@ -588,5 +588,10 @@ func handleRedactMessagePCI(r *fastglue.Request) error {
 		app.conversation.InsertPCIRedactActivityNote(cuuid, actorName, true, "")
 	}
 
-	return r.SendEnvelope(true)
+	// Return the scrubbed content so the client can update the message in
+	// place (no full page reload).
+	return r.SendEnvelope(map[string]any{
+		"content":      msg.Content,
+		"text_content": msg.TextContent,
+	})
 }

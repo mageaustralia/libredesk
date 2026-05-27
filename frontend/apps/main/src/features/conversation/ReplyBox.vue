@@ -139,7 +139,6 @@
           :isFullscreen="true"
           :aiPrompts="aiPrompts"
           :isSending="isSending"
-          :isGenerating="isGenerating"
           :isDraftLoading="isDraftLoading"
           :uploadingFiles="uploadingFiles"
           :uploadedFiles="mediaFiles"
@@ -165,8 +164,6 @@
           @fileDelete="handleFileDelete"
           @filesDropped="uploadFiles"
           @aiPromptSelected="handleAiPromptSelected"
-          @generateResponse="handleGenerateResponse"
-          @generateWithOrders="handleGenerateWithOrders"
           class="h-full flex-grow"
         />
       </DialogContent>
@@ -183,7 +180,6 @@
         :isFullscreen="false"
         :aiPrompts="aiPrompts"
         :isSending="isSending"
-        :isGenerating="isGenerating"
         :isDraftLoading="isDraftLoading"
         :uploadingFiles="uploadingFiles"
         :uploadedFiles="mediaFiles"
@@ -209,8 +205,6 @@
         @fileDelete="handleFileDelete"
         @filesDropped="uploadFiles"
         @aiPromptSelected="handleAiPromptSelected"
-        @generateResponse="handleGenerateResponse"
-        @generateWithOrders="handleGenerateWithOrders"
       />
     </div>
   </div>
@@ -329,7 +323,6 @@ const isEditorFullscreen = ref(false)
 const isSending = ref(false)
 // T3a: drives the "Generating..." state on the Generate Response
 // button while the RAG endpoint is in flight.
-const isGenerating = ref(false)
 // T3r: probed once on mount via getEcommerceStatus. Drives the
 // "+ Orders" button visibility — the affordance only renders when
 // an ecommerce provider is actually configured (otherwise clicking
@@ -511,11 +504,8 @@ const handleAiPromptSelected = async (key) => {
  * setup (knowledge sources) than a single key entry handles.
  */
 const handleGenerateResponse = async (includeEcommerce = false) => {
-  isGenerating.value = true
-  // Mirror via the global emitter so ReplyBoxMenuBar's loading-state
-  // signal works even though the parent-prop chain for isGenerating
-  // has the same routing bug as the emit chain (see EMITTER_EVENTS
-  // for context).
+  // ReplyBoxMenuBar's loading state (the "Generating…" label + pulse) is
+  // driven entirely by this emitter signal, not a parent prop.
   emitter.emit(EMITTER_EVENTS.RAG_GENERATING, true)
   try {
     // Limit to bound prompt size — the backend also caps the
@@ -648,7 +638,6 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       toast.error(error)
     }
   } finally {
-    isGenerating.value = false
     emitter.emit(EMITTER_EVENTS.RAG_GENERATING, false)
   }
 }
@@ -742,7 +731,7 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
   // FS24: mention-only private notes (e.g. "@john") still send. TipTap mention
   // nodes don't always count toward textContent, so without this gate a
   // private note that is just an @mention would silently no-op.
-  const hasContent = hasTextContent.value > 0 || mediaFiles.value.length > 0 || mentions.value.length > 0
+  const hasContent = hasTextContent.value || mediaFiles.value.length > 0 || mentions.value.length > 0
   const convUUID = conversationStore.current.uuid
   const isPrivate = messageType.value === 'private_note'
   const isForward = messageType.value === 'forward'
@@ -1021,12 +1010,15 @@ watch(
 )
 
 // Initialize to, cc, and bcc fields with the current conversation's values.
+// The store always reassigns these refs (currentTo.value = [...]), never
+// mutates in place, so none of these need `deep` — keeping them shallow and
+// consistent also avoids wasted deep-watch work on every reactive tick.
 watch(
   () => conversationStore.currentCC,
   (newVal) => {
     cc.value = newVal?.join(', ') || ''
   },
-  { deep: true, immediate: true }
+  { immediate: true }
 )
 
 watch(
@@ -1047,7 +1039,7 @@ watch(
       showBcc.value = true
     }
   },
-  { deep: true, immediate: true }
+  { immediate: true }
 )
 
 // Clear media files, recipients, and any in-progress forward state when

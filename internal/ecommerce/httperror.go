@@ -31,12 +31,15 @@ func IsAuthError(statusCode int) bool {
 // provider-specific (Retry-After parsing for Shopify, backoff jitter
 // elsewhere), so callers must handle 429 BEFORE delegating to this helper.
 func ClassifyResponse(resp *http.Response, providerName string) (io.ReadCloser, error) {
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return resp.Body, nil
-	case http.StatusNotFound:
+	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		return nil, ErrNotFound
+	}
+	// Any 2xx is success — a provider may legitimately answer 201/202/204
+	// (e.g. an empty collection), and treating those as errors would break
+	// otherwise-valid calls through the shared HTTPClient.Get path.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp.Body, nil
 	}
 	if IsAuthError(resp.StatusCode) {
 		resp.Body.Close()

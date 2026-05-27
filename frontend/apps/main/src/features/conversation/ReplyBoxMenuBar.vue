@@ -239,12 +239,10 @@ import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
 
 const emitter = useEmitter()
 
-// T3a/T3r workaround #2: the parent-prop chain for `isGenerating` has the
-// same Vue routing bug as the emit chain (see EMITTER_EVENTS.RAG_GENERATE
-// comment). Track loading state locally via the same emitter bus so the
-// "Generating..." label + animate-pulse class on the Sparkles + ShoppingCart
-// icons actually render. Combined with the prop for compatibility (if the
-// prop chain ever starts working again, this stays correct).
+// T3a/T3r: the Generate buttons fire global emitter events (RAG_GENERATE /
+// RAG_GENERATE_WITH_ORDERS) and ReplyBox mirrors its in-flight state back on
+// the RAG_GENERATING channel. Tracking it here drives the "Generating..."
+// label + animate-pulse on the Sparkles + ShoppingCart icons.
 const isGeneratingLocal = ref(false)
 const handleRagGeneratingEvent = (active) => {
   isGeneratingLocal.value = !!active
@@ -272,7 +270,7 @@ const isEmojiPickerVisible = ref(false)
 // chrome they have to ignore.
 const isToolbarVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'sendWithStatus', 'deleteDraft', 'editorCommand', 'generateResponse', 'generateWithOrders'])
+const emit = defineEmits(['emojiSelect', 'sendWithStatus', 'deleteDraft', 'editorCommand'])
 
 // Using defineProps for props that don't need two-way binding
 const props = defineProps({
@@ -315,12 +313,6 @@ const props = defineProps({
     type: String,
     default: 'apply-macro-to-existing-conversation'
   },
-  // T3a: drives the "Generating..." state on the Generate Response
-  // button while the RAG endpoint is in flight.
-  isGenerating: {
-    type: Boolean,
-    default: false
-  },
   // T3a: hides the Generate Response button when irrelevant
   // (private notes — knowledge-base lookups for internal-only
   // writes rarely add value).
@@ -337,10 +329,9 @@ const props = defineProps({
   }
 })
 
-// Combined loading flag — prefer whichever signal arrived first. See
-// the isGeneratingLocal block at the top of the script for why the
-// emitter path exists alongside the prop.
-const effectiveIsGenerating = computed(() => props.isGenerating || isGeneratingLocal.value)
+// Loading flag for the Generate buttons, driven by the RAG_GENERATING
+// emitter signal (see the isGeneratingLocal block above).
+const effectiveIsGenerating = computed(() => isGeneratingLocal.value)
 
 onClickOutside(emojiPickerRef, () => {
   isEmojiPickerVisible.value = false
