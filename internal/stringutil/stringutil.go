@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/k3a/html2text"
+	"github.com/jaytaylor/html2text"
 )
 
 const (
@@ -29,7 +29,11 @@ var (
 
 // HTML2Text converts HTML to text.
 func HTML2Text(html string) string {
-	return strings.TrimSpace(html2text.HTML2Text(html))
+	out, err := html2text.FromString(html, html2text.Options{TextOnly: true})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // SanitizeFilename sanitizes the provided filename.
