@@ -640,6 +640,14 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		}
 	}
 
+	// Sanitize after all our header-rewriting customizations so any invalid
+	// UTF-8 they introduced (e.g. from a parsed contact-form body) is also
+	// scrubbed before insert.
+	incomingMsg.Content = stringutil.SanitizeUTF8(incomingMsg.Content)
+	incomingMsg.Subject = stringutil.SanitizeUTF8(incomingMsg.Subject)
+	incomingMsg.Contact.FirstName = stringutil.SanitizeUTF8(incomingMsg.Contact.FirstName)
+	incomingMsg.Contact.LastName = stringutil.SanitizeUTF8(incomingMsg.Contact.LastName)
+
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.SourceID.String,
 		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines))
 
