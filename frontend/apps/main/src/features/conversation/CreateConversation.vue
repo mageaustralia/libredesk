@@ -388,6 +388,7 @@ import { UserTypeAgent } from '@/constants/user'
 import { X, ChevronDown } from 'lucide-vue-next'
 import api from '@/api'
 import { useNewConversationDraft } from '@/composables/useNewConversationDraft'
+import { useInboxSignature } from '@/composables/useInboxSignature'
 
 const dialogOpen = defineModel({
   required: false,
@@ -509,6 +510,12 @@ const { clear: clearNewConversationDraft } = useNewConversationDraft({
   showCc,
   showBcc
 })
+
+// Per-inbox signature: fetches the selected inbox's signature and swaps it
+// into the message body whenever inbox_id changes. Snapshots the editor's
+// post-normalization output so a TipTap-stripped <div class="email-signature">
+// wrapper doesn't break the find-and-replace on subsequent inbox changes.
+useInboxSignature({ form, api })
 
 // EC16: Smart new-conversation defaults. When the dialog opens, prefill the
 // assignee with the current agent — the typical case is "I'm starting this
