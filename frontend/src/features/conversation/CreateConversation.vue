@@ -338,6 +338,7 @@ import { UserTypeAgent } from '@/constants/user'
 import api from '@/api'
 import EmailTagInput from '@/components/EmailTagInput.vue'
 import { useNewConversationDraft } from '@/composables/useNewConversationDraft'
+import { useInboxSignature } from '@/composables/useInboxSignature'
 import { X } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 
@@ -362,7 +363,6 @@ const showCc = ref(false)
 const showBcc = ref(false)
 const ccEmails = ref('')
 const bccEmails = ref('')
-const currentSignature = ref('')
 
 const handleEmojiSelect = (emoji) => {
   insertContent.value = undefined
@@ -451,55 +451,16 @@ const { clear: clearNewConversationDraft } = useNewConversationDraft({
   showBcc
 })
 
+// Per-inbox signature: fetches the selected inbox's signature and swaps it
+// into the message body whenever inbox_id changes. Snapshots the editor's
+// post-normalization output so a TipTap-stripped <div class="email-signature">
+// wrapper doesn't break the find-and-replace on subsequent inbox changes.
+useInboxSignature({ form, api })
+
 watch(emailQuery, (newVal) => {
   const firstEmail = newVal.split(',').map(e => e.trim()).filter(e => e)[0] || ''
   form.setFieldValue('contact_email', firstEmail)
 })
-
-/**
- * Fetch and insert signature when inbox changes.
- */
-const fetchAndInsertSignature = async (inboxId) => {
-  if (!inboxId) return
-  try {
-    const resp = await api.getInboxSignature(inboxId, '')
-    const signature = resp.data?.data?.signature || ''
-    currentSignature.value = signature
-
-    const currentContent = form.values.content || ''
-    const sigBlock = signature
-      ? '<div class="email-signature">' + signature + '</div>'
-      : ''
-
-    // Replace existing signature or set as initial content
-    if (currentContent.includes('class="email-signature"')) {
-      const newContent = sigBlock
-        ? currentContent.replace(/<div class="email-signature">[\s\S]*?<\/div>/, sigBlock)
-        : currentContent.replace(/<p><br><\/p><div class="email-signature">[\s\S]*?<\/div>/, '')
-      form.setFieldValue('content', newContent)
-    } else if (signature) {
-      // If content is empty or just whitespace, set signature as content
-      const stripped = currentContent.replace(/<[^>]*>/g, '').trim()
-      if (!stripped) {
-        form.setFieldValue('content', '<p><br></p>' + sigBlock)
-      } else {
-        form.setFieldValue('content', currentContent + '<p><br></p>' + sigBlock)
-      }
-    }
-  } catch (err) {
-    currentSignature.value = ''
-  }
-}
-
-// Watch inbox_id changes to fetch signature
-watch(
-  () => form.values.inbox_id,
-  (newInboxId) => {
-    if (newInboxId) {
-      fetchAndInsertSignature(Number(newInboxId))
-    }
-  }
-)
 
 // Auto-select inbox: prefer agent's team default inbox, fallback to first
 watch(
@@ -528,7 +489,8 @@ watch(
       }
 
       form.setFieldValue("inbox_id", selectedInbox)
-      fetchAndInsertSignature(Number(selectedInbox))
+      // Signature insertion happens via useInboxSignature's watcher on
+      // form.values.inbox_id — no explicit call needed here.
     }
 
     // Auto-assign current agent
