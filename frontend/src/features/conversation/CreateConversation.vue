@@ -337,6 +337,7 @@ import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
 import api from '@/api'
 import EmailTagInput from '@/components/EmailTagInput.vue'
+import { useNewConversationDraft } from '@/composables/useNewConversationDraft'
 import { X } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 
@@ -435,6 +436,19 @@ const form = useForm({
     first_name: '',
     last_name: ''
   }
+})
+
+// localStorage autosave so a session-expiry redirect (or accidental tab
+// close) mid-compose doesn't wipe the agent's work. Restores on dialog open,
+// cleared on a successful send.
+const { clear: clearNewConversationDraft } = useNewConversationDraft({
+  form,
+  dialogOpen,
+  emailQuery,
+  ccEmails,
+  bccEmails,
+  showCc,
+  showBcc
 })
 
 watch(emailQuery, (newVal) => {
@@ -666,6 +680,14 @@ const createConversation = form.handleSubmit(async (values) => {
     }
     dialogOpen.value = false
     form.resetForm()
+    // Reset the non-form refs so the autosave watchers don't immediately
+    // re-persist the just-sent content, and clear the stored draft.
+    emailQuery.value = ''
+    ccEmails.value = ''
+    bccEmails.value = ''
+    showCc.value = false
+    showBcc.value = false
+    clearNewConversationDraft()
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
