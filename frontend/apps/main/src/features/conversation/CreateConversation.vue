@@ -387,6 +387,7 @@ import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
 import { X, ChevronDown } from 'lucide-vue-next'
 import api from '@/api'
+import { useNewConversationDraft } from '@/composables/useNewConversationDraft'
 
 const dialogOpen = defineModel({
   required: false,
@@ -494,6 +495,19 @@ const form = useForm({
     first_name: '',
     last_name: ''
   }
+})
+
+// localStorage autosave so a session-expiry redirect (or accidental tab
+// close) mid-compose doesn't wipe the agent's work. Restores on dialog open,
+// cleared on a successful send.
+const { clear: clearNewConversationDraft } = useNewConversationDraft({
+  form,
+  dialogOpen,
+  emailQuery,
+  ccEmails,
+  bccEmails,
+  showCc,
+  showBcc
 })
 
 // EC16: Smart new-conversation defaults. When the dialog opens, prefill the
@@ -635,6 +649,14 @@ const createConversation = form.handleSubmit(async (values) => {
     }
     dialogOpen.value = false
     form.resetForm()
+    // Reset the non-form refs so the autosave watchers don't immediately
+    // re-persist the just-sent content, and the draft itself.
+    emailQuery.value = ''
+    ccEmails.value = ''
+    bccEmails.value = ''
+    showCc.value = false
+    showBcc.value = false
+    clearNewConversationDraft()
   } catch (error) {
     toast.error(error)
   } finally {
