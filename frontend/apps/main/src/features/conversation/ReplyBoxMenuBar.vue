@@ -65,6 +65,8 @@
         variant="outline"
         @click="triggerFileUpload"
         :pressed="false"
+        :title="$t('replyBox.attachFile')"
+        :aria-label="$t('replyBox.attachFile')"
       >
         <Paperclip class="h-4 w-4" />
       </Toggle>

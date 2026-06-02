@@ -1320,6 +1320,7 @@
   "replyBox.addNote": "Add note",
   "replyBox.addNoteAndSetAs": "Add note and set as {status}",
   "replyBox.applyMacro": "Apply macro",
+  "replyBox.attachFile": "Attach file",
   "replyBox.bcc": "BCC",
   "replyBox.toLabel": "To",
   "replyBox.ccLabel": "Cc",
