@@ -79,7 +79,7 @@
           <DropdownMenuTrigger as-child>
             <button
               class="flex items-center justify-center cursor-pointer hover:bg-muted rounded-md h-7 w-7 ml-2"
-              :title="t('globals.terms.actions', 2)"
+              :title="t('globals.terms.action', 2)"
             >
               <MoreHorizontal class="w-4 h-4" />
             </button>

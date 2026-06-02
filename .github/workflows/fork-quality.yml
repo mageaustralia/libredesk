@@ -1,0 +1,98 @@
+name: Fork quality
+
+# Quality + security checks specific to the fork. The inherited go.yml +
+# frontend-ci.yml handle build/test; this file layers on lint, vulnerability
+# scans, secret scanning, and the fork's i18n-key sanity check.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  golangci-lint:
+    # PR-only — the inherited tree has plenty of legacy style findings we
+    # don't want to relitigate on every push. only-new-issues focuses the
+    # output on the diff in this PR vs the base branch.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.3'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          only-new-issues: true
+          args: --timeout=5m
+
+  govulncheck:
+    # Non-blocking initially: the inherited tree has known vuln'd deps we
+    # haven't cleaned up yet. Findings still surface in CI logs; flip
+    # continue-on-error off once the baseline is at zero.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.3'
+      - name: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '1.24.3'
+          go-package: ./...
+
+  pnpm-audit:
+    # Non-blocking initially: the frontend has 14 inherited high-severity
+    # prod advisories (axios + transitives). Surface them in CI but don't
+    # block merges until the baseline is cleaned up.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install pnpm
+        run: npm install -g pnpm
+      - name: pnpm audit
+        working-directory: frontend
+        run: pnpm audit --prod --audit-level=high
+
+  i18n-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify every literal i18n key resolves
+        run: node scripts/check-i18n.mjs
+
+  json-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate i18n/en.json
+        run: |
+          python3 -c "import json,sys; json.load(open('i18n/en.json')); print('✓ i18n/en.json is valid JSON')"
+
+  gitleaks:
+    # PR-only — scanning every push pile is noisy and the PR view is where
+    # the diff is actionable anyway.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
