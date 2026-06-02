@@ -96,6 +96,8 @@
         variant="outline"
         @click="triggerFileUpload"
         :pressed="false"
+        :title="$t('replyBox.attachFile')"
+        :aria-label="$t('replyBox.attachFile')"
       >
         <Paperclip class="h-4 w-4" />
       </Toggle>
@@ -104,6 +106,8 @@
         variant="outline"
         @click="isToolbarVisible = !isToolbarVisible"
         :pressed="isToolbarVisible"
+        :title="$t('replyBox.formatting')"
+        :aria-label="$t('replyBox.formatting')"
       >
         <ChevronUp v-if="isToolbarVisible" class="h-4 w-4" />
         <ALargeSmall v-else class="h-4 w-4" />
@@ -113,6 +117,8 @@
         variant="outline"
         @click="openMacroPicker"
         :pressed="false"
+        :title="$t('replyBox.applyMacro')"
+        :aria-label="$t('replyBox.applyMacro')"
       >
         <Zap class="h-4 w-4" />
       </Toggle>
@@ -125,6 +131,8 @@
         class="h-8 px-3 text-xs"
         @click="handleGenerate"
         :disabled="isGenerating"
+        :title="generateLabel"
+        :aria-label="generateLabel"
       >
         <Sparkles class="h-3.5 w-3.5 mr-1.5" :class="{ 'animate-pulse': isGenerating }" />
         {{ isGenerating ? 'Generating...' : generateLabel }}
