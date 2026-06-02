@@ -1,0 +1,22 @@
+# Conservative config — the upstream tree has plenty of existing style
+# diffs we don't want CI to relitigate. Stick to high-signal linters that
+# catch real bugs (ignored errors, dead code, broken assignments) and rely
+# on golangci-lint-action's `only-new-issues: true` to focus output on the
+# diff in PRs.
+
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # vet rules (overlap with the standalone vet job is fine)
+    - ineffassign   # ineffective assignments
+    - staticcheck   # broad correctness (incl. gosimple, unused subsets)
+    - unused        # unused functions/types/vars
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters: [errcheck, unused]

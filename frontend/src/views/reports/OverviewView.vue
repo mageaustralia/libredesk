@@ -232,7 +232,7 @@
               <p v-if="!tagDistributionData.top_tags?.length" class="text-sm text-muted-foreground">
                 {{
                   $t('globals.messages.noResults', {
-                    item: $t('globals.terms.tags').toLowerCase()
+                    item: $t('globals.terms.tag', 2).toLowerCase()
                   })
                 }}
               </p>

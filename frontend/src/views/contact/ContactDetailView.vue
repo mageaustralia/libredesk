@@ -65,7 +65,7 @@
                   value="notes"
                   class="px-3 py-1 rounded"
                 >
-                  {{ $t('globals.terms.notes', 'Notes') }}
+                  {{ $t('globals.terms.note', 2) }}
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="conversations" class="mt-4">

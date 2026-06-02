@@ -746,5 +746,8 @@
   "importer.importCompleted": "Import completed: {success} of {total} successful, {errors} failed",
   "importer.csvMustContainHeadersAndData": "CSV must contain headers and at least one data row",
   "importer.importAlreadyInProgress": "Import already in progress",
-  "importer.agentCaseSensitiveNote": "Roles and teams must match exactly (case-sensitive)"
+  "importer.agentCaseSensitiveNote": "Roles and teams must match exactly (case-sensitive)",
+  "globals.messages.loading": "Loading…",
+  "globals.messages.fieldRequired": "{name} is required",
+  "replyBox.deleteDraft": "Delete draft"
 }
