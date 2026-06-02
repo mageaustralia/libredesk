@@ -422,6 +422,7 @@
   "navigation.darkMode": "Dark Mode",
   "navigation.away": "Away",
   "navigation.logout": "Logout",
+  "newConversation.discardDraftConfirm": "Discard this draft? Your typed message, recipients and subject will be cleared.",
   "admin.empty": "Select a section from the sidebar",
   "admin.webhook.events.description": "Select the events you want to subscribe to. You can select multiple events.",
   "admin.webhook.secret.description": "Optional secret key for webhook signature verification.",
