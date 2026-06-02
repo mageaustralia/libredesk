@@ -1273,6 +1273,7 @@
   "media.fileTypeNotAllowed": "File type not allowed",
   "media.invalidOrExpiredURL": "Invalid or expired media URL",
   "navigation.away": "Away",
+  "newConversation.discardDraftConfirm": "Discard this draft? Your typed message, recipients and subject will be cleared.",
   "navigation.darkMode": "Dark Mode",
   "navigation.logout": "Logout",
   "navigation.reassignReplies": "Reassign replies",

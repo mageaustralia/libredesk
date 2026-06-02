@@ -284,7 +284,22 @@
               in one click. The chevron only renders when there's at least
               one applicable status the admin has flagged for the picker.
             -->
-            <div class="flex">
+            <div class="flex items-center">
+              <!-- Discard the autosaved draft. Only surfaces when there is one,
+                   mirroring the ReplyBox trash button so the affordance feels
+                   familiar across composers. -->
+              <Button
+                v-if="hasNewConversationDraft"
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-8 px-2 mr-1 text-muted-foreground hover:text-destructive"
+                @click="handleDiscardDraft"
+                :title="$t('replyBox.deleteDraft')"
+                :aria-label="$t('replyBox.deleteDraft')"
+              >
+                <Trash2 class="h-4 w-4" />
+              </Button>
               <Button
                 type="submit"
                 :disabled="isDisabled"
@@ -385,7 +400,7 @@ import Editor from '@/components/editor/TextEditor.vue'
 import { useMacroStore } from '@/stores/macro'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import { UserTypeAgent } from '@/constants/user'
-import { X, ChevronDown } from 'lucide-vue-next'
+import { X, ChevronDown, Trash2 } from 'lucide-vue-next'
 import api from '@/api'
 import { useNewConversationDraft } from '@/composables/useNewConversationDraft'
 import { useInboxSignature } from '@/composables/useInboxSignature'
@@ -501,7 +516,7 @@ const form = useForm({
 // localStorage autosave so a session-expiry redirect (or accidental tab
 // close) mid-compose doesn't wipe the agent's work. Restores on dialog open,
 // cleared on a successful send.
-const { clear: clearNewConversationDraft } = useNewConversationDraft({
+const { clear: clearNewConversationDraft, hasDraft: hasNewConversationDraft } = useNewConversationDraft({
   form,
   dialogOpen,
   emailQuery,
@@ -510,6 +525,20 @@ const { clear: clearNewConversationDraft } = useNewConversationDraft({
   showCc,
   showBcc
 })
+
+// Discard the autosaved draft: wipe localStorage + reset all form/non-form
+// state so the dialog opens clean next time. Confirm first because typing in
+// these fields is real work that shouldn't disappear on a stray click.
+function handleDiscardDraft () {
+  if (!window.confirm(t('newConversation.discardDraftConfirm'))) return
+  form.resetForm()
+  emailQuery.value = ''
+  ccEmails.value = ''
+  bccEmails.value = ''
+  showCc.value = false
+  showBcc.value = false
+  clearNewConversationDraft()
+}
 
 // Per-inbox signature: fetches the selected inbox's signature and swaps it
 // into the message body whenever inbox_id changes. Snapshots the editor's
