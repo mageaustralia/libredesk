@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        image: postgres:17-alpine
+        # pgvector/pgvector:pg17 instead of postgres:17-alpine so the vector
+        # extension required by schema.sql (RAG / semantic search columns)
+        # is available — matches the local docker-compose.yml service image.
+        image: pgvector/pgvector:pg17
         ports:
           - 5432:5432
         env:
