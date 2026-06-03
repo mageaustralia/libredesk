@@ -232,7 +232,7 @@ CREATE TABLE conversations (
 
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
     has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
-    pci_detected_at TIMESTAMPTZ NULL
+    pci_detected_at TIMESTAMPTZ NULL,
 	custom_attributes JSONB DEFAULT '{}'::jsonb NOT NULL,
     first_reply_at TIMESTAMPTZ NULL,
     last_reply_at TIMESTAMPTZ NULL,
@@ -689,7 +689,7 @@ CREATE TABLE user_notifications (
 	actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
     has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
-    pci_detected_at TIMESTAMPTZ NULL
+    pci_detected_at TIMESTAMPTZ NULL,
 	CONSTRAINT constraint_user_notifications_on_title CHECK (length(title) <= 500),
 	CONSTRAINT constraint_user_notifications_on_body CHECK (length(body) <= 2000)
 );
