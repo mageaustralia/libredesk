@@ -233,6 +233,12 @@ const addFollower = async (userId) => {
       const name = (f.first_name || '').toLowerCase()
       return name !== 'system'
     })
+    // Confirm to the agent that the watcher was both added AND emailed.
+    // The backend's NotifyFollowerAdded fans out an in-app + email
+    // notification, so "they have been notified" is accurate.
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      description: t('conversation.followerAddedNotified')
+    })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
@@ -252,6 +258,9 @@ const removeFollower = async (userId) => {
     followers.value = (res.data?.data || []).filter(f => {
       const name = (f.first_name || '').toLowerCase()
       return name !== 'system'
+    })
+    emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+      description: t('conversation.followerRemoved')
     })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {

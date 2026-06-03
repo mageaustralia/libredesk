@@ -749,5 +749,7 @@
   "importer.agentCaseSensitiveNote": "Roles and teams must match exactly (case-sensitive)",
   "globals.messages.loading": "Loading…",
   "globals.messages.fieldRequired": "{name} is required",
-  "replyBox.deleteDraft": "Delete draft"
+  "replyBox.deleteDraft": "Delete draft",
+  "conversation.followerAddedNotified": "Watcher added — they have been notified by email.",
+  "conversation.followerRemoved": "Watcher removed."
 }
