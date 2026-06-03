@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 DROP TYPE IF EXISTS "channels" CASCADE; CREATE TYPE "channels" AS ENUM ('email');
 DROP TYPE IF EXISTS "message_type" CASCADE; CREATE TYPE "message_type" AS ENUM ('incoming','outgoing','activity');
@@ -101,6 +102,7 @@ CREATE TABLE teams (
 	-- Set to NULL when business hours or SLA policy is deleted.
 	business_hours_id INT REFERENCES business_hours(id) ON DELETE SET NULL ON UPDATE CASCADE NULL,
 	sla_policy_id INT REFERENCES sla_policies(id) ON DELETE SET NULL ON UPDATE CASCADE NULL,
+	default_inbox_id INT REFERENCES inboxes(id) ON DELETE SET NULL ON UPDATE CASCADE NULL,
 
 	timezone TEXT NULL,
 	CONSTRAINT constraint_teams_on_emoji CHECK (length(emoji) <= 10),
@@ -147,9 +149,12 @@ CREATE TABLE users (
 	api_key TEXT NULL,
 	api_secret TEXT NULL,
 	api_key_last_used_at TIMESTAMPTZ NULL,
+	phone_number_calling_code TEXT NULL,
+	signature TEXT NOT NULL DEFAULT 'Regards,<br><br>{{agent.first_name}} {{agent.last_name}}',
     CONSTRAINT constraint_users_on_country CHECK (LENGTH(country) <= 140),
     CONSTRAINT constraint_users_on_phone_number CHECK (LENGTH(phone_number) <= 20),
 	CONSTRAINT constraint_users_on_phone_number_country_code CHECK (LENGTH(phone_number_country_code) <= 10),
+	CONSTRAINT constraint_users_on_phone_number_calling_code CHECK (LENGTH(phone_number_calling_code) <= 10),
     CONSTRAINT constraint_users_on_email_length CHECK (LENGTH(email) <= 320),
     CONSTRAINT constraint_users_on_first_name CHECK (LENGTH(first_name) <= 140),
     CONSTRAINT constraint_users_on_last_name CHECK (LENGTH(last_name) <= 140)
@@ -178,7 +183,10 @@ CREATE TABLE conversation_statuses (
 	id SERIAL PRIMARY KEY,
 	created_at TIMESTAMPTZ DEFAULT NOW(),
 	updated_at TIMESTAMPTZ DEFAULT NOW(),
-	"name" TEXT NOT NULL UNIQUE
+	"name" TEXT NOT NULL UNIQUE,
+	sort_order INTEGER DEFAULT 0,
+	show_on_send BOOLEAN DEFAULT TRUE,
+	color VARCHAR(20) NOT NULL DEFAULT 'gray'
 );
 
 DROP TABLE IF EXISTS conversation_priorities CASCADE;
@@ -231,9 +239,9 @@ CREATE TABLE conversations (
     priority_id INT REFERENCES conversation_priorities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
 
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
-    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
-    pci_detected_at TIMESTAMPTZ NULL,
 	custom_attributes JSONB DEFAULT '{}'::jsonb NOT NULL,
+    merged_into_id BIGINT REFERENCES conversations(id) NULL,
+    merged_at TIMESTAMPTZ NULL,
     first_reply_at TIMESTAMPTZ NULL,
     last_reply_at TIMESTAMPTZ NULL,
     closed_at TIMESTAMPTZ NULL,
@@ -259,6 +267,7 @@ CREATE INDEX index_conversations_on_inbox_id ON conversations (inbox_id);
 CREATE INDEX index_conversations_on_status_id ON conversations (status_id);
 CREATE INDEX index_conversations_on_priority_id ON conversations (priority_id);
 CREATE INDEX index_conversations_on_created_at ON conversations (created_at);
+CREATE INDEX idx_conversations_merged_into ON conversations (merged_into_id) WHERE (merged_into_id IS NOT NULL);
 CREATE INDEX index_conversations_on_last_message_at ON conversations (last_message_at);
 CREATE INDEX index_conversations_on_last_interaction_at ON conversations (last_interaction_at);
 CREATE INDEX index_conversations_on_next_sla_deadline_at ON conversations (next_sla_deadline_at);
@@ -320,9 +329,7 @@ CREATE TABLE conversation_drafts (
     content TEXT NOT NULL,
     meta JSONB DEFAULT '{}'::jsonb NOT NULL,
     -- Reply vs private-note drafts coexist per (conversation, user) — see V1_0_7.
-    message_type TEXT NOT NULL DEFAULT 'reply',
-    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
-    pci_detected_at TIMESTAMPTZ NULL
+    message_type TEXT NOT NULL DEFAULT 'reply'
 );
 CREATE UNIQUE INDEX index_uniq_conversation_drafts_on_conv_user_type ON conversation_drafts (conversation_id, user_id, message_type);
 
@@ -608,6 +615,40 @@ CREATE TABLE ai_prompts (
 );
 CREATE INDEX index_ai_prompts_on_key ON ai_prompts USING btree (key);
 
+DROP TABLE IF EXISTS rag_sources CASCADE;
+CREATE TABLE rag_sources (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    config JSONB DEFAULT '{}'::jsonb NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE NOT NULL,
+    last_synced_at TIMESTAMPTZ NULL,
+    CONSTRAINT constraint_rag_sources_on_name CHECK (length(name) <= 255),
+    CONSTRAINT constraint_rag_sources_on_source_type CHECK (source_type = ANY (ARRAY['macro'::text, 'webpage'::text, 'custom'::text, 'file'::text]))
+);
+
+DROP TABLE IF EXISTS rag_documents CASCADE;
+CREATE TABLE rag_documents (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    source_id INT NOT NULL REFERENCES rag_sources(id) ON DELETE CASCADE,
+    source_ref TEXT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    embedding vector(1536),
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT constraint_rag_documents_on_title CHECK (length(title) <= 500)
+);
+CREATE INDEX rag_documents_source_id_idx ON rag_documents (source_id);
+CREATE INDEX rag_documents_content_hash_idx ON rag_documents (content_hash);
+CREATE INDEX rag_documents_source_ref_idx ON rag_documents (source_ref);
+CREATE UNIQUE INDEX rag_documents_source_ref_unique_idx ON rag_documents (source_id, source_ref) WHERE (source_ref IS NOT NULL);
+CREATE INDEX rag_documents_embedding_idx ON rag_documents USING hnsw (embedding vector_cosine_ops);
+
 DROP TABLE IF EXISTS inbox_ai_settings CASCADE;
 CREATE TABLE inbox_ai_settings (
     id SERIAL PRIMARY KEY,
@@ -671,7 +712,8 @@ CREATE TABLE activity_logs (
 	actor_id INT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
 	target_model_type TEXT NOT NULL,
 	target_model_id BIGINT NOT NULL,
-	ip INET
+	ip INET,
+	country VARCHAR(2) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS index_activity_logs_on_actor_id ON activity_logs (actor_id);
 CREATE INDEX IF NOT EXISTS index_activity_logs_on_activity_type ON activity_logs (activity_type);
@@ -707,8 +749,6 @@ CREATE TABLE user_notifications (
 	message_id BIGINT REFERENCES conversation_messages(id) ON DELETE CASCADE ON UPDATE CASCADE,
 	actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
 	meta JSONB DEFAULT '{}'::jsonb NOT NULL,
-    has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
-    pci_detected_at TIMESTAMPTZ NULL,
 	CONSTRAINT constraint_user_notifications_on_title CHECK (length(title) <= 500),
 	CONSTRAINT constraint_user_notifications_on_body CHECK (length(body) <= 2000)
 );
@@ -716,6 +756,19 @@ CREATE INDEX index_user_notifications_on_user_id ON user_notifications(user_id);
 CREATE INDEX index_user_notifications_on_user_id_is_read ON user_notifications(user_id, is_read);
 CREATE INDEX index_user_notifications_on_created_at ON user_notifications(created_at);
 CREATE INDEX index_user_notifications_on_conversation_id ON user_notifications(conversation_id);
+
+DROP TABLE IF EXISTS user_push_tokens CASCADE;
+CREATE TABLE user_push_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT user_push_tokens_platform_check CHECK (platform = ANY (ARRAY['android'::text, 'ios'::text])),
+    CONSTRAINT user_push_tokens_user_id_token_key UNIQUE (user_id, token)
+);
+CREATE INDEX idx_user_push_tokens_user_id ON user_push_tokens (user_id);
 
 INSERT INTO ai_providers
 ("name", provider, config, is_default)
