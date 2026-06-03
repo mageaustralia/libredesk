@@ -22,7 +22,7 @@ func V2_2_3(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf) error {
 {{ if .Recipient.IsAssignee }}
 <p><strong>{{ .Author.FullName }}</strong> replied to ticket <a href="{{ RootURL }}/inboxes/assigned/conversation/{{ .Conversation.UUID }}"><strong>#{{ .Conversation.ReferenceNumber }}</strong></a>.</p>
 {{ else }}
-<p>The customer has responded to a ticket <strong>you are watching</strong>: <a href="{{ RootURL }}/inboxes/assigned/conversation/{{ .Conversation.UUID }}"><strong>#{{ .Conversation.ReferenceNumber }}</strong></a>.</p>
+<p><strong>{{ .Author.FullName }}</strong> replied to a ticket <strong>you are watching</strong>: <a href="{{ RootURL }}/inboxes/assigned/conversation/{{ .Conversation.UUID }}"><strong>#{{ .Conversation.ReferenceNumber }}</strong></a>.</p>
 {{ end }}
 <p><strong>Subject:</strong> {{ .Conversation.Subject }}</p>
 {{ if .Message.Content }}
