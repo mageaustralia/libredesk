@@ -47,6 +47,26 @@
               :placeholder="t('placeholders.selectTags')"
             />
           </div>
+
+          <!--
+            UX5: followers picker. Reuses the same multi-select primitive as
+            tags. SelectTag emits the new full array on add/remove; the
+            computed setter below diffs against the previous array and
+            issues a single add or remove API call so the backend stays
+            authoritative for the participant list (and the "you were
+            added as a follower" notification only fires for genuine
+            additions). Restored here after an upstream-merge regression
+            stripped it from a prior commit.
+          -->
+          <div>
+            <SelectTag
+              v-if="conversationStore.current"
+              v-model="followerIds"
+              :items="followerOptions"
+              :placeholder="t('placeholders.selectFollowers')"
+              name="followers"
+            />
+          </div>
         </AccordionContent>
       </AccordionItem>
 
@@ -206,6 +226,75 @@ const fetchFollowers = async () => {
     })
   } catch {
     // Non-fatal — empty followers picker.
+  }
+}
+
+// UX5: agent options for the followers picker. Filters out the System user
+// (a synthetic actor used for activity-log entries — adding it as a watcher
+// would never fire a real notification).
+const followerOptions = computed(() => {
+  return (usersStore.options || [])
+    .filter((o) => {
+      const label = (o.label || '').toLowerCase().trim()
+      return label !== 'system' && label !== 'system user'
+    })
+    .map((o) => ({ label: o.label, value: String(o.value) }))
+})
+
+// SelectTag binds an array of stringified IDs. The computed setter diffs
+// the new array against followers.value to figure out which single agent
+// was added or removed and dispatches the matching API call. syncingFollowers
+// guards re-entry while the POST is in flight so the optimistic emit can't
+// fight the server response (the server returns the refreshed participant
+// list as the truth).
+const followerIds = computed({
+  get: () => followers.value.map((f) => String(f.id)),
+  set: (newIds) => {
+    if (syncingFollowers.value) return
+    const oldIds = followers.value.map((f) => String(f.id))
+    const added = newIds.filter((id) => !oldIds.includes(id))
+    const removed = oldIds.filter((id) => !newIds.includes(id))
+    added.forEach((id) => addFollower(id))
+    removed.forEach((id) => removeFollower(id))
+  }
+})
+
+const addFollower = async (userId) => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid || !userId) return
+  syncingFollowers.value = true
+  try {
+    const res = await api.addConversationFollower(uuid, userId)
+    followers.value = (res.data?.data || []).filter((f) => {
+      const name = ((f.first_name || '') + ' ' + (f.last_name || '')).toLowerCase().trim()
+      return name !== 'system' && name !== 'system user'
+    })
+    // Confirm to the acting agent that the watcher was both added AND
+    // emailed. The backend's NotifyFollowerAdded fans out an in-app + email
+    // notification, so "they have been notified" is accurate.
+    toast.success(t('conversation.followerAddedNotified'))
+  } catch (error) {
+    toast.error(error)
+  } finally {
+    syncingFollowers.value = false
+  }
+}
+
+const removeFollower = async (userId) => {
+  const uuid = conversationStore.current?.uuid
+  if (!uuid || !userId) return
+  syncingFollowers.value = true
+  try {
+    const res = await api.removeConversationFollower(uuid, userId)
+    followers.value = (res.data?.data || []).filter((f) => {
+      const name = ((f.first_name || '') + ' ' + (f.last_name || '')).toLowerCase().trim()
+      return name !== 'system' && name !== 'system user'
+    })
+    toast.success(t('conversation.followerRemoved'))
+  } catch (error) {
+    toast.error(error)
+  } finally {
+    syncingFollowers.value = false
   }
 }
 

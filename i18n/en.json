@@ -771,6 +771,8 @@
   "conversation.filterPanel.teamsExclude": "Teams exclude",
   "conversation.filterPanel.teamsInclude": "Teams include",
   "conversation.follow": "Follow",
+  "conversation.followerAddedNotified": "Watcher added — they have been notified by email.",
+  "conversation.followerRemoved": "Watcher removed.",
   "conversation.forward": "Forward",
   "conversation.forwardedTo": "Forwarded to: {recipients}",
   "conversation.hideQuotedText": "Hide quoted text",
