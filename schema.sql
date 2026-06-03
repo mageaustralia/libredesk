@@ -281,7 +281,7 @@ CREATE TABLE conversation_messages (
     source_id TEXT NULL,
  	sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     sender_type message_sender_type NOT NULL,
-    meta JSONB DEFAULT '{}'::JSONB NULL
+    meta JSONB DEFAULT '{}'::JSONB NULL,
     has_pci_data BOOLEAN DEFAULT FALSE NOT NULL,
     pci_detected_at TIMESTAMPTZ NULL
 );
