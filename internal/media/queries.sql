@@ -73,3 +73,24 @@ WHERE model_type = $1 AND model_id = $2;
 DELETE FROM media
 WHERE model_type = $1 AND model_id = $2
 RETURNING "uuid";
+
+-- name: set-media-content-id
+-- Stamps a stable content_id onto a media row, but only if one isn't
+-- already set (incoming emails carry their own content_id; we only stamp
+-- ldsk-<uuid> for media that was uploaded by the reply editor).
+UPDATE media
+SET content_id = $2
+WHERE id = $1
+  AND (content_id IS NULL OR content_id = '');
+
+-- name: get-media-by-content-ids
+-- Per-conversation lookup for the read-side CID resolver: given a list of
+-- cids referenced via cid:<id> in the message body, return the matching
+-- inline-image media rows scoped to the same conversation. Scoping keeps
+-- cross-conversation leakage out of the rendered HTML.
+SELECT m.id, m.created_at, m.updated_at, m.uuid, m.store, m.filename, m.content_type, m.content_id, m.model_id, m.model_type, m.disposition, m.size, m.meta
+FROM media m
+INNER JOIN conversation_messages cm ON cm.id = m.model_id
+WHERE m.model_type = 'messages'
+  AND m.content_id = ANY($1::text[])
+  AND cm.conversation_id = (SELECT id FROM conversations WHERE uuid = $2::uuid LIMIT 1);

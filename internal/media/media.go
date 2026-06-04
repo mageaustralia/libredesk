@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/go-i18n"
+	"github.com/lib/pq"
 	"github.com/volatiletech/null/v9"
 	"github.com/zerodha/logf"
 )
@@ -99,6 +100,8 @@ type queries struct {
 	ContentIDExists         *sqlx.Stmt `query:"content-id-exists"`
 	DetachModelMedia        *sqlx.Stmt `query:"detach-model-media"`
 	DeleteModelMedia        *sqlx.Stmt `query:"delete-model-media"`
+	SetContentID            *sqlx.Stmt `query:"set-media-content-id"`
+	GetByContentIDs         *sqlx.Stmt `query:"get-media-by-content-ids"`
 }
 
 // UploadAndInsert uploads file on storage and inserts an entry in db.
@@ -212,6 +215,34 @@ func (m *Manager) ContentIDExists(contentID, conversationUUID string) (bool, str
 		return false, "", fmt.Errorf("checking if content_id exists: %w", err)
 	}
 	return true, uuid, nil
+}
+
+// SetContentID stamps a content_id onto a media row if one isn't already set.
+// Used by the CID write path: when an inline /uploads/<uuid> reference in a
+// message body is rewritten to cid:ldsk-<uuid>, we stamp the matching
+// content_id so the read path can resolve the cid back to a media row.
+func (m *Manager) SetContentID(id int, contentID string) error {
+	if _, err := m.queries.SetContentID.Exec(id, contentID); err != nil {
+		m.lo.Error("error setting media content_id", "id", id, "content_id", contentID, "error", err)
+		return fmt.Errorf("setting media content_id: %w", err)
+	}
+	return nil
+}
+
+// GetByContentIDs returns media rows matching any of the given content_ids,
+// scoped to the given conversation to prevent cross-conversation lookup.
+// Used by populateInlineMedia to hydrate inline images referenced via cid:
+// in a message body (typically images from quoted prior messages).
+func (m *Manager) GetByContentIDs(contentIDs []string, conversationUUID string) ([]models.Media, error) {
+	out := []models.Media{}
+	if len(contentIDs) == 0 || conversationUUID == "" {
+		return out, nil
+	}
+	if err := m.queries.GetByContentIDs.Select(&out, pq.Array(contentIDs), conversationUUID); err != nil {
+		m.lo.Error("error fetching media by content_ids", "error", err)
+		return nil, fmt.Errorf("fetching media by content_ids: %w", err)
+	}
+	return out, nil
 }
 
 // GetBlob retrieves the raw binary content of a media file by its name.

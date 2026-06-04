@@ -495,6 +495,14 @@ func (m *Manager) GetConversationMessages(conversationUUID string, page, pageSiz
 		return messages, pageSize, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
+	// CID read-side: hydrate inline images referenced via cid: in the body
+	// but not present in Attachments (typically quoted-thread images from
+	// prior messages in the same conversation). The cmd-layer
+	// resolveContentCIDs uses these to rewrite cid:<id> back to /uploads/<uuid>.
+	for i := range messages {
+		m.populateInlineMedia(&messages[i])
+	}
+
 	return messages, pageSize, nil
 }
 
@@ -505,6 +513,8 @@ func (m *Manager) GetMessage(uuid string) (models.Message, error) {
 		m.lo.Error("error fetching message", "uuid", uuid, "error", err)
 		return message, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
+
+	m.populateInlineMedia(&message)
 
 	// Generate signed URLs for attachments.
 	for i := range message.Attachments {
@@ -749,6 +759,13 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 		message.ContentType = models.ContentTypeText
 	}
 
+	// Capture inline-image UUIDs from the still-URL-form body so we can link
+	// them post-insert. Then rewrite /uploads/<uuid> to cid:ldsk-<uuid> so
+	// the stored body is independent of URL expiry / store migration. The
+	// GET messages API resolves CIDs back to signed URLs before returning.
+	inlineUUIDs := extractInlineImageUUIDs(message.Content)
+	message.Content = rewriteInlineImagesToCID(message.Content)
+
 	// Convert content to plain text for search.
 	if message.ContentType == models.ContentTypeText {
 		message.TextContent = message.Content
@@ -838,16 +855,13 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 	}
 
 	// Inline pasted/dropped images in the reply editor are uploaded before
-	// the message exists (model_id=NULL), so they aren't covered by the
-	// message.Media loop above. Scan the outbound HTML for /uploads/<uuid>
-	// references and link them to this message, so the orphan-cleanup job
-	// doesn't reap them after 24h.
-	inlineUploadRe := regexp.MustCompile(`/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
-	for _, match := range inlineUploadRe.FindAllStringSubmatch(message.Content, -1) {
-		if len(match) >= 2 {
-			m.mediaStore.AttachByUUID(match[1], mmodels.ModelMessages, message.ID)
-		}
-	}
+	// the message exists (model_id=NULL). After insert we link them to this
+	// message AND stamp content_id = ldsk-<uuid> so cid:ldsk-<uuid> in the
+	// stored body resolves on read. Note: by this point the body should
+	// already contain cid: refs (the rewrite happened just before insert) —
+	// we use inlineUUIDs captured pre-rewrite so we know which media to
+	// link.
+	m.linkInlineMediaToMessage(inlineUUIDs, message.ID)
 
 	// Auto-add the sender as a conversation participant only when the sender
 	// is a contact. Agents follow conversations explicitly via the UX5
@@ -1405,15 +1419,153 @@ func (c *Manager) generateMessagesQuery(baseQuery string, qArgs []interface{}, p
 // text) prevents accidental rewrites of plain prose like "see /uploads/..."
 // or quoted-thread URL mentions outside of an <img>.
 //
-// Capture groups:
+// Capture groups (upstream's 3-group form, adopted alongside the CID rework):
 //
 //	1: tag prefix up to and including the opening quote (`<img ... src="`)
-//	2: the entire src URL value
-//	3: media UUID
-//	4: the closing quote of the src attribute
+//	2: media UUID
+//	3: the closing quote of the src attribute
 var imgSrcUploadsPattern = regexp.MustCompile(
-	`(?i)(<img[^>]*?\bsrc=["'])((?:https?://[^"'<>\s/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"'<>\s]*)?)(["'])`,
+	`(?i)(<img\b[^>]*?\bsrc=["'])(?:https?://[^"'<>\s/]+)?/uploads/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?[^"'<>\s]*)?(["'])`,
 )
+
+// inlineContentID returns the canonical content_id stamped on every
+// libredesk-originating inline image. Deterministic from the UUID so the
+// content_id is collision-free without a uniqueness check.
+func inlineContentID(uuid string) string {
+	return "ldsk-" + uuid
+}
+
+// extractInlineImageUUIDs returns the unique media UUIDs referenced by
+// <img src=".../uploads/<uuid>"> in the body, in order of first appearance.
+func extractInlineImageUUIDs(content string) []string {
+	matches := imgSrcUploadsPattern.FindAllStringSubmatch(content, -1)
+	seen := make(map[string]bool, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, sub := range matches {
+		if len(sub) < 3 {
+			continue
+		}
+		if seen[sub[2]] {
+			continue
+		}
+		seen[sub[2]] = true
+		out = append(out, sub[2])
+	}
+	return out
+}
+
+// rewriteInlineImagesToCID replaces every <img src=".../uploads/<uuid>"> with
+// <img src="cid:ldsk-<uuid>">. Run at INSERT time so the stored body is
+// independent of URL expiry / store migration; the GET messages API rewrites
+// these back to signed URLs before returning to the frontend.
+func rewriteInlineImagesToCID(content string) string {
+	return imgSrcUploadsPattern.ReplaceAllStringFunc(content, func(match string) string {
+		sub := imgSrcUploadsPattern.FindStringSubmatch(match)
+		if len(sub) < 4 {
+			return match
+		}
+		return sub[1] + "cid:" + inlineContentID(sub[2]) + sub[3]
+	})
+}
+
+// imgSrcCIDPattern matches <img src="cid:<id>">. Used by the read path to
+// list inline CIDs referenced in a stored body so the corresponding media
+// rows can be hydrated as attachments.
+var imgSrcCIDPattern = regexp.MustCompile(
+	`(?i)<img\b[^>]*?\bsrc=["']cid:([^"'<>\s]+)["']`,
+)
+
+// extractInlineContentIDs returns unique content_ids referenced via
+// <img src="cid:..."> in the body.
+func extractInlineContentIDs(content string) []string {
+	matches := imgSrcCIDPattern.FindAllStringSubmatch(content, -1)
+	seen := make(map[string]bool, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, sub := range matches {
+		if len(sub) < 2 {
+			continue
+		}
+		cid := sub[1]
+		if cid == "" || seen[cid] {
+			continue
+		}
+		seen[cid] = true
+		out = append(out, cid)
+	}
+	return out
+}
+
+// linkInlineMediaToMessage attaches each inline-image media row to this
+// message (so it isn't reaped as orphan) and stamps a stable content_id so
+// cid:ldsk-<uuid> in the saved body resolves on read. The cross-message check
+// is intentionally permissive — UX11's anti-cross-conversation defence lives
+// in embedInlineImagesAsCID's authorisation check, which still runs on send.
+func (m *Manager) linkInlineMediaToMessage(uuids []string, messageID int) {
+	for _, uuid := range uuids {
+		media, err := m.mediaStore.Get(0, uuid)
+		if err != nil {
+			continue
+		}
+		if media.Model.String != mmodels.ModelMessages {
+			continue
+		}
+		// Linked to a different message already — leave it.
+		if media.ModelID.Valid && media.ModelID.Int != messageID {
+			continue
+		}
+		if !media.ModelID.Valid {
+			if err := m.mediaStore.Attach(media.ID, mmodels.ModelMessages, messageID); err != nil {
+				m.lo.Warn("error linking inline media to message", "uuid", uuid, "message_id", messageID, "error", err)
+			}
+		}
+		if media.ContentID == "" {
+			if err := m.mediaStore.SetContentID(media.ID, inlineContentID(uuid)); err != nil {
+				m.lo.Warn("error setting media content_id", "uuid", uuid, "message_id", messageID, "error", err)
+			}
+		}
+	}
+}
+
+// populateInlineMedia appends inline images referenced via cid:<id> in the
+// body but not yet present in message.Attachments — typically images from
+// quoted prior messages in the same conversation. Without this, the read-side
+// CID resolver has nothing to map cid:ldsk-<uuid> back to.
+func (m *Manager) populateInlineMedia(message *models.Message) {
+	cids := extractInlineContentIDs(message.Content)
+	if len(cids) == 0 {
+		return
+	}
+	existing := make(map[string]bool, len(message.Attachments))
+	for _, a := range message.Attachments {
+		if a.ContentID != "" {
+			existing[a.ContentID] = true
+		}
+	}
+	missing := make([]string, 0, len(cids))
+	for _, cid := range cids {
+		if !existing[cid] {
+			missing = append(missing, cid)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	medias, err := m.mediaStore.GetByContentIDs(missing, message.ConversationUUID)
+	if err != nil {
+		m.lo.Warn("error fetching inline media by content_id", "count", len(missing), "error", err)
+		return
+	}
+	for _, media := range medias {
+		message.Attachments = append(message.Attachments, attachment.Attachment{
+			UUID:        media.UUID,
+			Name:        media.Filename,
+			ContentType: media.ContentType,
+			ContentID:   media.ContentID,
+			Size:        media.Size,
+			Disposition: media.Disposition.String,
+		})
+	}
+}
 
 // embedInlineImagesAsCID finds every <img src=".../uploads/<uuid>"> reference
 // in the outgoing message body, attaches the underlying file as an inline CID
@@ -1455,7 +1607,7 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 	// For URLs that point to media not yet on this message (commonly quoted
 	// thread images from previous replies), fetch + authorise + attach.
 	for _, sub := range matches {
-		uuid := sub[3]
+		uuid := sub[2]
 		if _, ok := cidByUUID[uuid]; ok {
 			continue
 		}
@@ -1520,16 +1672,16 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 	// burn signed-URL TTL, or act as a tracking pixel).
 	message.Content = imgSrcUploadsPattern.ReplaceAllStringFunc(message.Content, func(match string) string {
 		sub := imgSrcUploadsPattern.FindStringSubmatch(match)
-		if len(sub) < 5 {
+		if len(sub) < 4 {
 			return match
 		}
 		newSrc := ""
-		if cid, ok := cidByUUID[sub[3]]; ok {
+		if cid, ok := cidByUUID[sub[2]]; ok {
 			newSrc = "cid:" + cid
 		}
-		// sub[1] = `<img ... src="`, sub[4] = closing quote. Drop the URL,
+		// sub[1] = `<img ... src="`, sub[3] = closing quote. Drop the URL,
 		// substitute newSrc.
-		return sub[1] + newSrc + sub[4]
+		return sub[1] + newSrc + sub[3]
 	})
 
 	return nil
@@ -1742,13 +1894,25 @@ func (m *Manager) fetchMessageAttachments(messageID int) (attachment.Attachments
 			return attachments, fmt.Errorf("error fetching media blob: %w", err)
 		}
 
+		// CID model: surface the stamped content_id on the attachment so the
+		// outbound MIME header carries cid:ldsk-<uuid>, matching the cid: ref
+		// in the stored body. Fall back to UUID for legacy media rows that
+		// pre-date the CID rewrite — those still have URL-form bodies that
+		// resolve via the /uploads/<uuid> backend route, so the Content-ID is
+		// only consulted defensively.
+		contentID := media.ContentID
+		if contentID == "" {
+			contentID = media.UUID
+		}
+
 		attachment := attachment.Attachment{
 			Name:        media.Filename,
 			UUID:        media.UUID,
 			ContentType: media.ContentType,
+			ContentID:   contentID,
 			Content:     blob,
 			Size:        media.Size,
-			Header:      attachment.MakeHeader(media.ContentType, media.UUID, media.Filename, "base64", media.Disposition.String),
+			Header:      attachment.MakeHeader(media.ContentType, contentID, media.Filename, "base64", media.Disposition.String),
 			URL:         m.mediaStore.GetSignedURL(media.UUID),
 		}
 		attachments = append(attachments, attachment)
