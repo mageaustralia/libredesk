@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // check-i18n.mjs — scan the frontend for t()/$t() / .t() lookups whose key is a
-// string literal, and confirm each key exists in i18n/en.json. Catches the
+// string literal, and confirm each key exists in i18n/en-US.json. Catches the
 // silent-failure case where a missing key renders as the bare key string at
 // runtime (we hit a few of these adding draft + signature + tooltip features).
 //
 // Limitations:
 // - Dynamic keys (variables) are skipped; we can't statically resolve them.
-// - We only check existence in en.json. Other locales come via Crowdin so a
+// - We only check existence in en-US.json. Other locales come via Crowdin so a
 //   key missing there is a translation gap, not a code bug, and is out of
 //   scope here.
 //
@@ -17,7 +17,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
-const I18N_PATH = path.join(ROOT, 'i18n', 'en.json')
+const I18N_PATH = path.join(ROOT, 'i18n', 'en-US.json')
 const SCAN_DIRS = ['frontend/apps/main/src', 'frontend/shared-ui', 'frontend/apps/widget/src']
 const SCAN_EXTS = new Set(['.vue', '.js', '.ts', '.mjs'])
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git'])
