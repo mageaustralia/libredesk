@@ -1205,6 +1205,7 @@
   "globals.terms.timestamp": "Timestamp | Timestamps",
   "globals.terms.timezone": "Timezone | Timezones",
   "globals.terms.title": "Title | Titles",
+  "globals.terms.typing": "Typing",
   "globals.terms.tls": "TLS | TLSs",
   "globals.terms.today": "Today",
   "globals.terms.tryAgain": "Try again",
