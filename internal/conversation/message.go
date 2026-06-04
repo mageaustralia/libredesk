@@ -500,7 +500,7 @@ func (m *Manager) GetConversationMessages(conversationUUID string, page, pageSiz
 	// prior messages in the same conversation). The cmd-layer
 	// resolveContentCIDs uses these to rewrite cid:<id> back to /uploads/<uuid>.
 	for i := range messages {
-		m.populateInlineMedia(&messages[i])
+		m.PopulateInlineMedia(&messages[i])
 	}
 
 	return messages, pageSize, nil
@@ -514,7 +514,7 @@ func (m *Manager) GetMessage(uuid string) (models.Message, error) {
 		return message, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
-	m.populateInlineMedia(&message)
+	m.PopulateInlineMedia(&message)
 
 	// Generate signed URLs for attachments.
 	for i := range message.Attachments {
@@ -888,9 +888,17 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 			lastMessage = pciscrub.Scrub(lastMessage)
 		}
 
-		// If no text content but has media, set last message preview based on media type.
-		if strings.TrimSpace(lastMessage) == "" && len(message.Media) > 0 {
-			lastMessage = m.getMediaPreview(message.Media[0])
+		// HTML2Text drops <img> tags, so image-only messages have empty
+		// text. Fall back to a media-type preview, or to a generic "Image"
+		// label when the body's only content is inline-image refs (no
+		// attachments listed).
+		if strings.TrimSpace(lastMessage) == "" {
+			switch {
+			case len(message.Media) > 0:
+				lastMessage = m.getMediaPreview(message.Media[0])
+			case len(inlineUUIDs) > 0:
+				lastMessage = m.i18n.T("globals.terms.image")
+			}
 		}
 
 		// Update conversation last message details (also conditionally updates last_interaction if not activity/private).
@@ -1526,11 +1534,11 @@ func (m *Manager) linkInlineMediaToMessage(uuids []string, messageID int) {
 	}
 }
 
-// populateInlineMedia appends inline images referenced via cid:<id> in the
+// PopulateInlineMedia appends inline images referenced via cid:<id> in the
 // body but not yet present in message.Attachments — typically images from
 // quoted prior messages in the same conversation. Without this, the read-side
 // CID resolver has nothing to map cid:ldsk-<uuid> back to.
-func (m *Manager) populateInlineMedia(message *models.Message) {
+func (m *Manager) PopulateInlineMedia(message *models.Message) {
 	cids := extractInlineContentIDs(message.Content)
 	if len(cids) == 0 {
 		return

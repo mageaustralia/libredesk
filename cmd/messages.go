@@ -130,12 +130,7 @@ func handleGetMessages(r *fastglue.Request) error {
 	rootURL, _ := app.setting.GetAppRootURL()
 	for i := range messages {
 		total = messages[i].Total
-		// Populate attachment URLs
-		for j := range messages[i].Attachments {
-			att := messages[i].Attachments[j]
-			messages[i].Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
-		}
-		resolveContentCIDs(&messages[i], rootURL)
+		hydrateAndResolveCIDs(app, &messages[i], rootURL)
 	}
 
 	// Process CSAT status for all messages (will only affect CSAT messages)
@@ -194,11 +189,7 @@ func handleGetMessage(r *fastglue.Request) error {
 	}
 
 	rootURL, _ := app.setting.GetAppRootURL()
-	for j := range message.Attachments {
-		att := message.Attachments[j]
-		message.Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
-	}
-	resolveContentCIDs(&message, rootURL)
+	hydrateAndResolveCIDs(app, &message, rootURL)
 
 	return r.SendEnvelope(message)
 }
@@ -399,12 +390,15 @@ func handleSendMessage(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.GeneralError)
 	}
 
+	rootURL, _ := app.setting.GetAppRootURL()
+
 	// Create contact message.
 	if req.SenderType == umodels.UserTypeContact {
 		message, err := app.conversation.CreateContactMessage(media, int(conv.ContactID), cuuid, req.Message, cmodels.ContentTypeHTML, false)
 		if err != nil {
 			return sendErrorEnvelope(r, err)
 		}
+		hydrateAndResolveCIDs(app, &message, rootURL)
 		return r.SendEnvelope(message)
 	}
 
@@ -414,6 +408,7 @@ func handleSendMessage(r *fastglue.Request) error {
 		if err != nil {
 			return sendErrorEnvelope(r, err)
 		}
+		hydrateAndResolveCIDs(app, &message, rootURL)
 		return r.SendEnvelope(message)
 	}
 
@@ -477,6 +472,7 @@ func handleSendMessage(r *fastglue.Request) error {
 	// actually succeeds. The frontend learns about the eventual status flip
 	// via the existing BroadcastConversationUpdate WebSocket message that
 	// UpdateConversationStatus emits.
+	hydrateAndResolveCIDs(app, &message, rootURL)
 	return r.SendEnvelope(message)
 }
 
@@ -535,6 +531,30 @@ func resolveContentCIDs(msg *cmodels.Message, rootURL string) {
 		msg.Content = strings.ReplaceAll(msg.Content, `src="/uploads/`, `src="`+rootURL+`/uploads/`)
 		msg.Content = strings.ReplaceAll(msg.Content, `src='/uploads/`, `src='`+rootURL+`/uploads/`)
 	}
+}
+
+// hydrateAndResolveCIDs is the full read-time CID pipeline used by every
+// handler that ships a message back to the frontend:
+//
+//  1. PopulateInlineMedia: pulls in inline-image media referenced via cid:
+//     in the body but not yet listed in Attachments (typically quoted-thread
+//     images from prior messages in the same conversation).
+//  2. URL stamping: gives each attachment a resolvable URL so the next step
+//     has something to swap to.
+//  3. resolveContentCIDs: rewrites cid:<id> in the body to the attachment
+//     URLs, and promotes any remaining relative /uploads/ paths to absolute.
+//
+// Called from handleGetMessages and handleGetMessage (existing) plus all
+// three handleSendMessage paths so the API response after a write also
+// returns URL-form content (b014d0d9 — without this the editor would
+// momentarily render cid: links the browser can't resolve).
+func hydrateAndResolveCIDs(app *App, msg *cmodels.Message, rootURL string) {
+	app.conversation.PopulateInlineMedia(msg)
+	for j := range msg.Attachments {
+		att := msg.Attachments[j]
+		msg.Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
+	}
+	resolveContentCIDs(msg, rootURL)
 }
 
 // handleRedactMessagePCI is the manual "Redact Now" path: agents click the
