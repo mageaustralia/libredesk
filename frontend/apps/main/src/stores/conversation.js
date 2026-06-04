@@ -10,7 +10,7 @@ import { subscribeToConversation, sendTypingIndicator, subscribeListReplace } fr
 import { playNotificationSound } from '@shared-ui/composables/useNotificationSound'
 import MessageCache from '../utils/conversation-message-cache'
 import { getI18n } from '../i18n'
-import { useDebounceFn, useStorage } from '@vueuse/core'
+import { useDebounceFn, useStorage, useThrottleFn } from '@vueuse/core'
 import { CONVERSATION_LIST_TYPE, CONVERSATION_DEFAULT_STATUSES, TAG_ACTION } from '@/constants/conversation'
 import { useUsersStore } from './users'
 import { useTeamStore } from './team'
