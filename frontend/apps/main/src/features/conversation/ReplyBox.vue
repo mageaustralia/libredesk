@@ -589,13 +589,30 @@ const handleGenerateResponse = async (includeEcommerce = false) => {
       return
     }
 
+    // Agent directive: whatever the agent typed in the editor before clicking
+    // Generate Response. Ported from v1.0.3 prod (commit 952527c2). The
+    // backend feeds this to the search-intent classifier AND the knowledge-
+    // base RAG search, not just the AI's final completion — so a directive
+    // like "Search for tennis racquet 270gm" actually steers what gets
+    // searched against Meilisearch instead of just dressing up wrong results.
+    let agentInstructions = ''
+    if (htmlContent.value) {
+      let editorText = htmlContent.value
+      if (editorText.includes(SIGNATURE_MARKER)) {
+        editorText = editorText.substring(0, editorText.indexOf(SIGNATURE_MARKER))
+      }
+      const doc = new DOMParser().parseFromString(editorText, 'text/html')
+      agentInstructions = (doc.body.textContent || '').trim()
+    }
+
     const resp = await api.ragGenerate({
       conversation_id: conversationStore.current?.id,
       customer_message: conversationText + internalNotes,
       // T3r: opt-in ecommerce context. Only set true on the dedicated
       // "+ Orders" path so the standard Generate flow stays free of
       // Magento/Maho lookups.
-      include_ecommerce: includeEcommerce
+      include_ecommerce: includeEcommerce,
+      agent_instructions: agentInstructions
     })
 
     const response = resp.data?.data?.response

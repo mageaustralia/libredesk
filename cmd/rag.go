@@ -285,6 +285,15 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		// slow and the agent shouldn't pay that latency unless they
 		// asked for it.
 		IncludeEcommerce bool `json:"include_ecommerce"`
+		// Whatever the agent typed in the reply box before clicking
+		// Generate Response. Steers the search-intent classifier AND
+		// the knowledge-base RAG search AND the final completion — not
+		// just the last of those. Without this fan-out, a directive
+		// like "Search for tennis racquet 270gm" would only influence
+		// the AI's wording, not the actual Meilisearch query, so the
+		// model would phrase wrong products like it had followed the
+		// directive. Ported from v1.0.3 prod 952527c2.
+		AgentInstructions string `json:"agent_instructions"`
 	}
 	if err := r.Decode(&req, "json"); err != nil {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
@@ -358,7 +367,16 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		}
 	}
 
-	results, err := app.rag.Search(req.CustomerMessage, maxChunks, threshold, sourceIDs...)
+	// Combined search input: customer message + the agent's directive from
+	// the reply box. Both the knowledge-base RAG search and the external
+	// Meilisearch classifier consume this so an agent override actually
+	// steers the search, not just the AI's wording at completion time.
+	searchInput := req.CustomerMessage
+	if strings.TrimSpace(req.AgentInstructions) != "" {
+		searchInput += "\n\n[Agent directive for this search/response: " + req.AgentInstructions + "]"
+	}
+
+	results, err := app.rag.Search(searchInput, maxChunks, threshold, sourceIDs...)
 	if err != nil {
 		app.lo.Warn("RAG search failed, continuing without context", "error", err)
 		results = []models.SearchResult{}
@@ -421,7 +439,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		if maxSearchResults <= 0 {
 			maxSearchResults = 3
 		}
-		intents, err := app.classifySearchIntent(req.CustomerMessage)
+		// searchInput (customer message + agent directive) — see the
+		// rag.Search call above. Keeps classifier and vector search in
+		// agreement on what the agent actually wants this turn.
+		intents, err := app.classifySearchIntent(searchInput)
 		if err != nil {
 			app.lo.Warn("external search classification failed, continuing without", "error", err)
 		} else {
@@ -488,6 +509,17 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 	// can't be promoted into the substitution slot.
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{external_search_results}}", externalSearchContext)
 	systemPrompt = strings.ReplaceAll(systemPrompt, "{{enquiry}}", req.CustomerMessage)
+
+	// Agent directive from the reply box. Appended after all template
+	// substitutions so admin-edited prompts always pick it up. The
+	// directive ALSO feeds the classifier + RAG search above so the
+	// completion sees both the agent's intent AND search results steered
+	// by it — without this, the model would phrase whatever was found by
+	// the customer-message-only search in language that sounded like it
+	// had followed the directive.
+	if strings.TrimSpace(req.AgentInstructions) != "" {
+		systemPrompt += "\n\n## IMPORTANT: Agent Instructions\nThe agent handling this ticket has provided the following specific instructions. These MUST be incorporated into your response:\n" + req.AgentInstructions + "\n"
+	}
 
 	// T3e: nudge the LLM to actually look at the attached images. Models
 	// that ignore image_url parts (no-vision models on OpenRouter) lose
