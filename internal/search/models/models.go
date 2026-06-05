@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/volatiletech/null/v9"
+)
 
 type ConversationResult struct {
 	CreatedAt       time.Time `db:"created_at" json:"created_at"`
@@ -18,12 +22,14 @@ type MessageResult struct {
 }
 
 type UnifiedResult struct {
-	Total           int       `db:"total" json:"-"`
-	CreatedAt       time.Time `db:"created_at" json:"created_at"`
-	UUID            string    `db:"uuid" json:"uuid"`
-	ReferenceNumber string    `db:"reference_number" json:"reference_number"`
-	Subject         string    `db:"subject" json:"subject"`
-	Snippet         string    `db:"snippet" json:"snippet"`
+	Total             int         `db:"total" json:"-"`
+	CreatedAt         time.Time   `db:"created_at" json:"created_at"`
+	LastMessageAt     null.Time   `db:"last_message_at" json:"last_message_at"`
+	LastMessageSender null.String `db:"last_message_sender" json:"last_message_sender"`
+	UUID              string      `db:"uuid" json:"uuid"`
+	ReferenceNumber   string      `db:"reference_number" json:"reference_number"`
+	Subject           string      `db:"subject" json:"subject"`
+	Snippet           string      `db:"snippet" json:"snippet"`
 }
 
 type ContactResult struct {

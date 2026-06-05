@@ -30,9 +30,25 @@
                 <div v-if="item.snippet" class="text-sm text-muted-foreground mb-2 line-clamp-2">
                   {{ truncateText(item.snippet, 200) }}
                 </div>
-                <div class="text-sm text-muted-foreground flex items-center">
-                  <ClockIcon class="h-4 w-4 mr-1" />
-                  {{ formatDate(item.created_at) }}
+                <div class="text-sm text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span class="flex items-center">
+                    <CalendarIcon class="h-4 w-4 mr-1" />
+                    Created: {{ formatDate(item.created_at) }}
+                  </span>
+                  <span
+                    v-if="item.last_message_at && item.last_message_at !== item.created_at"
+                    class="flex items-center"
+                  >
+                    <ClockIcon class="h-4 w-4 mr-1" />
+                    Last activity: {{ formatDate(item.last_message_at) }}
+                    <span
+                      v-if="item.last_message_sender"
+                      class="ml-1.5 text-xs"
+                      :class="item.last_message_sender === 'agent' ? 'text-green-600' : 'text-foreground/70'"
+                    >
+                      ({{ item.last_message_sender === 'agent' ? 'agent' : 'customer' }})
+                    </span>
+                  </span>
                 </div>
               </div>
               <div
@@ -52,7 +68,7 @@
 </template>
 
 <script setup>
-import { ChevronRightIcon, ClockIcon } from 'lucide-vue-next'
+import { ChevronRightIcon, ClockIcon, CalendarIcon } from 'lucide-vue-next'
 import { format, parseISO } from 'date-fns'
 
 const props = defineProps({

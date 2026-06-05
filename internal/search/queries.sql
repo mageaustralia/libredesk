@@ -57,9 +57,17 @@ LIMIT 50;
 
 
 -- name: search-unified
+-- last_message_at + last_message_sender surface alongside created_at so the
+-- search results UI can show both. Many subjects in this tree are identical
+-- across many tickets (long-running supplier threads), so the create date
+-- alone makes it hard to tell which one was most recently active. Default
+-- sort flips to last_message_at DESC for the same reason — the freshest
+-- conversation is what the agent typically wants first.
 SELECT *, COUNT(*) OVER() AS total FROM (
     SELECT DISTINCT ON (c.id)
         c.created_at,
+        c.last_message_at,
+        c.last_message_sender,
         c.uuid,
         c.reference_number,
         c.subject,
@@ -86,5 +94,5 @@ SELECT *, COUNT(*) OVER() AS total FROM (
 ) sub
 ORDER BY
     CASE WHEN reference_number::text = $1 THEN 0 ELSE 1 END,
-    created_at DESC
+    COALESCE(last_message_at, created_at) DESC
 LIMIT $2 OFFSET $3;
