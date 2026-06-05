@@ -277,8 +277,23 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 		}
 	}
 
+	// Build the search input. Agent instructions (text the agent typed in the
+	// reply box before clicking Generate) steer BOTH the knowledge-base RAG
+	// search and the external-search-intent classifier — not just the final
+	// completion. Without this, the agent's "Search for X" directive only
+	// reaches the AI after the search results are already locked in, so the
+	// model would dress up the wrong products in language that sounded like
+	// it had followed the directive. Appending agent instructions to the
+	// query input is enough — the classifier's LLM happily re-derives intents
+	// from the combined text, and the vector search treats it as additional
+	// embedding signal weighted by token frequency.
+	searchInput := req.CustomerMessage
+	if strings.TrimSpace(req.AgentInstructions) != "" {
+		searchInput += "\n\n[Agent directive for this search/response: " + req.AgentInstructions + "]"
+	}
+
 	// Search knowledge base (with optional source filtering)
-	results, err := app.rag.Search(req.CustomerMessage, maxChunks, threshold, sourceIDs...)
+	results, err := app.rag.Search(searchInput, maxChunks, threshold, sourceIDs...)
 	if err != nil {
 		app.lo.Warn("RAG search failed, continuing without context", "error", err)
 		results = []models.SearchResult{}
@@ -286,7 +301,7 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 
 	app.lo.Info("TIMING rag_search", "elapsed_ms", time.Since(timerStart).Milliseconds())
 
-	app.lo.Info("RAG generate response", "query", req.CustomerMessage, "results_count", len(results), "threshold", threshold, "include_ecommerce", req.IncludeEcommerce)
+	app.lo.Info("RAG generate response", "query", searchInput, "results_count", len(results), "threshold", threshold, "include_ecommerce", req.IncludeEcommerce, "has_agent_instructions", strings.TrimSpace(req.AgentInstructions) != "")
 
 	// Extract conversation images for multimodal AI
 	var aiImages []ai.ImageContent
@@ -322,7 +337,10 @@ func handleRAGGenerateResponse(r *fastglue.Request) error {
 			maxSearchResults = 5
 		}
 
-		intents, err := app.classifySearchIntent(req.CustomerMessage)
+		// Same combined input as the RAG search so an agent directive like
+		// "Search for tennis racquet 270gm" steers the Meilisearch query
+		// terms, not just the AI's tone at completion time.
+		intents, err := app.classifySearchIntent(searchInput)
 		if err != nil {
 			app.lo.Warn("External search classification failed, continuing without", "error", err)
 		} else {
