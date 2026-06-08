@@ -126,7 +126,7 @@
       :initialConversation="conversationStore.conversation.data"
     />
 
-    <!-- Merge banner -->
+    <!-- Merge banner: this is a secondary → links to its primary -->
     <div
       v-if="conversationStore.current?.merged_into_id"
       class="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
@@ -139,6 +139,29 @@
           :to="{ name: 'inbox-conversation', params: { uuid: conversationStore.current.merged_into_uuid } }"
           class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
         >#{{ conversationStore.current.merged_into_ref }}</router-link>
+      </span>
+    </div>
+
+    <!-- Reverse merge banner: this is a primary → links to each secondary that
+         was merged into it. Same visual treatment as the "merged into" banner
+         so both directions feel symmetric. Without this, agents had to copy a
+         ref# from the activity log and search to view a secondary's pre-merge
+         context. -->
+    <div
+      v-if="conversationStore.current?.merged_from?.length > 0"
+      class="flex items-start gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
+    >
+      <GitMerge class="w-4 h-4 shrink-0 mt-0.5" />
+      <span class="flex flex-wrap gap-x-1 gap-y-0.5">
+        <span>Merged from:</span>
+        <template v-for="(ref, idx) in conversationStore.current.merged_from" :key="ref.uuid">
+          <router-link
+            :to="{ name: 'inbox-conversation', params: { uuid: ref.uuid } }"
+            :title="ref.subject"
+            class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+          >#{{ ref.reference_number }}</router-link>
+          <span v-if="idx < conversationStore.current.merged_from.length - 1">,</span>
+        </template>
       </span>
     </div>
 

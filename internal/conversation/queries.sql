@@ -186,7 +186,23 @@ SELECT
    c.merged_into_id,
    c.merged_at,
    (SELECT uuid FROM conversations mc WHERE mc.id = c.merged_into_id) AS merged_into_uuid,
-   (SELECT reference_number FROM conversations mc WHERE mc.id = c.merged_into_id) AS merged_into_ref
+   (SELECT reference_number FROM conversations mc WHERE mc.id = c.merged_into_id) AS merged_into_ref,
+   -- merged_from: reverse direction — secondaries that point AT this row.
+   -- COALESCE to '[]'::jsonb so the column never returns NULL, which keeps
+   -- the Go Scan path and JSON response shape stable (empty array vs null).
+   COALESCE(
+       (SELECT jsonb_agg(
+                   jsonb_build_object(
+                       'uuid', mf.uuid::text,
+                       'reference_number', mf.reference_number::text,
+                       'subject', mf.subject
+                   )
+                   ORDER BY mf.merged_at NULLS LAST, mf.id
+               )
+        FROM conversations mf
+        WHERE mf.merged_into_id = c.id),
+       '[]'::jsonb
+   ) AS merged_from
 FROM conversations c
 JOIN users ct ON c.contact_id = ct.id
 JOIN inboxes inb ON c.inbox_id = inb.id
