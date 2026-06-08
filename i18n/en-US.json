@@ -804,6 +804,7 @@
   "conversation.merge.description": "All messages and tags from secondary tickets will be moved into the primary ticket. Secondary tickets will be closed.",
   "conversation.merge.mergeNTickets": "Merge {count} tickets",
   "conversation.merge.mergedIntoBanner": "This ticket was merged into",
+  "conversation.merge.mergedFromBanner": "Merged from: | Merged from: | Merged from:",
   "conversation.merge.notFound": "Ticket #{num} not found",
   "conversation.merge.numberPlaceholder": "e.g. 105",
   "conversation.merge.selectPrimary": "Select the primary ticket:",

@@ -26,11 +26,15 @@
           <Tooltip>
             <TooltipTrigger asChild>
               <span class="sidebar-value font-medium truncate block">
-                {{ conversation.subject }}
+                <span
+                  v-if="conversation.reference_number"
+                  class="text-muted-foreground font-mono mr-1"
+                >#{{ conversation.reference_number }}</span>
+                {{ conversation.subject || '(no subject)' }}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              {{ conversation.subject }}
+              <span v-if="conversation.reference_number">#{{ conversation.reference_number }} — </span>{{ conversation.subject || '(no subject)' }}
             </TooltipContent>
           </Tooltip>
           <span class="sidebar-label truncate block">

@@ -217,7 +217,7 @@
       </div>
     </div>
 
-      <!-- Merge banner -->
+      <!-- Merge banner: this is a secondary → links to its primary -->
       <div
         v-if="conversationStore.current?.merged_into_id"
         class="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
@@ -230,6 +230,29 @@
             :to="mergedIntoLink"
             class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
           >#{{ conversationStore.current.merged_into_ref }}</router-link>
+        </span>
+      </div>
+
+      <!-- Reverse merge banner: this is a primary → links to each secondary
+           that was merged into it. Same visual treatment as the secondary's
+           "merged into" banner so the two directions feel symmetric. Without
+           this, agents had to copy a ref number from the activity log and
+           search for it to view the merged ticket's pre-merge context. -->
+      <div
+        v-if="conversationStore.current?.merged_from?.length > 0"
+        class="flex items-start gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
+      >
+        <GitMerge class="w-4 h-4 shrink-0 mt-0.5" />
+        <span class="flex flex-wrap gap-x-1 gap-y-0.5">
+          <span>{{ t('conversation.merge.mergedFromBanner', conversationStore.current.merged_from.length) }}</span>
+          <template v-for="(ref, idx) in conversationStore.current.merged_from" :key="ref.uuid">
+            <router-link
+              :to="mergedFromLink(ref.uuid)"
+              :title="ref.subject"
+              class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+            >#{{ ref.reference_number }}</router-link>
+            <span v-if="idx < conversationStore.current.merged_from.length - 1">,</span>
+          </template>
         </span>
       </div>
 
@@ -419,6 +442,13 @@ const mergedIntoLink = computed(() => ({
     type: route.params.type || 'assigned'
   }
 }))
+
+// Same scheme as mergedIntoLink, parameterised so each secondary ref in the
+// reverse-merge banner gets its own link without recomputing on every render.
+const mergedFromLink = (uuid) => ({
+  name: 'inbox-conversation',
+  params: { uuid, type: route.params.type || 'assigned' }
+})
 
 function handleMerged ({ primary_uuid }) {
   // Navigate to the primary so the agent immediately sees the unified thread.

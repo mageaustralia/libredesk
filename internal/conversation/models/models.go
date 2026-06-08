@@ -215,6 +215,13 @@ type Conversation struct {
 	MergedAt                  null.Time              `db:"merged_at" json:"merged_at"`
 	MergedIntoUUID            null.String            `db:"merged_into_uuid" json:"merged_into_uuid"`
 	MergedIntoRef             null.String            `db:"merged_into_ref" json:"merged_into_ref"`
+	// MergedFrom lists secondaries that point at THIS conversation via
+	// merged_into_conversation_id — the reverse of MergedInto*. Populated
+	// by a json_agg subquery in get-conversation, empty array when nothing
+	// is merged in. Lets the conversation header render a banner mirroring
+	// the existing "merged into" one so agents can navigate either
+	// direction without copy-pasting a ticket number from the activity log.
+	MergedFrom                MergedFromRefs         `db:"merged_from" json:"merged_from"`
 	PreviousConversations     []PreviousConversation `db:"-" json:"previous_conversations"`
 }
 
@@ -243,6 +250,44 @@ func (c *ConversationContact) FullName() string {
 		return c.FirstName
 	}
 	return c.FirstName + " " + c.LastName
+}
+
+// MergedFromRef is one entry in Conversation.MergedFrom — a secondary that
+// was merged into this conversation. Subject is included so the banner can
+// show context on hover without an extra fetch.
+type MergedFromRef struct {
+	UUID            string `json:"uuid"`
+	ReferenceNumber string `json:"reference_number"`
+	Subject         string `json:"subject"`
+}
+
+// MergedFromRefs is the column-bound slice type for Conversation.MergedFrom.
+// Postgres json_agg yields a JSONB byte slice; sqlx/database/sql needs a
+// Scanner on the target. Empty input (no merged secondaries) decodes to
+// an empty, non-nil slice so the JSON response stays "[]" rather than
+// "null" — keeps the frontend's `merged_from?.length > 0` checks cleanly
+// true/false without null guards everywhere.
+type MergedFromRefs []MergedFromRef
+
+func (m *MergedFromRefs) Scan(src any) error {
+	if src == nil {
+		*m = MergedFromRefs{}
+		return nil
+	}
+	var b []byte
+	switch v := src.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return nil
+	}
+	if len(b) == 0 || string(b) == "null" {
+		*m = MergedFromRefs{}
+		return nil
+	}
+	return json.Unmarshal(b, m)
 }
 
 type PreviousConversation struct {
