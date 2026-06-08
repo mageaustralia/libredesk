@@ -36,6 +36,7 @@ import (
 	settingmodels "github.com/abhinavxd/libredesk/internal/setting/models"
 	wmodels "github.com/abhinavxd/libredesk/internal/webhook/models"
 	"github.com/abhinavxd/libredesk/internal/ws"
+	pciscrub "github.com/mageaustralia/go-pci-scrub"
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/go-i18n"
 	"github.com/lib/pq"
@@ -1095,8 +1096,17 @@ func (m *Manager) NotifyMention(conversationUUID string, message models.Message,
 						"Email":     recipient.Email.String,
 					},
 					"Message": map[string]any{
-						"UUID":    message.UUID,
-						"Content": message.Content,
+						"UUID": message.UUID,
+						// Inline-image fix parity with the watcher path in
+						// ws.go:173 (commit d95049d4, March 2026). Without
+						// makeAbsoluteURLs, every /uploads/<uuid> in a
+						// mentioned-in-private-note email body stays as an
+						// unsigned relative URL the email client can't
+						// resolve — image renders broken. pciscrub.Scrub
+						// also matches the watcher path so a PCI-flagged
+						// private note doesn't ship card data in the
+						// notification email body.
+						"Content": pciscrub.Scrub(m.makeAbsoluteURLs(message.Content)),
 					},
 					"MentionedBy": map[string]any{
 						"FirstName": author.FirstName,
