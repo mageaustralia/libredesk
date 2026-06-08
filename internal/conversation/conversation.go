@@ -1488,8 +1488,19 @@ func (m *Manager) NotifyMention(conversationUUID string, message models.Message,
 						"Email":     recipient.Email.String,
 					},
 					"Message": map[string]any{
-						"UUID":    message.UUID,
-						"Content": message.Content,
+						"UUID": message.UUID,
+						// Same parity fix as v1.0.3 prod: the watcher path
+						// (line ~1383) runs message content through
+						// makeAbsoluteURLs + pciscrub.Scrub; the mention
+						// path was missed in commit d95049d4. Without this,
+						// /uploads/<uuid> stays unsigned-relative in the
+						// outgoing email and renders as a broken image.
+						// Note: v2 stores new inline images as
+						// cid:ldsk-<uuid> (see 87560a6f); those won't be
+						// caught by makeAbsoluteURLs and remain broken in
+						// notification emails — separate CID-to-signed-URL
+						// rewrite for the email path is the proper fix.
+						"Content": pciscrub.Scrub(m.makeAbsoluteURLs(message.Content)),
 					},
 					"MentionedBy": map[string]any{
 						"FirstName": author.FirstName,
