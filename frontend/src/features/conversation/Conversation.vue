@@ -129,7 +129,7 @@
     <!-- Merge banner: this is a secondary → links to its primary -->
     <div
       v-if="conversationStore.current?.merged_into_id"
-      class="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
+      class="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-950 text-blue-900 dark:text-blue-100 text-sm border-b border-blue-300 dark:border-blue-700"
     >
       <GitMerge class="w-4 h-4 shrink-0" />
       <span>
@@ -137,7 +137,7 @@
         <router-link
           v-if="conversationStore.current?.merged_into_uuid"
           :to="{ name: 'inbox-conversation', params: { uuid: conversationStore.current.merged_into_uuid } }"
-          class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+          class="font-semibold underline text-blue-800 dark:text-blue-200 hover:text-blue-950 dark:hover:text-blue-50"
         >#{{ conversationStore.current.merged_into_ref }}</router-link>
       </span>
     </div>
@@ -149,7 +149,7 @@
          context. -->
     <div
       v-if="conversationStore.current?.merged_from?.length > 0"
-      class="flex items-start gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 text-sm border-b border-blue-200 dark:border-blue-800"
+      class="flex items-start gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-950 text-blue-900 dark:text-blue-100 text-sm border-b border-blue-300 dark:border-blue-700"
     >
       <GitMerge class="w-4 h-4 shrink-0 mt-0.5" />
       <span class="flex flex-wrap gap-x-1 gap-y-0.5">
@@ -158,7 +158,7 @@
           <router-link
             :to="{ name: 'inbox-conversation', params: { uuid: ref.uuid } }"
             :title="ref.subject"
-            class="font-semibold underline text-blue-600 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+            class="font-semibold underline text-blue-800 dark:text-blue-200 hover:text-blue-950 dark:hover:text-blue-50"
           >#{{ ref.reference_number }}</router-link>
           <span v-if="idx < conversationStore.current.merged_from.length - 1">,</span>
         </template>
