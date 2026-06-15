@@ -161,12 +161,32 @@ const demoCredentials = {
   password: 'demo@libredesk.io'
 }
 
+// Surface the reason if the OIDC callback redirected us back here. Keep the
+// keys here in sync with redirectToLoginError() in cmd/auth.go.
+const LOGIN_ERROR_KEYS = {
+  cancelled: 'auth.loginErrors.cancelled',
+  expired: 'auth.loginErrors.expired',
+  provider_failed: 'auth.loginErrors.providerFailed',
+  unauthorized: 'auth.loginErrors.unauthorized',
+  session_failed: 'auth.loginErrors.sessionFailed'
+}
+
 onMounted(async () => {
   // Prefill the login form with demo credentials if it's a demo build
   if (isDemoBuild) {
     loginForm.value.email = demoCredentials.email
     loginForm.value.password = demoCredentials.password
   }
+
+  const loginErrorParam = router.currentRoute.value.query.login_error
+  if (loginErrorParam) {
+    errorMessage.value = t(LOGIN_ERROR_KEYS[loginErrorParam] || 'auth.loginErrors.providerFailed')
+    // Strip the param so a refresh doesn't keep showing the same error.
+    const cleanQuery = { ...router.currentRoute.value.query }
+    delete cleanQuery.login_error
+    router.replace({ query: cleanQuery })
+  }
+
   fetchOIDCProviders()
 })
 
