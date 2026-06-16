@@ -179,6 +179,7 @@
       :showOrdersButton="ecommerceConfigured"
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
+      :conversationUUID="conversationStore.current?.uuid || ''"
       @emojiSelect="handleEmojiSelect"
       @editorCommand="handleEditorCommand"
       @generateResponse="handleGenerateResponse"

@@ -122,6 +122,12 @@
       >
         <Zap class="h-4 w-4" />
       </Toggle>
+      <!-- Personal reminder for this ticket — only meaningful once the
+           conversation exists, so hide in the new-conversation editor. -->
+      <ReminderButton
+        v-if="conversationUUID"
+        :conversationUUID="conversationUUID"
+      />
       <!-- Generate Response Button -->
       <Button
         v-if="showGenerateButton"
@@ -206,6 +212,7 @@ import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 import { useEmitter } from '@/composables/useEmitter'
 import { EMITTER_EVENTS } from '@/constants/emitterEvents'
+import ReminderButton from '@/features/conversation/ReminderButton.vue'
 
 const emitter = useEmitter()
 const attachmentInput = ref(null)
@@ -254,6 +261,12 @@ const props = defineProps({
   sendStatuses: {
     type: Array,
     default: () => ['Resolved', 'Closed', 'Open']
+  },
+  // Conversation UUID — when present, the ReminderButton becomes available.
+  // Omitted in the new-conversation editor where no UUID exists yet.
+  conversationUUID: {
+    type: String,
+    default: ''
   }
 })
 

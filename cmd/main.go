@@ -39,6 +39,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/conversation/priority"
 	"github.com/abhinavxd/libredesk/internal/conversation/status"
 	"github.com/abhinavxd/libredesk/internal/importer"
+	"github.com/abhinavxd/libredesk/internal/reminder"
 	"github.com/jmoiron/sqlx"
 	"github.com/abhinavxd/libredesk/internal/inbox"
 	"github.com/abhinavxd/libredesk/internal/media"
@@ -114,6 +115,7 @@ type App struct {
 	webhook          *webhook.Manager
 	notifDispatcher  *notifier.Dispatcher
 	importer         *importer.Importer
+	reminder         *reminder.Manager
 
 	// Global state that stores data on an available app update.
 	update *AppUpdate
@@ -233,6 +235,7 @@ func main() {
 		aiMgr                       = initAI(db, i18n)
 		ragMgr                      = initRAG(db, i18n, aiMgr, media)
 		ragSyncMgr                  = initRAGSync(ragMgr, macroMgr)
+		reminderMgr                 = initReminder(db, notifDispatcher, i18n)
 	)
 	automation.SetConversationStore(conversation)
 
@@ -254,6 +257,8 @@ func main() {
 	go autoassigner.Run(ctx, autoAssignInterval)
 	go conversation.Run(ctx, messageIncomingQWorkers, messageOutgoingQWorkers, messageOutgoingScanInterval)
 	go conversation.RunUnsnoozer(ctx, unsnoozeInterval)
+	// Personal-reminder firer. 30s cadence matches the unsnoozer for consistency.
+	go reminderMgr.RunFirer(ctx, 30*time.Second)
 	go webhook.Run(ctx)
 	go notifier.Run(ctx)
 	go sla.Run(ctx, slaEvaluationInterval)
@@ -301,6 +306,7 @@ func main() {
 		search:           initSearch(db, i18n),
 		role:             initRole(db, i18n),
 		tag:              initTag(db, i18n),
+		reminder:         reminderMgr,
 		macro:            macroMgr,
 		ai:               aiMgr,
 		rag:              ragMgr,
