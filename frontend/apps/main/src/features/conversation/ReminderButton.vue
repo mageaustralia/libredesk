@@ -2,9 +2,9 @@
   <DropdownMenu v-model:open="open">
     <DropdownMenuTrigger asChild>
       <Toggle
-        class="px-2 py-2 border-0 relative"
+        class="px-2 py-2 border-0 relative text-muted-foreground hover:text-foreground"
         variant="outline"
-        :pressed="open"
+        :pressed="false"
         title="Set a personal reminder"
         aria-label="Set a personal reminder"
       >
@@ -37,6 +37,7 @@
           type="datetime-local"
           :min="minDateTimeLocal"
           class="w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
+          style="color-scheme: light dark"
         />
       </div>
 
