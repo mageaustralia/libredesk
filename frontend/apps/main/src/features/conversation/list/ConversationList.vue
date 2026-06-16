@@ -141,7 +141,7 @@
     <!-- FS23: Filter panel slide-out. Driven from the trigger above; reads
          and writes its state through the conversation store so it stays in
          sync with the pill bar and FS3 per-view persistence. -->
-    <ConversationFilterPanel v-model:open="filterPanelOpen" :viewType="currentViewType" />
+    <ConversationFilterPanel v-model:open="filterPanelOpen" :viewType="currentViewType" :isView="isViewRoute" />
 
     <!-- Pending updates pill -->
     <div
@@ -322,6 +322,9 @@ const filterPanelOpen = ref(false)
 // status as a user filter there.
 const NO_STATUS_VIEWS = ['spam', 'trash']
 const currentViewType = computed(() => route.params.type || '')
+// Shared/custom views (route uses :viewID) — status filter is owned by the
+// view's saved definition, so the client doesn't get to count it.
+const isViewRoute = computed(() => !!route.params.viewID)
 const activePanelFilterCount = computed(() => {
   const adHoc = conversationStore.conversations.adHocFilters || []
   // Each section counts once regardless of how many values are selected
@@ -336,7 +339,7 @@ const activePanelFilterCount = computed(() => {
   for (const dateField of ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at']) {
     if (adHoc.some(f => f.field === dateField)) count++
   }
-  if (!NO_STATUS_VIEWS.includes(currentViewType.value)) {
+  if (!NO_STATUS_VIEWS.includes(currentViewType.value) && !isViewRoute.value) {
     const s = conversationStore.conversations.status
     if (s.length !== 1 || s[0] !== 'Open') count++
   }

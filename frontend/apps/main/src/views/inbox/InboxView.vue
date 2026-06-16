@@ -47,10 +47,18 @@ function applyFiltersForView (listType, tID, vID) {
   }
 
   // Saved views (vID > 0) have their filters baked into the view definition
-  // server-side, so we don't apply a status filter on top.
+  // server-side, so we don't apply a status filter on top. Ad-hoc filters are
+  // still allowed (server AND-merges them with the view's filter); restore any
+  // the agent previously set for this view.
   if (vID) {
     conversationStore.setListStatus([], false)
-    conversationStore.setAdHocFilters([], false)
+    const restored = conversationStore.restoreViewFilters(listType, tID, vID)
+    if (!restored) {
+      conversationStore.setAdHocFilters([], false)
+    } else {
+      // restoreViewFilters writes status too; force it back to [] for views.
+      conversationStore.setListStatus([], false)
+    }
     return
   }
 

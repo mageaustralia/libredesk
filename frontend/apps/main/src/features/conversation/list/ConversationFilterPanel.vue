@@ -397,7 +397,10 @@ const props = defineProps({
   // Comes from `route.params.type` in ConversationList. Used to suppress the
   // status filter on views where the route already pins it server-side
   // (spam, trash). Toggling status there would silently do nothing.
-  viewType: { type: String, default: '' }
+  viewType: { type: String, default: '' },
+  // True when the route is a shared/custom view (/inboxes/views/:viewID) — the
+  // view's saved filter owns the status condition, so we hide our status picker.
+  isView: { type: Boolean, default: false }
 })
 
 defineEmits(['update:open'])
@@ -408,8 +411,10 @@ const usersStore = useUsersStore()
 const teamsStore = useTeamStore()
 const tagStore = useTagStore()
 
+// Status is server-controlled for spam/trash (route pins it) and for shared
+// views (the view's saved filter owns it).
 const NO_STATUS_VIEWS = ['spam', 'trash']
-const isServerFilteredView = computed(() => NO_STATUS_VIEWS.includes(props.viewType))
+const isServerFilteredView = computed(() => NO_STATUS_VIEWS.includes(props.viewType) || props.isView)
 
 // Lazily fetch reference data the panel renders. The conversation list view
 // already triggers users/teams; tags are panel-specific so kick that off.
