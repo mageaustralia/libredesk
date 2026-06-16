@@ -46,6 +46,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/rag"
 	ragsync "github.com/abhinavxd/libredesk/internal/rag/sync"
 	"github.com/abhinavxd/libredesk/internal/ratelimit"
+	"github.com/abhinavxd/libredesk/internal/reminder"
 	"github.com/abhinavxd/libredesk/internal/role"
 	"github.com/abhinavxd/libredesk/internal/setting"
 	"github.com/abhinavxd/libredesk/internal/tag"
@@ -134,6 +135,7 @@ type App struct {
 	rateLimit        *ratelimit.Limiter
 	redis            *redis.Client
 	importer         *importer.Importer
+	reminder         *reminder.Manager
 
 	// Global state that stores data on an available app update.
 	update *AppUpdate
@@ -259,8 +261,9 @@ func main() {
 		// RAG sync coordinator can hold a stable reference to it. Same
 		// reasoning as aiMgr above.
 		macroMgr   = initMacro(db, i18n)
-		ragMgr     = initRAG(db, i18n, aiMgr, media)
-		ragSyncMgr = initRAGSync(ragMgr, macroMgr)
+		ragMgr      = initRAG(db, i18n, aiMgr, media)
+		ragSyncMgr  = initRAGSync(ragMgr, macroMgr)
+		reminderMgr = initReminder(db, notifDispatcher, i18n)
 	)
 
 	wsHub.SetConversationStore(conversation)
@@ -298,6 +301,8 @@ func main() {
 	go autoassigner.Run(ctx, autoAssignInterval)
 	go conversation.Run(ctx, messageIncomingQWorkers, messageOutgoingQWorkers, messageOutgoingScanInterval)
 	go conversation.RunUnsnoozer(ctx, unsnoozeInterval)
+	// Personal-reminder firer. 30s cadence matches the unsnoozer for consistency.
+	go reminderMgr.RunFirer(ctx, 30*time.Second)
 	go conversation.RunContinuity(ctx)
 	go webhook.Run(ctx)
 	go notifier.Run(ctx)
@@ -350,6 +355,7 @@ func main() {
 		search:           initSearch(db, i18n),
 		role:             initRole(db, i18n),
 		tag:              initTag(db, i18n),
+		reminder:         reminderMgr,
 		macro:            macroMgr,
 		ai:               aiMgr,
 		rag:              ragMgr,

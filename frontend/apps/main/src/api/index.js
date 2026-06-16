@@ -698,6 +698,14 @@ const markAllNotificationsAsRead = () => http.put('/api/v1/notifications/read-al
 const deleteNotification = (id) => http.delete(`/api/v1/notifications/${id}`)
 const deleteAllNotifications = () => http.delete('/api/v1/notifications')
 
+// Personal-reminder API. Reminders are private to the calling agent.
+const listConversationReminders = (uuid) =>
+  http.get(`/api/v1/conversations/${uuid}/reminders`)
+const createReminder = (uuid, payload) =>
+  http.post(`/api/v1/conversations/${uuid}/reminders`, payload)
+const listMyReminders = () => http.get('/api/v1/reminders')
+const deleteReminder = (id) => http.delete(`/api/v1/reminders/${id}`)
+
 export default {
   login,
   deleteUser,
@@ -923,5 +931,9 @@ export default {
   deleteNotification,
   deleteAllNotifications,
   getContactPageVisits,
-  getConversationByRef
+  getConversationByRef,
+  listConversationReminders,
+  createReminder,
+  listMyReminders,
+  deleteReminder
 }

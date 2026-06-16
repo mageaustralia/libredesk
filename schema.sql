@@ -405,6 +405,21 @@ CREATE INDEX index_conversation_mentions_on_mentioned_user_id ON conversation_me
 CREATE INDEX index_conversation_mentions_on_mentioned_team_id ON conversation_mentions(mentioned_team_id);
 CREATE INDEX index_conversation_mentions_on_conversation_id ON conversation_mentions(conversation_id);
 
+DROP TABLE IF EXISTS conversation_reminders CASCADE;
+CREATE TABLE conversation_reminders (
+	id BIGSERIAL PRIMARY KEY,
+	created_at TIMESTAMPTZ DEFAULT NOW(),
+	user_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
+	conversation_id BIGINT REFERENCES conversations(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
+	remind_at TIMESTAMPTZ NOT NULL,
+	fired_at TIMESTAMPTZ NULL,
+	note TEXT NOT NULL DEFAULT '',
+	CONSTRAINT constraint_conversation_reminders_note_length CHECK (length(note) <= 500)
+);
+CREATE INDEX index_conversation_reminders_due ON conversation_reminders(remind_at) WHERE fired_at IS NULL;
+CREATE INDEX index_conversation_reminders_on_user_id ON conversation_reminders(user_id);
+CREATE INDEX index_conversation_reminders_on_conversation_id ON conversation_reminders(conversation_id);
+
 DROP TABLE IF EXISTS conversation_last_seen CASCADE;
 CREATE TABLE conversation_last_seen (
 	id BIGSERIAL PRIMARY KEY,

@@ -49,6 +49,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/search"
 	"github.com/abhinavxd/libredesk/internal/setting"
 	"github.com/abhinavxd/libredesk/internal/sla"
+	"github.com/abhinavxd/libredesk/internal/reminder"
 	"github.com/abhinavxd/libredesk/internal/tag"
 	"github.com/abhinavxd/libredesk/internal/team"
 	tmpl "github.com/abhinavxd/libredesk/internal/template"
@@ -318,6 +319,21 @@ func initConversations(
 		log.Fatalf("error initializing conversation manager: %v", err)
 	}
 	return c
+}
+
+// initReminder inits the personal-reminder manager.
+func initReminder(db *sqlx.DB, dispatcher *notifier.Dispatcher, i18n *i18n.I18n) *reminder.Manager {
+	var lo = initLogger("reminder_manager")
+	mgr, err := reminder.New(reminder.Opts{
+		DB:         db,
+		Dispatcher: dispatcher,
+		Lo:         lo,
+		I18n:       i18n,
+	})
+	if err != nil {
+		log.Fatalf("error initializing reminders: %v", err)
+	}
+	return mgr
 }
 
 // initTag inits tag manager.

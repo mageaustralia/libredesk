@@ -106,6 +106,12 @@
       >
         <Zap class="h-4 w-4" />
       </Toggle>
+      <!-- Personal reminder for this ticket — only meaningful once the
+           conversation exists, so hide in the new-conversation editor. -->
+      <ReminderButton
+        v-if="conversationUUID"
+        :conversationUUID="conversationUUID"
+      />
       <!--
         T3a "Generate Response" button. Only surfaces in reply mode
         (a knowledge-base reply on a private note rarely makes
@@ -238,6 +244,7 @@ import {
 } from 'lucide-vue-next'
 import { useEmitter } from '@main/composables/useEmitter'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents.js'
+import ReminderButton from '@main/features/conversation/ReminderButton.vue'
 
 const emitter = useEmitter()
 
@@ -306,6 +313,12 @@ const props = defineProps({
   sendStatuses: {
     type: Array,
     default: () => []
+  },
+  // Conversation UUID — when present, the ReminderButton becomes available.
+  // Omitted in the new-conversation editor where no UUID exists yet.
+  conversationUUID: {
+    type: String,
+    default: ''
   },
   // EC15: Which nested command the Zap button fires. Reply box defaults to
   // the existing-conversation flow; CreateConversation overrides this with

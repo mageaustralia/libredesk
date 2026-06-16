@@ -133,6 +133,7 @@
       :enableSend="enableSend"
       :handleSend="handleSend"
       :messageType="messageType"
+      :conversationUUID="conversationStore.current?.uuid || ''"
       @emojiSelect="handleEmojiSelect"
     />
   </div>

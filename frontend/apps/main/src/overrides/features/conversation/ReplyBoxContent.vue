@@ -184,6 +184,7 @@
       :hasDraft="hasDraft"
       :sendStatuses="sendStatuses"
       :macroPickerCommand="'apply-macro-to-existing-conversation'"
+      :conversationUUID="conversationStore.current?.uuid || ''"
       @emojiSelect="handleEmojiSelect"
       @editorCommand="handleEditorCommand"
       @sendWithStatus="handleSendWithStatus"
