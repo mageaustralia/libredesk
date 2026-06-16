@@ -72,7 +72,7 @@
 
             <!-- Inbox name -->
             <p class="text-xs text-gray-400 flex items-center gap-1.5">
-              <component :is="channelIcon(conversation.inbox_channel)" class="w-3.5 h-3.5 text-gray-400/80" />
+              <component :is="conversation.inbox_channel === 'livechat' ? MessageCircle : Mail" class="w-3.5 h-3.5 text-gray-400/80" />
               <span>{{ conversation.inbox_name }}</span>
             </p>
 
