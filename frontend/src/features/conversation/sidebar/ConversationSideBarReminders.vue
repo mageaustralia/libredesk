@@ -54,8 +54,7 @@
           v-model="customAt"
           type="datetime-local"
           :min="minDateTimeLocal"
-          class="w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
-          style="color-scheme: light dark"
+          class="reminder-datetime w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 

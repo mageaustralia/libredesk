@@ -36,8 +36,7 @@
           v-model="customAt"
           type="datetime-local"
           :min="minDateTimeLocal"
-          class="w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
-          style="color-scheme: light dark"
+          class="reminder-datetime w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
@@ -243,3 +242,18 @@ function formatRemindAt(iso) {
 // agent to open the popover. Cheap query.
 onMounted(refresh)
 </script>
+
+<!-- Global (unscoped) so the ::-webkit-calendar-picker-indicator pseudo-element
+     is reachable. The native widget's calendar glyph defaults to follow the
+     page's color-scheme, which in our app stays ambiguous and ended up either
+     black-on-dark (dark mode) or white-on-white (light sidebar). Force a
+     filter that biases the icon to a mid-grey, visible against either bg. -->
+<style>
+input.reminder-datetime::-webkit-calendar-picker-indicator {
+  filter: brightness(0.5);
+  cursor: pointer;
+}
+.dark input.reminder-datetime::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+}
+</style>
