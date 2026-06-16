@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Clock, X } from 'lucide-vue-next'
 import { Toggle } from '@/components/ui/toggle'
 import { Button } from '@/components/ui/button'
@@ -190,6 +190,8 @@ async function create(at) {
     })
     note.value = ''
     await refresh()
+    // Tell the sidebar Reminders panel to re-fetch.
+    emitter.emit('reminders-changed', { uuid: props.conversationUUID })
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'default',
       description: `Reminder set for ${formatRemindAt(at.toISOString())}`
@@ -209,6 +211,7 @@ async function remove(id) {
   try {
     await api.deleteReminder(id)
     await refresh()
+    emitter.emit('reminders-changed', { uuid: props.conversationUUID })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
@@ -218,6 +221,15 @@ async function remove(id) {
     busy.value = false
   }
 }
+
+// React to changes made via the sidebar Reminders panel so the badge count
+// stays in sync without the agent having to re-open the popover.
+function handleRemindersChanged(payload) {
+  if (!payload || payload.uuid !== props.conversationUUID) return
+  refresh()
+}
+emitter.on('reminders-changed', handleRemindersChanged)
+onBeforeUnmount(() => emitter.off('reminders-changed', handleRemindersChanged))
 
 // Format like "Tue 23 Jun, 2:15 pm" — concise enough for the popover list.
 function formatRemindAt(iso) {

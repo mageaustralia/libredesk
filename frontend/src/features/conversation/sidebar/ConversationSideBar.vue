@@ -91,6 +91,22 @@
         </AccordionContent>
       </AccordionItem>
 
+      <!-- Personal reminders for this ticket -->
+      <AccordionItem value="reminders" class="accordion-item">
+        <AccordionTrigger class="accordion-trigger">
+          <span class="flex items-center gap-2">
+            Reminders
+            <span
+              v-if="remindersPanel?.count > 0"
+              class="bg-primary text-primary-foreground rounded-full px-1.5 min-w-[20px] h-5 text-[11px] font-medium flex items-center justify-center"
+            >{{ remindersPanel.count }}</span>
+          </span>
+        </AccordionTrigger>
+        <AccordionContent class="accordion-content">
+          <ConversationSideBarReminders ref="remindersPanel" />
+        </AccordionContent>
+      </AccordionItem>
+
       <!-- Previous conversations -->
       <AccordionItem value="previous_conversations" class="accordion-item">
         <AccordionTrigger class="accordion-trigger">
@@ -127,6 +143,7 @@ import { useStorage } from '@vueuse/core'
 import CustomAttributes from '@/features/conversation/sidebar/CustomAttributes.vue'
 import { useCustomAttributeStore } from '@/stores/customAttributes'
 import PreviousConversations from '@/features/conversation/sidebar/PreviousConversations.vue'
+import ConversationSideBarReminders from '@/features/conversation/sidebar/ConversationSideBarReminders.vue'
 import SelectComboBox from '@/components/combobox/SelectCombobox.vue'
 import api from '@/api'
 
@@ -141,7 +158,10 @@ const tags = ref([])
 const followers = ref([])
 const followerSyncInProgress = ref(false)
 // Save the accordion state in local storage
-const accordionState = useStorage('conversation-sidebar-accordion', ['previous_conversations'])
+const accordionState = useStorage('conversation-sidebar-accordion', ['reminders', 'previous_conversations'])
+// Ref to the reminders panel so the accordion trigger can read its `count`
+// computed and surface a small badge in the header.
+const remindersPanel = ref(null)
 const { t } = useI18n()
 let isConversationChange = false
 customAttributeStore.fetchCustomAttributes()
