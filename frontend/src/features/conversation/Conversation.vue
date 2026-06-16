@@ -443,20 +443,26 @@ watch(
   { immediate: true }
 )
 
-onBeforeUnmount(() => {
-  // Clear presence when leaving
-  sendViewingPresence('')
-  // Execute pending send if navigating away
-  if (pendingSend.value) {
-    executePendingSend()
-  }
-})
-
 const showMergeDialog = ref(false)
 
+// ---------------------------------------------------------------------------
+// Emitter handlers — defined as named functions so onBeforeUnmount can off()
+// them. Previously these were registered inline with emitter.on(...) and never
+// torn down, which caused a real bug: every time this component remounted
+// (Conversation.vue is gated by ConversationDetailView's v-if="showContent",
+// which toggles whenever conversationStore.current goes null between
+// navigations), the listeners accumulated. The send-queued listener was the
+// visible casualty — clicking Undo cleared the current instance's undoTimer,
+// but stale closures from old mounts each had their own undoTimer pointing at
+// their own setTimeout, which still fired and called api.sendMessage. Server
+// dedup catches dupes, but one slips through and the customer gets a "reply"
+// the agent thought they undid.
+// ---------------------------------------------------------------------------
 
-emitter.on('send-queued', (data) => {
-  // Cancel any previous pending send
+function handleSendQueued (data) {
+  // If a previous send is still queued (rapid-fire Send clicks), flush it
+  // first so we don't lose it. Synchronously firing it with no delay is safe
+  // — the agent already chose to send it 5s ago.
   if (pendingSend.value) {
     executePendingSend()
   }
@@ -475,6 +481,84 @@ emitter.on('send-queued', (data) => {
   undoTimer = setTimeout(() => {
     executePendingSend()
   }, UNDO_DELAY_MS)
+}
+
+const isFresh = computed(() => currentTheme.value === 'fresh')
+const replyExpanded = ref(false)
+const scrollContainer = ref(null)
+provide('scrollContainer', scrollContainer)
+
+function handleCollapseReply () {
+  replyExpanded.value = false
+}
+
+function handleShortcutEscape () {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value && replyExpanded.value) {
+    emitter.emit('shortcut-discard-or-collapse')
+  }
+}
+
+async function handleForwardMessage (messageData) {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    replyExpanded.value = true
+    await nextTick()
+    // Give ReplyBox time to mount and register its listener
+    setTimeout(() => {
+      emitter.emit('set-reply-type', 'forward')
+      emitter.emit('populate-forward', messageData)
+    }, 150)
+  } else {
+    emitter.emit('set-reply-type', 'forward')
+    emitter.emit('populate-forward', messageData)
+  }
+}
+
+function handleShortcutReply () {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    expandReply('reply')
+  } else {
+    emitter.emit('set-reply-type', 'reply')
+  }
+}
+
+function handleShortcutNote () {
+  if (!conversationStore.current?.uuid) return
+  if (isFresh.value) {
+    expandReply('private_note')
+  } else {
+    emitter.emit('set-reply-type', 'private_note')
+  }
+}
+
+onMounted(() => {
+  emitter.on('send-queued', handleSendQueued)
+  emitter.on('collapse-reply', handleCollapseReply)
+  emitter.on('shortcut-escape', handleShortcutEscape)
+  emitter.on('forward-message', handleForwardMessage)
+  emitter.on('shortcut-reply', handleShortcutReply)
+  emitter.on('shortcut-note', handleShortcutNote)
+})
+
+onBeforeUnmount(() => {
+  // Clear presence when leaving
+  sendViewingPresence('')
+  // Execute pending send if navigating away — by design the agent chose to
+  // send it, so flush rather than silently drop.
+  if (pendingSend.value) {
+    executePendingSend()
+  }
+  // Off every listener we registered in onMounted. Without this, every
+  // remount of Conversation.vue piles a new closure on the global emitter
+  // (see the comment block above for the user-visible bug this caused).
+  emitter.off('send-queued', handleSendQueued)
+  emitter.off('collapse-reply', handleCollapseReply)
+  emitter.off('shortcut-escape', handleShortcutEscape)
+  emitter.off('forward-message', handleForwardMessage)
+  emitter.off('shortcut-reply', handleShortcutReply)
+  emitter.off('shortcut-note', handleShortcutNote)
 })
 
 function undoSend() {
@@ -496,58 +580,6 @@ function undoSend() {
     })
   }
 }
-
-const isFresh = computed(() => currentTheme.value === 'fresh')
-const replyExpanded = ref(false)
-const scrollContainer = ref(null)
-provide('scrollContainer', scrollContainer)
-
-// Listen for collapse-reply from ReplyBox (e.g. after discarding draft)
-emitter.on('collapse-reply', () => {
-  replyExpanded.value = false
-})
-
-// Escape key: collapse reply box (with discard confirmation if draft exists)
-emitter.on('shortcut-escape', () => {
-  if (!conversationStore.current?.uuid) return
-  if (isFresh.value && replyExpanded.value) {
-    emitter.emit('shortcut-discard-or-collapse')
-  }
-})
-
-// Global keyboard shortcuts for reply/note
-emitter.on('forward-message', async (messageData) => {
-  if (!conversationStore.current?.uuid) return
-  if (isFresh.value) {
-    replyExpanded.value = true
-    await nextTick()
-    // Give ReplyBox time to mount and register its listener
-    setTimeout(() => {
-      emitter.emit('set-reply-type', 'forward')
-      emitter.emit('populate-forward', messageData)
-    }, 150)
-  } else {
-    emitter.emit('set-reply-type', 'forward')
-    emitter.emit('populate-forward', messageData)
-  }
-})
-
-emitter.on('shortcut-reply', () => {
-  if (!conversationStore.current?.uuid) return
-  if (isFresh.value) {
-    expandReply('reply')
-  } else {
-    emitter.emit('set-reply-type', 'reply')
-  }
-})
-emitter.on('shortcut-note', () => {
-  if (!conversationStore.current?.uuid) return
-  if (isFresh.value) {
-    expandReply('private_note')
-  } else {
-    emitter.emit('set-reply-type', 'private_note')
-  }
-})
 
 const expandReply = async (type) => {
   replyExpanded.value = true
