@@ -15,7 +15,19 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Spam-folder rescue for known senders (with IMAP MOVE-back to train Gmail), Submit & Set Status on new conversations, customer ticket history tab on contact detail page.
+**Latest** — Personal follow-up reminders on individual tickets, agent-typed instructions in the reply box now also steer RAG search (not just response tone), shared views accept ad-hoc filters on top of their saved filter, bidirectional merge banner with reference numbers across the sidebar, per-type drafts (reply vs private note now persist independently), and notification emails finally render inline images correctly.
+
+### Personal Reminders
+
+Per-agent, per-ticket follow-up reminders. Set a nudge for 1 day / 3 days / 1 week / 1 month — or a custom date and time — and an in-app + email notification fires when it's due. Replaces the "BCC myself and snooze in Gmail" pattern agents were using for things like "check in a week that this repaired board still works".
+
+- **Two entry points**: a clock icon in the reply-box toolbar, and a dedicated Reminders accordion in the conversation right sidebar
+- **Optional note** captured per reminder (e.g. "verify customer received refund")
+- **Inline list** of pending reminders for the current ticket with one-click delete
+- **Count badge** on the sidebar accordion header — see at a glance whether anything's already queued
+- **Private** to the setting agent — nobody else sees your reminders, and firing one never changes the ticket's status (distinguishes this from Snooze, which is a team-wide workflow signal)
+- 30-second worker tick — agents typically see the notification within a minute of the due time
+- Backend: new `conversation_reminders` table, `RunFirer` goroutine that selects due rows and dispatches via the shared notification dispatcher (in-app + WebSocket + email)
 
 ### Recent Activities
 
@@ -58,6 +70,22 @@ The "New conversation" dialog gets the same Send & Set Status pattern the reply 
 - **Scrollable**: dropdown caps at 60vh with overflow scroll for installs with many statuses
 - Conversation is created and immediately set to the chosen status (Snoozed is excluded since no duration is collected)
 
+### Per-Type Drafts
+
+Reply drafts and private-note drafts are now stored independently per conversation, so switching between the Reply and Private Note tabs no longer clobbers the in-progress text in the other one.
+
+- Drafts keyed on `(conversation_id, message_type)` — separate `reply` and `private_note` rows
+- Sidebar contact-change watcher correctly invalidates draft recipients when an agent reassigns the contact
+- Schema migration adds the `message_type` column to `conversation_drafts`
+
+### Search Results Enhancements
+
+Search results now show both when a conversation was created *and* when it last had activity, with a coloured badge identifying whose reply was last.
+
+- Dual-date display: `Created` + `Last activity`
+- **Green badge** on the last-activity timestamp when the most recent message was from an agent (so a search result whose latest activity is the agent's own reply is visually distinct from one waiting on the agent)
+- Server sort changed to `COALESCE(last_message_at, created_at) DESC` so results are ordered by genuine recency, not insertion order
+
 ### Customer Ticket History on Contact Detail
 
 The contact detail page (`/contacts/{id}`) now shows the full ticket history for that customer, à la Freshdesk's contact view.
@@ -76,6 +104,7 @@ Enhanced filter operators for personal and shared views, enabling multi-select a
 - **"is any of (or unassigned)"** (`in_or_null`) — match selected agents/teams OR unassigned conversations (common pattern: "my tickets + unassigned")
 - Multi-select dropdowns for agent and team fields in the view builder
 - Filter pill bar on conversation list showing active filters
+- **Ad-hoc filters on shared views**: the side panel now lets agents narrow a shared view (e.g. "My Open TWA") by priority, agent, tag, date, etc. on top of the view's saved filter. Server AND-merges them, so the view's definition is the floor and the ad-hoc filters tighten from there. Per-view ad-hoc filters persist in localStorage so they survive a navigation away
 
 ### Table View Layout
 
@@ -137,7 +166,8 @@ Merge duplicate or related conversations into a single ticket, consolidating all
 - Messages from secondary tickets are moved to the primary, preserving chronological order
 - Tags from secondary tickets are copied (duplicates skipped)
 - Secondary tickets are marked as merged and closed with an activity note
-- **Merge banner** on merged tickets links back to the primary conversation
+- **Bidirectional merge banner**: merged tickets link back to the primary, and the primary now also banners every secondary it absorbed — no more copying a reference number from one and searching for it on the other
+- **Reference numbers in sidebar previous conversations**: the Previous Conversations panel on every ticket now prefixes each row with `#<ref>` so a merged secondary is recognisable at a glance
 - Cannot be undone — confirmation dialog warns before merging
 
 ### Contact Email Filter
@@ -224,6 +254,7 @@ Improvements to the built-in RAG AI assistant:
 - **Extended timeouts**: AI provider HTTP timeouts increased to 60s for large prompts
 - **Per-inbox knowledge source filtering**: RAG search can be scoped to specific knowledge sources per inbox
 - **Inbox-aware settings resolution**: AI generates responses using inbox-specific or global settings automatically
+- **Agent instructions steer the search**: Text the agent types in the reply box before clicking Generate Response now feeds both the search-intent classifier *and* the vector RAG search — not just the final completion. Type "search for 270g tennis racquets" and the candidate documents are weighted toward that constraint rather than the AI tone-following a stale customer message
 
 ### Ecommerce Integration (Maho Commerce)
 
@@ -360,6 +391,14 @@ Google Workspace rewrites the `From:` header on forwarded emails for DMARC compl
 - **Image sizing**: Images in emails now respect their original HTML dimensions instead of stretching to fill the container width
 - **Non-image inline attachments**: When a non-image file (e.g., PDF) is referenced via CID in an `<img>` tag, it renders as a styled download link instead of a broken image
 - **CID replacement**: Fixed missing CID-to-URL replacement after initial attachment upload
+- **Inline images in notification emails**: `@mention` and "ticket assigned to you" notification emails now absolutise relative `/uploads/<uuid>` paths before sending. Previously the recipient's mail client saw a relative URL and rendered a broken-image icon. Same one-line treatment applied to both notification paths
+- **Quoted reply body**: Don't strip the whole message body when an email's entire content is wrapped in a single `<blockquote>` — distinguishes "I quoted my entire previous reply" from "no new content"
+
+### Login UX
+
+- **OIDC callback failures redirect cleanly**: previous behaviour dumped a raw JSON envelope into the browser when a state mismatch, code replay, or IdP denial happened. Now every failure path bounces the agent back to the login page with `?login_error=<reason>` and a friendly localised message
+- **Early validation**: empty `code`/`state` rejected before round-tripping to the IdP, killing the "Missing required parameter: code" log spam from browser back/refresh/prefetch
+- **Post-auth lockout fix**: a failed `UpdateLastLoginAt` no longer throws JSON at an already-authenticated user — log and continue
 
 ### Relative Timestamps
 
@@ -409,6 +448,10 @@ The unread message count badge now excludes activity messages (assignment change
 - **Private Note button fix**: Clicking "Private note" now correctly opens in note mode instead of defaulting to the last-used mode
 - **"Add note" button text**: Send button shows "Add note" / "Add note and set as..." when composing a private note
 - **Merge dialog layout fix**: Long ticket subjects no longer overflow the merge dialog — subjects truncate with ellipsis
+- **Undo-send reliability**: the conversation view used to register six emitter listeners inline and never clean them up. Every component remount piled another closure on the global emitter; clicking Undo only cleared the *current* instance's timer while stale closures' timers still fired their own `api.sendMessage`. Server-side dedup caught most of the dupes, but one occasionally slipped through and the customer received a reply the agent thought they undid. Listeners now register in `onMounted` and tear down in `onBeforeUnmount`
+- **Conversation list crash fix**: a dangling `channelIcon(...)` template reference (helper never landed in the rollup it was added in) was silently swallowed for most agents but unwound into a full blank screen for one whose reactive effect cascade made it fatal. Replaced with the same `Mail` / `MessageCircle` inline ternary v2 uses
+- **Reply-box TO defaults**: the TO field on a reassigned ticket now defaults to the *new* contact, not the forwarder whose address ended up on the message envelope after a Google Workspace alias forward
+- **Editor paste sanitisation**: HTML pasted from another dark-mode app (ChatGPT, VS Code, Notion) no longer drags its dark inline styles into your reply
 
 ---
 
