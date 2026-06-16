@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -251,7 +252,17 @@ func handleGetViewConversations(r *fastglue.Request) error {
 
 	// Replace $current_user token with the actual logged-in user ID so shared views can use dynamic "current user" filters.
 	viewFilters := strings.ReplaceAll(string(view.Filters), "$current_user", strconv.Itoa(auser.ID))
-	conversations, err := app.conversation.GetViewConversationsList(user.ID, user.ID, user.Teams.IDs(), lists, order, orderBy, viewFilters, page, pageSize)
+
+	// Merge any ad-hoc filters the agent added in the side panel on top of the view's
+	// saved filter (AND semantics — the view's filter is the base, ad-hoc narrows it).
+	adhocFilters := string(r.RequestCtx.QueryArgs().Peek("filters"))
+	mergedFilters, err := mergeFilterJSON(viewFilters, adhocFilters)
+	if err != nil {
+		app.lo.Error("error merging view + ad-hoc filters", "error", err)
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.invalid", "name", "`filters`"), nil, envelope.InputError)
+	}
+
+	conversations, err := app.conversation.GetViewConversationsList(user.ID, user.ID, user.Teams.IDs(), lists, order, orderBy, mergedFilters, page, pageSize)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -1355,4 +1366,31 @@ func handleUpdateConversationContact(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 	return r.SendEnvelope(true)
+}
+
+// mergeFilterJSON concatenates two JSON filter arrays into a single AND'd list.
+// Used to layer ad-hoc agent-side filters on top of a shared view's saved filter
+// without losing either. Empty / "[]" / unparseable inputs are tolerated — they
+// collapse to an empty list.
+func mergeFilterJSON(base, extra string) (string, error) {
+	var baseArr, extraArr []json.RawMessage
+	if base != "" && base != "[]" {
+		if err := json.Unmarshal([]byte(base), &baseArr); err != nil {
+			return "", fmt.Errorf("invalid base filter JSON: %w", err)
+		}
+	}
+	if extra != "" && extra != "[]" {
+		if err := json.Unmarshal([]byte(extra), &extraArr); err != nil {
+			return "", fmt.Errorf("invalid extra filter JSON: %w", err)
+		}
+	}
+	merged := append(baseArr, extraArr...)
+	if len(merged) == 0 {
+		return "[]", nil
+	}
+	out, err := json.Marshal(merged)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

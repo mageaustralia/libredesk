@@ -270,7 +270,10 @@ import { ChevronDown, Check } from 'lucide-vue-next'
 
 const props = defineProps({
   open: Boolean,
-  viewType: { type: String, default: '' }
+  viewType: { type: String, default: '' },
+  // True when the route is a shared/custom view (/inboxes/views/:viewID) — the
+  // view's saved filter owns the status condition, so we hide our status picker.
+  isView: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:open'])
 
@@ -281,9 +284,10 @@ const tagStore = useTagStore()
 const route = useRoute()
 const emitter = useEmitter()
 
-// Views where status is server-controlled
+// Status filter is owned by the server for spam/trash (server-pinned status) and
+// for shared views (status comes from the view's saved filter).
 const NO_STATUS_VIEWS = ['spam', 'trash']
-const isServerFilteredView = computed(() => NO_STATUS_VIEWS.includes(props.viewType))
+const isServerFilteredView = computed(() => NO_STATUS_VIEWS.includes(props.viewType) || props.isView)
 
 // Fetch tags on mount
 onMounted(() => { tagStore.fetchTags() })

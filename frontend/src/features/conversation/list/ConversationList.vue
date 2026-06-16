@@ -244,7 +244,7 @@
     </div>
 
     <!-- Filter Panel (slide-out from right) -->
-    <ConversationFilterPanel v-model:open="filterPanelOpen" :viewType="currentViewType" />
+    <ConversationFilterPanel v-model:open="filterPanelOpen" :viewType="currentViewType" :isView="isViewRoute" />
 
     <!-- Pending updates pill -->
     <div
@@ -399,6 +399,9 @@ const filterPanelOpen = ref(false)
 // Views where status is server-controlled (not a user filter)
 const NO_STATUS_VIEWS = ['spam', 'trash']
 const currentViewType = computed(() => route.params.type || '')
+// Shared/custom views (route uses :viewID) — status filter is owned by the
+// view's saved definition, so the client doesn't get to count it.
+const isViewRoute = computed(() => !!route.params.viewID)
 
 // Active filter tracking for the header badge
 const hasActiveFilters = computed(() => activeFilterCount.value > 0)
@@ -412,7 +415,7 @@ const activeFilterCount = computed(() => {
   if (adHoc.some(f => f.field === 'tags')) count++
   if (adHoc.some(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field))) count += adHoc.filter(f => ['created_at', 'last_message_at', 'closed_at', 'resolved_at', 'next_sla_deadline_at'].includes(f.field)).length
   // Count status as a filter only if a specific single status is chosen (not the defaults)
-  if (!NO_STATUS_VIEWS.includes(currentViewType.value)) {
+  if (!NO_STATUS_VIEWS.includes(currentViewType.value) && !isViewRoute.value) {
     const s = conversationStore.conversations.status
     const resolvedNames = ['Resolved', 'Closed', 'Trashed', 'Spam']
     const isDefault = s.length === 1 && s[0] === 'Open'

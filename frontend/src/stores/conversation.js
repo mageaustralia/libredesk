@@ -670,7 +670,8 @@ export const useConversationStore = defineStore('conversation', () => {
           page: page,
           page_size: CONV_LIST_PAGE_SIZE,
           order_by: sortFieldMap[conversations.sortField].model + "." + sortFieldMap[conversations.sortField].field,
-          order: sortFieldMap[conversations.sortField].order
+          order: sortFieldMap[conversations.sortField].order,
+          filters
         })
       case CONVERSATION_LIST_TYPE.MENTIONED:
         return await api.getMentionedConversations({
