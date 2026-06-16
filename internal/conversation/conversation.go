@@ -1227,7 +1227,11 @@ func (m *Manager) NotifyAssignment(userIDs []int, conversation models.Conversati
 				"UUID":            conversation.UUID,
 			},
 			"Message": map[string]any{
-				"Content":     latestMsg.Content,
+				// Absolutise /uploads/<uuid> URLs and scrub PCI data — same
+				// treatment the @mention notification path uses (see line ~1503).
+				// Without makeAbsoluteURLs the inline image src stays relative
+				// and the recipient's email client can't fetch it.
+				"Content":     pciscrub.Scrub(m.makeAbsoluteURLs(latestMsg.Content)),
 				"TextContent": latestMsg.TextContent,
 			},
 			"Contact": map[string]any{
