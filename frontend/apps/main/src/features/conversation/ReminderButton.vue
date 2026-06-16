@@ -36,8 +36,7 @@
           v-model="customAt"
           type="datetime-local"
           :min="minDateTimeLocal"
-          class="w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
-          style="color-scheme: light dark"
+          class="reminder-datetime w-full h-8 px-2 text-xs border rounded bg-transparent outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
@@ -88,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Clock, X } from 'lucide-vue-next'
 import { Toggle } from '@shared-ui/components/ui/toggle'
 import { Button } from '@shared-ui/components/ui/button'
@@ -190,6 +189,8 @@ async function create(at) {
     })
     note.value = ''
     await refresh()
+    // Tell the sidebar Reminders panel to re-fetch.
+    emitter.emit('reminders-changed', { uuid: props.conversationUUID })
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'default',
       description: `Reminder set for ${formatRemindAt(at.toISOString())}`
@@ -209,6 +210,7 @@ async function remove(id) {
   try {
     await api.deleteReminder(id)
     await refresh()
+    emitter.emit('reminders-changed', { uuid: props.conversationUUID })
   } catch (error) {
     emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
       variant: 'destructive',
@@ -218,6 +220,15 @@ async function remove(id) {
     busy.value = false
   }
 }
+
+// React to changes made via the sidebar Reminders panel so the badge count
+// stays in sync without the agent having to re-open the popover.
+function handleRemindersChanged(payload) {
+  if (!payload || payload.uuid !== props.conversationUUID) return
+  refresh()
+}
+emitter.on('reminders-changed', handleRemindersChanged)
+onBeforeUnmount(() => emitter.off('reminders-changed', handleRemindersChanged))
 
 // Format like "Tue 23 Jun, 2:15 pm" — concise enough for the popover list.
 function formatRemindAt(iso) {
@@ -231,3 +242,18 @@ function formatRemindAt(iso) {
 // agent to open the popover. Cheap query.
 onMounted(refresh)
 </script>
+
+<!-- Global (unscoped) so the ::-webkit-calendar-picker-indicator pseudo-element
+     is reachable. The native widget's calendar glyph defaults to follow the
+     page's color-scheme, which in our app stays ambiguous and ended up either
+     black-on-dark (dark mode) or white-on-white (light sidebar). Force a
+     filter that biases the icon to a mid-grey, visible against either bg. -->
+<style>
+input.reminder-datetime::-webkit-calendar-picker-indicator {
+  filter: brightness(0.5);
+  cursor: pointer;
+}
+.dark input.reminder-datetime::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+}
+</style>
