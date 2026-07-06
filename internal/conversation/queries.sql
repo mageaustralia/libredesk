@@ -788,6 +788,36 @@ AND m.private = NOT $4
 ORDER BY m.created_at DESC
 LIMIT 1;
 
+-- name: get-latest-message-for-recipients
+-- Like get-latest-message, but skips auto-generated diagnostic mail (DSN
+-- bounces) so a bounce sender never becomes the reply recipient. Matches both
+-- the meta.auto_generated flag set at ingestion and a mailer-daemon/postmaster
+-- sender heuristic, so bounces stored before the flag existed are also skipped.
+SELECT
+    m.created_at,
+    m.updated_at,
+    m.status,
+    m.type,
+    m.content,
+    m.uuid,
+    m.private,
+    m.sender_id,
+    m.sender_type,
+    m.meta
+FROM conversation_messages m
+WHERE m.conversation_id = $1
+AND m.type = ANY($2)
+AND m.status = ANY($3)
+AND m.private = NOT $4
+AND NOT COALESCE((m.meta->>'auto_generated')::boolean, false)
+AND NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements_text(COALESCE(m.meta->'from', '[]'::jsonb)) AS f
+    WHERE f ILIKE 'mailer-daemon@%' OR f ILIKE 'postmaster@%'
+)
+ORDER BY m.created_at DESC
+LIMIT 1;
+
 -- name: get-previous-email-messages
 -- Last N non-private incoming/outgoing messages in a conversation strictly
 -- older than the given message ID. Used by sendOutgoingMessage to build a

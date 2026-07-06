@@ -327,6 +327,7 @@ type queries struct {
 	DeleteConversation                 *sqlx.Stmt `query:"delete-conversation"`
 	RemoveConversationAssignee         *sqlx.Stmt `query:"remove-conversation-assignee"`
 	GetLatestMessage                   *sqlx.Stmt `query:"get-latest-message"`
+	GetLatestMessageForRecipients      *sqlx.Stmt `query:"get-latest-message-for-recipients"`
 	GetPreviousEmailMessages           *sqlx.Stmt `query:"get-previous-email-messages"`
 
 	// Draft queries.
