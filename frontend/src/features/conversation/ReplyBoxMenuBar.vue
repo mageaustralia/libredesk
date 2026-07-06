@@ -128,6 +128,32 @@
         v-if="conversationUUID"
         :conversationUUID="conversationUUID"
       />
+      <!-- AI transform prompts. Moved here from the editor's floating bubble
+           menu (which jumped and could hide behind dialogs). Select text in the
+           editor first, then pick a prompt to transform it. -->
+      <DropdownMenu v-if="aiPrompts.length > 0">
+        <DropdownMenuTrigger as-child>
+          <Toggle
+            class="px-2 py-2 border-0"
+            variant="outline"
+            :pressed="false"
+            title="AI"
+            aria-label="AI"
+          >
+            <Bot class="h-4 w-4" />
+            <ChevronDown class="h-3 w-3 ml-0.5" />
+          </Toggle>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem
+            v-for="prompt in aiPrompts"
+            :key="prompt.key"
+            @select="$emit('aiPromptSelected', prompt.key)"
+          >
+            {{ prompt.title }}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <!-- Generate Response Button -->
       <Button
         v-if="showGenerateButton"
@@ -201,7 +227,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
-import { Paperclip, Smile, Sparkles, ShoppingCart, Zap, ChevronDown, ChevronUp, ALargeSmall, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Palette, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Link as LinkIcon, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
+import { Paperclip, Smile, Sparkles, ShoppingCart, Zap, ChevronDown, ChevronUp, ALargeSmall, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Palette, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Link as LinkIcon, Image as ImageIcon, Trash2, Bot } from 'lucide-vue-next'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -219,11 +245,13 @@ const attachmentInput = ref(null)
 const isEmojiPickerVisible = ref(false)
 const isToolbarVisible = ref(false)
 const emojiPickerRef = ref(null)
-const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders', 'sendWithStatus', 'deleteDraft', 'editorCommand'])
+const emit = defineEmits(['emojiSelect', 'generateResponse', 'generateWithOrders', 'sendWithStatus', 'deleteDraft', 'editorCommand', 'aiPromptSelected'])
 
 // Using defineProps for props that don't need two-way binding
 const props = defineProps({
   editor: { type: Object, default: null },
+  // AI transform prompts, shown as a dropdown in the action row. Empty = hidden.
+  aiPrompts: { type: Array, default: () => [] },
   isFullscreen: Boolean,
   isSending: Boolean,
   isGenerating: {
