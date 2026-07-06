@@ -76,6 +76,10 @@
                 </div>
               </div>
 
+              <!-- Contact / routing details. These collapse once the agent
+                   starts typing the message, giving the editor more vertical
+                   room. TO/CC/BCC above stays visible; reopen via the summary. -->
+              <div class="collapsible-details" :class="{ 'is-collapsed': detailsCollapsed }">
               <!-- Name Group -->
               <div class="grid grid-cols-2 gap-4">
                 <FormField v-slot="{ componentField }" name="first_name">
@@ -193,6 +197,18 @@
                   </FormItem>
                 </FormField>
               </div>
+              </div>
+              <!-- Compact summary shown while details are collapsed -->
+              <button
+                v-if="detailsCollapsed"
+                type="button"
+                @click="detailsCollapsed = false"
+                class="flex items-center gap-2 w-full text-left text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                <ChevronDown class="h-4 w-4 shrink-0" />
+                <span class="truncate">{{ detailsSummary }}</span>
+                <span class="ml-auto text-xs underline shrink-0">Edit details</span>
+              </button>
             </div>
           </div>
 
@@ -210,8 +226,10 @@
                       :placeholder="t('editor.newLine') + t('editor.ctrlK')"
                       :insertContent="insertContent"
                       :autoFocus="false"
+                      toolbar="none"
                       class="w-full flex-1 overflow-y-auto p-2 box min-h-0"
                       @send="createConversation"
+                      @focus="detailsCollapsed = true"
                     />
 
                     <!-- Macro preview -->
@@ -453,6 +471,25 @@ const form = useForm({
   }
 })
 
+// Contact/routing fields collapse once the agent focuses the message editor,
+// giving the composer more vertical room. Reopened via the summary button or
+// automatically on an invalid submit (so hidden validation errors surface).
+const detailsCollapsed = ref(false)
+const detailsSummary = computed(() => {
+  const eq = (a, b) => a != null && b != null && String(a) === String(b)
+  const name = [form.values.first_name, form.values.last_name].filter(Boolean).join(' ').trim()
+  const inbox = inboxStore.options?.find(o => eq(o.value, form.values.inbox_id))?.label || ''
+  const agent = uStore.options?.find(o => eq(o.value, form.values.agent_id))?.label
+  const team = teamStore.options?.find(o => eq(o.value, form.values.team_id))?.label
+  const assignee = agent || team || 'Unassigned'
+  return [name || 'New contact', inbox, assignee].filter(Boolean).join(' · ')
+})
+
+// Always start expanded when the dialog (re)opens.
+watch(dialogOpen, (open) => {
+  if (open) detailsCollapsed.value = false
+})
+
 // localStorage autosave so a session-expiry redirect (or accidental tab
 // close) mid-compose doesn't wipe the agent's work. Restores on dialog open,
 // cleared on a successful send.
@@ -688,6 +725,10 @@ const createConversation = form.handleSubmit(async (values) => {
     loading.value = false
     pendingSubmitStatus.value = ''
   }
+}, () => {
+  // Validation failed — some invalid fields may be inside the collapsed details
+  // block, so expand it to surface the errors.
+  detailsCollapsed.value = false
 })
 
 /**
@@ -713,3 +754,20 @@ watch(
   { deep: true }
 )
 </script>
+
+<style scoped>
+/* Smoothly fold the contact/routing fields away when the agent starts typing
+   the message, freeing vertical space for the composer. Dropdown popovers are
+   portalled to <body>, so overflow:hidden here doesn't clip them. */
+.collapsible-details {
+  overflow: hidden;
+  max-height: 400px;
+  opacity: 1;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+.collapsible-details.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>
