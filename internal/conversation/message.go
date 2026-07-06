@@ -1415,6 +1415,21 @@ func (m *Manager) getLatestMessage(conversationID int, typ []string, status []st
 	return message, nil
 }
 
+// getLatestMessageForRecipients is like getLatestMessage but excludes
+// auto-generated diagnostic mail (DSN bounces from mailer-daemon/postmaster),
+// so a bounce sender never becomes the reply recipient.
+func (m *Manager) getLatestMessageForRecipients(conversationID int, typ []string, status []string, excludePrivate bool) (models.Message, error) {
+	var message models.Message
+	if err := m.q.GetLatestMessageForRecipients.Get(&message, conversationID, pq.Array(typ), pq.Array(status), excludePrivate); err != nil {
+		if err == sql.ErrNoRows {
+			return message, sql.ErrNoRows
+		}
+		m.lo.Error("error fetching latest message for recipients from DB", "error", err)
+		return message, fmt.Errorf("fetching latest message for recipients: %w", err)
+	}
+	return message, nil
+}
+
 // isSpamMailbox checks if the IMAP mailbox name indicates a spam/junk folder.
 func isSpamMailbox(mailbox string) bool {
 	lower := strings.ToLower(mailbox)

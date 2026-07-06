@@ -536,6 +536,21 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		}
 	}
 
+	// DSN bounces are deliberately stored so agents can see delivery failures,
+	// but they must never drive reply-recipient computation — otherwise the
+	// next reply's "To" becomes mailer-daemon@... (the bounce sender). Mark the
+	// message so recipient derivation (backend makeRecipients + frontend
+	// email-recipients) skips it when picking who to reply to.
+	if isDSN(envelope) {
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal(incomingMsg.Message.Meta, &metaMap); err == nil {
+			metaMap["auto_generated"] = true
+			if updated, err := json.Marshal(metaMap); err == nil {
+				incomingMsg.Message.Meta = updated
+			}
+		}
+	}
+
 	e.lo.Debug("envelope HTML content", "message_id", incomingMsg.Message.SourceID.String, "content", incomingMsg.Message.Content)
 	e.lo.Debug("envelope text content", "message_id", incomingMsg.Message.SourceID.String, "content", envelope.Text)
 

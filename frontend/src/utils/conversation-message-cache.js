@@ -77,7 +77,7 @@ export default class MessageCache {
      * 
      * @returns {object} - Latest message object or null if not found
      */
-    getLatestMessage (convId, type = [], excludePrivate = false) {
+    getLatestMessage (convId, type = [], excludePrivate = false, excludeFn = null) {
         const conv = this.cache.get(convId)
         if (!conv) return null
 
@@ -90,6 +90,11 @@ export default class MessageCache {
         }
         if (excludePrivate) {
             allMessages = allMessages.filter(msg => !msg.private)
+        }
+        // Optional predicate to exclude messages (e.g. DSN bounces) so they
+        // don't become the "latest" message for recipient derivation.
+        if (excludeFn) {
+            allMessages = allMessages.filter(msg => !excludeFn(msg))
         }
 
         // Sort messages by created_at in descending order (newest first)
