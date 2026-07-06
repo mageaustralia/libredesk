@@ -1,6 +1,7 @@
 import { useConversationStore } from './stores/conversation'
 import { useNotificationStore } from './stores/notification'
 import { usePresenceStore } from './stores/presence'
+import { useUsersStore } from './stores/users'
 import { WS_EVENT, WS_EPHEMERAL_TYPES } from './constants/websocket'
 import { playNotificationSound } from '@shared-ui/composables/useNotificationSound'
 
@@ -19,6 +20,7 @@ export class WebSocketClient {
     this.convStore = useConversationStore()
     this.notificationStore = useNotificationStore()
     this.presenceStore = usePresenceStore()
+    this.usersStore = useUsersStore()
     this.messageQueue = []
     this.maxQueueSize = 50
     this.queueTimeoutMs = 30000
@@ -54,6 +56,12 @@ export class WebSocketClient {
     this.setupPing()
     this.flushMessageQueue()
     if (wasReconnect) {
+      // Re-subscribe list + open conversation, then refresh to pull anything
+      // missed while the socket was down.
+      const uuids = this.convStore.conversations.data?.map(c => c.uuid) || []
+      this.subscribeListReplace(uuids)
+      const openUUID = this.convStore.conversation.data?.uuid
+      if (openUUID) this.subscribeToConversation(openUUID)
       this.convStore.refreshConversationList()
     }
   }
@@ -69,35 +77,47 @@ export class WebSocketClient {
 
       const data = JSON.parse(event.data)
       const handlers = {
-        // On new message, refresh list and fetch message if it's in current conversation.
         [WS_EVENT.NEW_MESSAGE]: () => {
           const uuid = data.data.conversation_uuid
           const isOpen = this.convStore.conversation.data?.uuid === uuid
           const isFromContact = data.data.sender_type === 'contact'
+          const convPayload = data.data.conversation
+
+          if (convPayload) {
+            this.convStore.handleConvPush(convPayload)
+          } else {
+            this.convStore.mergeConversationUpdate({
+              uuid,
+              last_message: data.data.preview,
+              last_message_at: data.data.created_at,
+              last_message_sender: data.data.sender_type,
+            })
+          }
 
           // Defer the sound if the conversation isn't visible yet so it plays once it joins the list.
           if (isFromContact && document.hidden) {
             if (isOpen || this.convStore.isConversationInList(uuid)) {
               playNotificationSound()
-            } else if (!this.convStore.isConversationInList(data.data.conversation_uuid)) {
-              // Tab is visible - only play for new conversations via deferred check.
-              this.convStore.addPendingNotification(data.data.conversation_uuid)
+            } else {
+              this.convStore.addPendingNotification(uuid)
             }
           }
 
+          // Only contact messages bump the unread badge — agent replies from
+          // another tab/agent shouldn't mark the conversation unread.
           if (isFromContact && !isOpen && this.convStore.isConversationInList(uuid)) {
             this.convStore.incrementUnread(uuid)
           }
 
-          this.convStore.mergeConversationUpdate({
-            uuid,
-            last_message: data.data.last_message,
-            last_message_at: data.data.created_at,
-            last_message_sender: data.data.sender_type,
-          })
           this.convStore.updateConversationMessage(data.data)
         },
-        [WS_EVENT.NEW_CONVERSATION]: () => this.convStore.refreshConversationList(),
+        [WS_EVENT.NEW_CONVERSATION]: () => {
+          if (data.data && data.data.uuid) {
+            this.convStore.handleConvPush(data.data)
+          } else {
+            this.convStore.refreshConversationList()
+          }
+        },
         // Property updates for conversation and message.
         [WS_EVENT.MESSAGE_UPDATE]: () => this.convStore.mergeMessageUpdate(data.data),
         [WS_EVENT.CONVERSATION_UPDATE]: () => this.convStore.mergeConversationUpdate(data.data),
@@ -108,7 +128,9 @@ export class WebSocketClient {
         // New notification.
         [WS_EVENT.NEW_NOTIFICATION]: () => this.notificationStore.addNotification(data.data),
         // Presence update: who's viewing this conversation.
-        [WS_EVENT.PRESENCE_UPDATE]: () => this.presenceStore.updatePresence(data.data.conversation_uuid, data.data.viewers || [])
+        [WS_EVENT.PRESENCE_UPDATE]: () => this.presenceStore.updatePresence(data.data.conversation_uuid, data.data.viewers || []),
+        [WS_EVENT.AGENT_AVAILABILITY_UPDATE]: () =>
+          this.usersStore.setAvailability(data.data.agent_id, data.data.availability_status),
       }
 
       const handler = handlers[data.type]

@@ -248,9 +248,11 @@
                       :placeholder="t('editor.hint.newLineCtrlK')"
                       :insertContent="insertContent"
                       :autoFocus="false"
+                      :enableInlineImages="true"
                       toolbar="none"
                       class="w-full flex-1 overflow-y-auto p-2 box min-h-0"
                       @send="createConversation"
+                      @filesDropped="uploadFiles"
                       @focus="detailsCollapsed = true"
                     />
 
@@ -272,7 +274,7 @@
                       class="mt-2 flex-shrink-0"
                     />
 
-                    <AttachmentsPreview
+                    <ReplyBoxAttachmentPreview
                       :attachments="mediaFiles"
                       :uploadingFiles="uploadingFiles"
                       :onDelete="handleFileDelete"
@@ -391,7 +393,8 @@ import {
 } from '@shared-ui/components/ui/form'
 import { z } from 'zod'
 import { ref, watch, onUnmounted, nextTick, onMounted, computed } from 'vue'
-import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
+import ReplyBoxAttachmentPreview from '@/features/conversation/message/attachment/ReplyBoxAttachmentPreview.vue'
+import { hasPendingInlineUpload } from '@main/composables/useInlineImageUpload'
 import { useConversationStore } from '../../stores/conversation'
 import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue'
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
@@ -464,15 +467,21 @@ const handleEmojiSelect = (emoji) => {
   nextTick(() => (insertContent.value = emoji))
 }
 
-const { uploadingFiles, handleFileUpload, handleFileDelete, mediaFiles, clearMediaFiles, setMediaFiles } =
-  useFileUpload({
-    linkedModel: 'messages'
-  })
+const {
+  uploadingFiles,
+  handleFileUpload,
+  handleFileDelete,
+  uploadFiles,
+  mediaFiles,
+  clearMediaFiles,
+  setMediaFiles
+} = useFileUpload({
+  linkedModel: 'messages'
+})
 
 const isDisabled = computed(() => {
-  if (loading.value || uploadingFiles.value.length > 0) {
-    return true
-  }
+  if (loading.value || uploadingFiles.value.length > 0) return true
+  if (hasPendingInlineUpload(form?.values?.content)) return true
   return false
 })
 

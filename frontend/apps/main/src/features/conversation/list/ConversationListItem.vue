@@ -3,7 +3,7 @@
     <ContextMenuTrigger asChild>
       <router-link
         :to="conversationRoute"
-        class="group relative block px-3 py-3 transition-all duration-200 ease-in-out cursor-pointer hover:bg-accent/20 dark:hover:bg-accent/60"
+        class="group relative block px-3 py-3 transition-all duration-200 ease-in-out cursor-pointer"
         :class="{
           'bg-accent/60': conversation.uuid === currentConversation?.uuid,
           'bg-primary/5': isItemSelected && conversation.uuid !== currentConversation?.uuid
@@ -411,6 +411,7 @@ const draftPreview = computed(() => {
   const draft = conversationStore.getDraft(props.conversation.uuid)
   if (!draft?.content) return ''
   const text = draft.content.replace(/<[^>]*>/g, '').trim()
+  if (!text && /<img\b/i.test(draft.content)) return t('globals.terms.image', 1)
   return text.length > 120 ? text.slice(0, 120) + '...' : text
 })
 

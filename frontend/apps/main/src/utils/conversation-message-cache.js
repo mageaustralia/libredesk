@@ -1,23 +1,13 @@
 export default class MessageCache {
-    /**
-     * Cache for conversation messages with eviction of old conversations
-     * NOTE- This is not reactive, check implementation in `widget/store/chat.js` to see how this is made reactive.
-     * 
-     * @param {number} maxConvs - Max conversations to store before eviction
-     */
-    constructor(maxConvs = 100) {
+    // Not reactive - see widget/store/chat.js for the reactive wrapper pattern.
+    constructor(maxConvs = 30) {
         this.cache = new Map()
         this.maxConvs = maxConvs
         this.recentConvs = []
     }
 
-    /**
-     * Adds or updates messages for a conversation page
-     * Updates cache metadata like lastFetchedPage and hasMore
-     */
     addMessages (convId, messages, page, totalPages) {
         const conv = this.cache.get(convId)
-        // Filter out messages already present in cache.
         const uniqueMsgs = messages.filter(m => !this.hasMessage(convId, m.uuid))
 
         if (conv) {
@@ -36,30 +26,14 @@ export default class MessageCache {
         }
     }
 
-    /** Purge conversation messages from cache
-     * @param {string} convId - Conversation ID to purge
-     * @returns {boolean} - True if the conversation was purged, false if not found
-     */
     purgeConversation (convId) {
         return this.cache.delete(convId)
     }
 
-    /**
-    * Checks if message exists in conversation
-    * @returns {boolean} 
-    */
     hasMessage (convId, msgId) {
-        const conv = this.cache.get(convId)
-        if (!conv) return false
-        return Array.from(conv.pages.values()).some(msgs => msgs.some(m => m.uuid === msgId))
+        return this._allMessages(convId).some(m => m.uuid === msgId)
     }
 
-    /**
-    * Adds single message to a conversation if not already present
-    * 
-    * @param {string} convId - Conversation ID
-    * @param {object} message - Message with uuid field
-    */
     addMessage (convId, message) {
         const conv = this.cache.get(convId)
         if (!conv || this.hasMessage(convId, message.uuid)) return
@@ -70,12 +44,8 @@ export default class MessageCache {
         }
     }
 
-    /**
-     * Returns all cached messages for a conversation sorted by creation time
-     */
     getAllPagesMessages (convId) {
-        return Array.from(this.cache.get(convId)?.pages.values() || [])
-            .flat()
+        return this._allMessages(convId)
             .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     }
 
@@ -113,9 +83,7 @@ export default class MessageCache {
 
         return allMessages.length ? allMessages[0] : null
     }
-    /**
-     * Updates message fields by applying update object
-     */
+
     updateMessage (convId, msgId, updates) {
         const conv = this.cache.get(convId)
         if (!conv) return
@@ -131,21 +99,10 @@ export default class MessageCache {
         })
     }
 
-    /**
-     * Updates a single field in a message
-     */
     updateMessageField (convId, msgId, field, value) {
-        const conv = this.cache.get(convId)
-        if (!conv) return
-        conv.pages.forEach(msgs => {
-            const msg = msgs.find(m => m.uuid === msgId)
-            if (msg) msg[field] = value
-        })
+        this._updateMessageBy(convId, msgId, msg => { msg[field] = value })
     }
 
-    /**
-     * Removes a message from the cache
-     */
     removeMessage (convId, msgId) {
         const conv = this.cache.get(convId)
         if (!conv) return
@@ -157,23 +114,14 @@ export default class MessageCache {
         })
     }
 
-    /**
-     * Checks if conversation has more pages to fetch
-     */
     hasMore (convId) {
         return this.cache.get(convId)?.hasMore || false
     }
 
-    /**
-     * Returns last fetched page number for a conversation
-     */
     getLastFetchedPage (convId) {
         return this.cache.get(convId)?.lastFetchedPage || 0
     }
 
-    /**
-     * pruneOldConversations - Evicts old conversations from cache
-     */
     pruneOldConversations (convId) {
         this.recentConvs = [convId, ...this.recentConvs.filter(id => id !== convId)]
         if (this.recentConvs.length > this.maxConvs) {
@@ -182,12 +130,22 @@ export default class MessageCache {
         }
     }
 
-    /**
-     * Returns true if a conversation has been added to the cache
-     * @param {string} convId - Conversation ID
-     * @returns {boolean}
-     */
     hasConversation (convId) {
         return this.cache.has(convId)
+    }
+
+    _allMessages (convId) {
+        const conv = this.cache.get(convId)
+        if (!conv) return []
+        return Array.from(conv.pages.values()).flat()
+    }
+
+    _updateMessageBy (convId, msgId, mutate) {
+        const conv = this.cache.get(convId)
+        if (!conv) return
+        conv.pages.forEach(msgs => {
+            const msg = msgs.find(m => m.uuid === msgId)
+            if (msg) mutate(msg)
+        })
     }
 }

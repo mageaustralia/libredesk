@@ -130,7 +130,13 @@ func handleGetMessages(r *fastglue.Request) error {
 	rootURL, _ := app.setting.GetAppRootURL()
 	for i := range messages {
 		total = messages[i].Total
-		hydrateAndResolveCIDs(app, &messages[i], rootURL)
+		// Populate attachment URLs
+		for j := range messages[i].Attachments {
+			att := messages[i].Attachments[j]
+			messages[i].Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
+		}
+		resolveQuotedCIDs(app, &messages[i])
+		resolveAttachmentCIDs(&messages[i], rootURL)
 	}
 
 	// Process CSAT status for all messages (will only affect CSAT messages)
@@ -193,7 +199,12 @@ func handleGetMessage(r *fastglue.Request) error {
 	}
 
 	rootURL, _ := app.setting.GetAppRootURL()
-	hydrateAndResolveCIDs(app, &message, rootURL)
+	for j := range message.Attachments {
+		att := message.Attachments[j]
+		message.Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
+	}
+	resolveQuotedCIDs(app, &message)
+	resolveAttachmentCIDs(&message, rootURL)
 
 	return r.SendEnvelope(message)
 }
@@ -402,7 +413,8 @@ func handleSendMessage(r *fastglue.Request) error {
 		if err != nil {
 			return sendErrorEnvelope(r, err)
 		}
-		hydrateAndResolveCIDs(app, &message, rootURL)
+		resolveQuotedCIDs(app, &message)
+		resolveAttachmentCIDs(&message, rootURL)
 		return r.SendEnvelope(message)
 	}
 
@@ -412,10 +424,11 @@ func handleSendMessage(r *fastglue.Request) error {
 		if err != nil {
 			return sendErrorEnvelope(r, err)
 		}
-		hydrateAndResolveCIDs(app, &message, rootURL)
+		resolveAttachmentCIDs(&message, rootURL)
 		return r.SendEnvelope(message)
 	}
 
+	// Queue outgoing reply.
 	meta := map[string]any{}
 	if req.EchoID != "" {
 		meta["echo_id"] = req.EchoID
@@ -476,7 +489,8 @@ func handleSendMessage(r *fastglue.Request) error {
 	// actually succeeds. The frontend learns about the eventual status flip
 	// via the existing BroadcastConversationUpdate WebSocket message that
 	// UpdateConversationStatus emits.
-	hydrateAndResolveCIDs(app, &message, rootURL)
+	resolveQuotedCIDs(app, &message)
+	resolveAttachmentCIDs(&message, rootURL)
 	return r.SendEnvelope(message)
 }
 
@@ -523,9 +537,9 @@ func validateInboxFromOverride(inbox imodels.Inbox, requested string) (string, e
 	return "", fmt.Errorf("From address not allowed for this inbox")
 }
 
-// resolveContentCIDs replaces inline image cid: references in email message content
+// resolveAttachmentCIDs replaces inline image cid: references in email message content
 // with actual attachment URLs and resolves relative /uploads/ paths to absolute URLs.
-func resolveContentCIDs(msg *cmodels.Message, rootURL string) {
+func resolveAttachmentCIDs(msg *cmodels.Message, rootURL string) {
 	for _, att := range msg.Attachments {
 		if att.ContentID != "" && att.URL != "" {
 			msg.Content = strings.ReplaceAll(msg.Content, "cid:"+att.ContentID, att.URL)
@@ -535,30 +549,6 @@ func resolveContentCIDs(msg *cmodels.Message, rootURL string) {
 		msg.Content = strings.ReplaceAll(msg.Content, `src="/uploads/`, `src="`+rootURL+`/uploads/`)
 		msg.Content = strings.ReplaceAll(msg.Content, `src='/uploads/`, `src='`+rootURL+`/uploads/`)
 	}
-}
-
-// hydrateAndResolveCIDs is the full read-time CID pipeline used by every
-// handler that ships a message back to the frontend:
-//
-//  1. PopulateInlineMedia: pulls in inline-image media referenced via cid:
-//     in the body but not yet listed in Attachments (typically quoted-thread
-//     images from prior messages in the same conversation).
-//  2. URL stamping: gives each attachment a resolvable URL so the next step
-//     has something to swap to.
-//  3. resolveContentCIDs: rewrites cid:<id> in the body to the attachment
-//     URLs, and promotes any remaining relative /uploads/ paths to absolute.
-//
-// Called from handleGetMessages and handleGetMessage (existing) plus all
-// three handleSendMessage paths so the API response after a write also
-// returns URL-form content (b014d0d9 — without this the editor would
-// momentarily render cid: links the browser can't resolve).
-func hydrateAndResolveCIDs(app *App, msg *cmodels.Message, rootURL string) {
-	app.conversation.PopulateInlineMedia(msg)
-	for j := range msg.Attachments {
-		att := msg.Attachments[j]
-		msg.Attachments[j].URL = app.media.GetURL(att.UUID, att.ContentType, att.Name)
-	}
-	resolveContentCIDs(msg, rootURL)
 }
 
 // handleRedactMessagePCI is the manual "Redact Now" path: agents click the
@@ -618,4 +608,17 @@ func handleRedactMessagePCI(r *fastglue.Request) error {
 		"content":      msg.Content,
 		"text_content": msg.TextContent,
 	})
+}
+
+// resolveQuotedCIDs replaces cid: refs to media on other messages with signed URLs.
+func resolveQuotedCIDs(app *App, msg *cmodels.Message) {
+	refs, err := app.conversation.GetInlineMediaRefs(msg)
+	if err != nil {
+		app.lo.Error("error fetching inline media refs", "conversation_uuid", msg.ConversationUUID, "error", err)
+		return
+	}
+	for _, ref := range refs {
+		url := app.media.GetURL(ref.UUID, ref.ContentType, ref.Filename)
+		msg.Content = strings.ReplaceAll(msg.Content, "cid:"+ref.ContentID, url)
+	}
 }

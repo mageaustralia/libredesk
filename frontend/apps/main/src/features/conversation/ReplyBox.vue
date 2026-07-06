@@ -245,6 +245,8 @@ import {
 import { Input } from '@shared-ui/components/ui/input'
 import { useEmitter } from '@main/composables/useEmitter'
 import { useFileUpload } from '@main/composables/useFileUpload'
+import { hasInlineImage, hasPendingInlineUpload } from '@main/composables/useInlineImageUpload'
+import { useAiPromptStore } from '@main/stores/aiPrompt'
 import ReplyBoxContent from '@/features/conversation/ReplyBoxContent.vue'
 import { UserTypeAgent } from '@/constants/user'
 import {
@@ -333,7 +335,8 @@ const cc = ref('')
 const bcc = ref('')
 const showBcc = ref(false)
 const emailErrors = ref([])
-const aiPrompts = ref([])
+const aiPromptStore = useAiPromptStore()
+const aiPrompts = computed(() => aiPromptStore.prompts)
 const replyBoxContentRef = ref(null)
 const showContactEmailWarning = ref(false)
 const showMissingTagsWarning = ref(false)
@@ -392,19 +395,7 @@ watch(
   { immediate: true }
 )
 
-/**
- * Fetches AI prompts from the server.
- */
-const fetchAiPrompts = async () => {
-  try {
-    const resp = await api.getAiPrompts()
-    aiPrompts.value = resp.data.data
-  } catch (error) {
-    toast.error(error)
-  }
-}
-
-fetchAiPrompts()
+aiPromptStore.fetchPrompts()
 
 /**
  * T3r: probes ecommerce configuration once at mount. The endpoint is
@@ -748,7 +739,13 @@ const processSend = async (skipContactEmailCheck = false, skipMissingTagsCheck =
   // FS24: mention-only private notes (e.g. "@john") still send. TipTap mention
   // nodes don't always count toward textContent, so without this gate a
   // private note that is just an @mention would silently no-op.
-  const hasContent = hasTextContent.value || mediaFiles.value.length > 0 || mentions.value.length > 0
+  // Inline images count as content too; block send while one is mid-upload.
+  if (hasPendingInlineUpload(htmlContent.value)) return
+  const hasContent =
+    hasTextContent.value ||
+    hasInlineImage(htmlContent.value) ||
+    mediaFiles.value.length > 0 ||
+    mentions.value.length > 0
   const convUUID = conversationStore.current.uuid
   const isPrivate = messageType.value === 'private_note'
   const isForward = messageType.value === 'forward'

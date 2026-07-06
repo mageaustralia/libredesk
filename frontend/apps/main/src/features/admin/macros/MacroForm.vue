@@ -33,7 +33,7 @@
     <div>
       <label class="text-sm font-medium leading-none">{{ t('globals.terms.file', 2) }}</label>
       <div class="mt-2">
-        <AttachmentsPreview
+        <ReplyBoxAttachmentPreview
           v-if="mediaFiles.length > 0 || uploadingFiles.length > 0"
           :attachments="mediaFiles"
           :uploadingFiles="uploadingFiles"
@@ -176,7 +176,7 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@share
 import ActionBuilder from '@/features/admin/macros/ActionBuilder.vue'
 import { useConversationFilters } from '../../../composables/useConversationFilters.js'
 import { useFileUpload } from '@main/composables/useFileUpload'
-import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
+import ReplyBoxAttachmentPreview from '@/features/conversation/message/attachment/ReplyBoxAttachmentPreview.vue'
 import { useUsersStore } from '../../../stores/users.js'
 import { useTeamStore } from '../../../stores/team.js'
 import { getTextFromHTML } from '@shared-ui/utils/string'

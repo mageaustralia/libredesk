@@ -383,7 +383,7 @@ const followConversation = (uuid) => http.post(`/api/v1/conversations/${uuid}/fo
 const unfollowConversation = (uuid) => http.delete(`/api/v1/conversations/${uuid}/follow`)
 const addConversationFollower = (uuid, userId) => http.post(`/api/v1/conversations/${uuid}/followers`, { user_id: Number(userId) })
 const removeConversationFollower = (uuid, userId) => http.delete(`/api/v1/conversations/${uuid}/followers/${userId}`)
-const getContactPageVisits = (uuid) => http.get(`/api/v1/conversations/${uuid}/page-visits`)
+const getContactPageVisits = (uuid) => http.get(`/api/v1/conversations/${uuid}/page-visits`, { abortOnRoute: true })
 const getAllMacros = () => http.get('/api/v1/macros')
 const getMacro = (id) => http.get(`/api/v1/macros/${id}`)
 const createMacro = (data) =>

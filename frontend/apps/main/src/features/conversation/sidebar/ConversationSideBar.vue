@@ -42,7 +42,8 @@
           <div>
             <SelectTag
               v-if="conversationStore.current"
-              v-model="conversationStore.current.tags"
+              :model-value="conversationStore.current.tags || []"
+              @update:modelValue="onTagsChange"
               :items="tags.map((tag) => ({ label: tag, value: tag }))"
               :placeholder="t('placeholders.selectTags')"
             />
@@ -157,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
@@ -207,7 +208,6 @@ const accordionState = useStorage('conversation-sidebar-accordion', ['reminders'
 // computed and surface a small badge in the header.
 const remindersPanel = ref(null)
 const { t } = useI18n()
-let isConversationChange = false
 customAttributeStore.fetchCustomAttributes()
 
 // Watch the uuid (string) rather than the current object — the store's
@@ -220,7 +220,6 @@ watch(
   () => conversationStore.current?.uuid,
   (newUuid, oldUuid) => {
     if (newUuid && newUuid !== oldUuid) {
-      isConversationChange = true
       fetchFollowers()
     }
   },
@@ -231,37 +230,13 @@ onMounted(async () => {
   await fetchTags()
 })
 
-// Watch for changes in the tags and upsert the tags
-watch(
-  () => conversationStore.current?.tags,
-  (newTags, oldTags) => {
-    if (isConversationChange) {
-      isConversationChange = false
-      return
-    }
-
-    if (!Array.isArray(newTags) || !Array.isArray(oldTags)) {
-      return
-    }
-
-    if (
-      newTags.length === oldTags.length &&
-      newTags.every((item) => oldTags.includes(item))
-    ) {
-      return
-    }
-
-    // PR #286: store API changed from upsertTags({tags}) to
-    // updateConversationTags(uuid, action, tags). Sidebar always SETs the
-    // full tag list (multi-select picker emits the new full array).
-    conversationStore.updateConversationTags(
-      conversationStore.current.uuid,
-      TAG_ACTION.SET,
-      newTags
-    )
-  },
-  { immediate: false }
-)
+const onTagsChange = (newTags) => {
+  const conv = conversationStore.current
+  if (!conv) return
+  const current = conv.tags || []
+  if (newTags.length === current.length && newTags.every((t) => current.includes(t))) return
+  conversationStore.updateConversationTags(conv.uuid, TAG_ACTION.SET, newTags)
+}
 
 const priorityOptions = computed(() => conversationStore.priorityOptions)
 

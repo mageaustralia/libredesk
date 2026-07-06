@@ -29,7 +29,9 @@
       <!-- Full-width detail (conversation open) -->
       <div v-show="hasConversationOpen" class="flex-1 overflow-hidden">
         <router-view v-slot="{ Component }">
-          <component :is="Component" />
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
         </router-view>
       </div>
     </template>
@@ -53,7 +55,9 @@
 
         <ResizablePanel :default-size="panelSizes[1]" :min-size="30">
           <router-view v-slot="{ Component }">
-            <component :is="Component" />
+            <keep-alive>
+              <component :is="Component" />
+            </keep-alive>
           </router-view>
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -76,6 +80,8 @@ import {
 } from '@shared-ui/components/ui/resizable'
 import ConversationList from '@/features/conversation/list/ConversationList.vue'
 import { useViewMode } from '@/composables/useViewMode'
+
+defineOptions({ name: 'InboxLayout' })
 
 const route = useRoute()
 const router = useRouter()

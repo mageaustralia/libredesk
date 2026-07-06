@@ -164,7 +164,7 @@
     />
 
     <!-- Attachments preview -->
-    <AttachmentsPreview
+    <ReplyBoxAttachmentPreview
       :attachments="uploadedFiles"
       :uploadingFiles="uploadingFiles"
       :onDelete="handleOnFileDelete"
@@ -203,7 +203,7 @@ import { useConversationStore } from '@main/stores/conversation'
 import { Button } from '@shared-ui/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@shared-ui/components/ui/tabs'
 import { useToast } from '@main/composables/useToast'
-import AttachmentsPreview from '@/features/conversation/message/attachment/AttachmentsPreview.vue'
+import ReplyBoxAttachmentPreview from '@/features/conversation/message/attachment/ReplyBoxAttachmentPreview.vue'
 import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue'
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { useI18n } from 'vue-i18n'

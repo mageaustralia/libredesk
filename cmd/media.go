@@ -152,8 +152,8 @@ func handleMediaUpload(r *fastglue.Request) error {
 // Supports both authenticated access (with permission checks) and signed URL access (no permission checks).
 func handleServeMedia(r *fastglue.Request) error {
 	var (
-		app  = r.Context.(*App)
-		uuid = r.RequestCtx.UserValue("uuid").(string)
+		app        = r.Context.(*App)
+		uuid       = r.RequestCtx.UserValue("uuid").(string)
 		authMethod = r.RequestCtx.UserValue("auth_method")
 	)
 
@@ -184,7 +184,7 @@ func handleServeMedia(r *fastglue.Request) error {
 
 	// For messages, check access to the conversation this message is part of.
 	// Skip if model_id is not set (media uploaded but not yet attached to a message).
-	if media.Model.String == "messages" && media.ModelID.Int > 0 {
+	if media.Model.String == mmodels.ModelMessages && media.ModelID.Int > 0 {
 		conversation, err := app.conversation.GetConversationByMessageID(media.ModelID.Int)
 		if err != nil {
 			return sendErrorEnvelope(r, err)

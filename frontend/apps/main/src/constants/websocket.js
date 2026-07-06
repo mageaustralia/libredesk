@@ -10,6 +10,7 @@ export const WS_EVENT = {
     NEW_NOTIFICATION: 'new_notification',
     PRESENCE_UPDATE: 'presence_update',
     VIEW_CONVERSATION: 'view_conversation',
+    AGENT_AVAILABILITY_UPDATE: 'agent_availability_update',
 }
 
 // Message types that should not be queued because they become stale quickly

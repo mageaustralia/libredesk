@@ -1,14 +1,14 @@
 # Libredesk Roadmap
 
-## Vision
-A high-performance, omni-channel, self-hosted customer support desk.
+The open-source customer support platform you actually own. One inbox for email, live chat, and WhatsApp - self-hosted, no per-seat pricing.
 
 ## Near Term
-- Bulk actions on conversations - TODO
-- Contact notes visible in side - TODO
+- WhatsApp channel - WIP
+- Contact notes in conversation sidebar - WIP
+- Contact merging - WIP
+- Deletable private notes - TODO
 - Help center with articles - TODO
-- AI assisants - TODO
-- Contact merging - TODO
+- AI assistants - TODO
 
 ## Mid Term
-- GDPR - TODO
+- GDPR compliance - TODO

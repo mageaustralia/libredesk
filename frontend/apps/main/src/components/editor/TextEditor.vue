@@ -3,6 +3,7 @@
     <BubbleMenu
       :editor="editor"
       :tippy-options="{ duration: 100 }"
+      :should-show="shouldShowBubble"
       v-if="toolbar === 'floating' && editor"
       class="bg-background p-1 box will-change-transform"
     >
@@ -156,7 +157,7 @@ import {
   DialogDescription
 } from '@shared-ui/components/ui/dialog'
 import Placeholder from '@tiptap/extension-placeholder'
-import Image from '@tiptap/extension-image'
+import ResizableImage from './extensions/ResizableImage'
 import StarterKit from '@tiptap/starter-kit'
 import { liftListItem as pmLiftListItem } from '@tiptap/pm/schema-list'
 import Link from '@tiptap/extension-link'
@@ -172,6 +173,7 @@ import { useEmitter } from '@main/composables/useEmitter'
 import { EMITTER_EVENTS } from '@main/constants/emitterEvents'
 import api from '@main/api'
 import { getI18n } from '@main/i18n'
+import { useInlineImageUpload } from '@main/composables/useInlineImageUpload'
 import mentionSuggestion from './mentionSuggestion'
 
 const textContent = defineModel('textContent', { default: '' })
@@ -211,6 +213,10 @@ const props = defineProps({
   getSuggestions: {
     type: Function,
     default: null
+  },
+  enableInlineImages: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -308,25 +314,6 @@ const handleImageSelect = async (event) => {
   }
   // Reset so picking the same file twice in a row still fires @change.
   event.target.value = ''
-}
-
-// Paste handler: catch image content from the clipboard, upload, then insert.
-const handlePaste = (view, event) => {
-  const items = event.clipboardData?.items
-  if (!items) return false
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      event.preventDefault()
-      const file = item.getAsFile()
-      if (file) {
-        uploadImage(file).then((url) => {
-          if (url) insertImage(url)
-        })
-      }
-      return true
-    }
-  }
-  return false
 }
 
 // transformPastedHTML — strip presentation styles from pasted HTML before
@@ -442,29 +429,21 @@ const transformPastedHTML = (html) => {
   }
 }
 
-// Drop handler: image files go inline, everything else is emitted as
-// `filesDropped` so the parent can attach them as regular attachments.
-const handleDrop = (view, event) => {
-  const files = event.dataTransfer?.files
-  if (!files || files.length === 0) return false
-
-  const imageFiles = []
-  const otherFiles = []
-  for (const file of files) {
-    if (file.type.startsWith('image/')) imageFiles.push(file)
-    else otherFiles.push(file)
-  }
-  if (imageFiles.length === 0 && otherFiles.length === 0) return false
-
-  event.preventDefault()
-  for (const file of imageFiles) {
-    uploadImage(file).then((url) => {
-      if (url) insertImage(url)
-    })
-  }
-  if (otherFiles.length > 0) emit('filesDropped', otherFiles)
+// Suppress the formatting bubble when an image node is selected so it
+// doesn't fight with the image's own size/remove toolbar.
+const shouldShowBubble = ({ editor: e, state }) => {
+  const { selection } = state
+  if (selection.empty) return false
+  if (!e.view.hasFocus()) return false
+  if (selection.node?.type?.name === 'image') return false
   return true
 }
+
+const { handlePaste, handleDrop } = useInlineImageUpload({
+  getEditor: () => editor.value,
+  isInlineEnabled: () => props.enableInlineImages,
+  onOtherFiles: (files) => emit('filesDropped', files)
+})
 
 // Set up typing indicator
 const conversationStore = useConversationStore()
@@ -524,174 +503,6 @@ const CustomMention = Mention.extend({
         renderHTML: (attributes) => {
           if (!attributes.type) return {}
           return { 'data-type': attributes.type }
-        }
-      }
-    }
-  }
-})
-
-// Custom Image extension with drag-handle resizing and Gmail-style size presets
-// (Small / Best fit / Original / Remove). Renders a node-view that wraps the
-// <img> with a corner resize handle and a hover toolbar.
-const ResizableImage = Image.extend({
-  addAttributes () {
-    return {
-      ...this.parent?.(),
-      width: {
-        default: null,
-        parseHTML: (el) => el.getAttribute('width') || el.style.width?.replace('px', '') || null,
-        renderHTML: (attrs) => {
-          if (!attrs.width) return {}
-          return { width: attrs.width, style: `width: ${attrs.width}px` }
-        }
-      },
-      height: {
-        default: null,
-        parseHTML: (el) => el.getAttribute('height') || null,
-        renderHTML: (attrs) => (attrs.height ? { height: attrs.height } : {})
-      }
-    }
-  },
-  addNodeView () {
-    return ({ node, getPos, editor: nodeEditor }) => {
-      const wrapper = document.createElement('div')
-      wrapper.classList.add('image-resizer')
-      wrapper.style.display = 'inline-block'
-      wrapper.style.position = 'relative'
-      wrapper.style.lineHeight = '0'
-
-      const img = document.createElement('img')
-      img.src = node.attrs.src
-      img.alt = node.attrs.alt || ''
-      img.title = node.attrs.title || ''
-      img.classList.add('inline-image')
-      img.style.maxWidth = '100%'
-      img.style.height = 'auto'
-      if (node.attrs.width) img.style.width = node.attrs.width + 'px'
-      wrapper.appendChild(img)
-
-      // Toolbar (visible when wrapper is selected)
-      const toolbar = document.createElement('div')
-      toolbar.classList.add('image-size-toolbar')
-
-      let naturalWidth = 0
-      img.addEventListener('load', () => { naturalWidth = img.naturalWidth })
-
-      const commitWidth = (newWidth) => {
-        const pos = getPos()
-        if (typeof pos !== 'number') return
-        nodeEditor.chain().focus().command(({ tr }) => {
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, width: newWidth || null })
-          return true
-        }).run()
-      }
-
-      const t = getI18n().global.t
-      const sizes = [
-        { label: t('globals.terms.small'), value: 400 },
-        { label: t('globals.messages.bestFit'), value: 'fit' },
-        { label: t('globals.terms.original'), value: 'original' }
-      ]
-      // Toolbar buttons use pointerdown so touch + pen + mouse all work.
-      // preventDefault avoids stealing focus from the editor.
-      sizes.forEach(({ label, value }) => {
-        const btn = document.createElement('button')
-        btn.textContent = label
-        btn.type = 'button'
-        btn.addEventListener('pointerdown', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          if (value === 'original') {
-            img.style.width = naturalWidth ? naturalWidth + 'px' : 'auto'
-            commitWidth(naturalWidth || null)
-          } else if (value === 'fit') {
-            // Best fit = the smaller of the image's natural width and the
-            // editor's content width, committed as an explicit px width so
-            // it survives round-trips (an empty width let huge images
-            // overflow the editor on reload).
-            const editorWidth = nodeEditor.view.dom.clientWidth
-            const fitWidth = naturalWidth ? Math.min(naturalWidth, editorWidth) : editorWidth
-            img.style.width = fitWidth + 'px'
-            commitWidth(fitWidth)
-          } else {
-            // Never upscale past the natural width.
-            const w = naturalWidth ? Math.min(value, naturalWidth) : value
-            img.style.width = w + 'px'
-            commitWidth(w)
-          }
-        })
-        toolbar.appendChild(btn)
-      })
-
-      const sep = document.createElement('span')
-      sep.classList.add('image-toolbar-sep')
-      toolbar.appendChild(sep)
-
-      const removeBtn = document.createElement('button')
-      removeBtn.textContent = t('globals.terms.remove')
-      removeBtn.type = 'button'
-      removeBtn.classList.add('image-toolbar-remove')
-      removeBtn.addEventListener('pointerdown', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        const pos = getPos()
-        if (typeof pos === 'number') {
-          nodeEditor.chain().focus().deleteRange({ from: pos, to: pos + 1 }).run()
-        }
-      })
-      toolbar.appendChild(removeBtn)
-      wrapper.appendChild(toolbar)
-
-      // Bottom-right resize handle. We don't manage selected state ourselves;
-      // CSS keys off ProseMirror's `.ProseMirror-selectednode` class which
-      // ProseMirror toggles automatically when the image node is selected.
-      // That avoids a global document click listener per image (which leaks
-      // closures across the entire page for every embedded image).
-      const handle = document.createElement('div')
-      handle.classList.add('image-resize-handle')
-      wrapper.appendChild(handle)
-
-      // Drag the corner handle to resize. Pointer events for touch + pen.
-      let startX = 0
-      let startWidth = 0
-      const onPointerMove = (e) => {
-        const newWidth = Math.max(50, startWidth + (e.clientX - startX))
-        img.style.width = newWidth + 'px'
-      }
-      const onPointerUp = () => {
-        window.removeEventListener('pointermove', onPointerMove)
-        window.removeEventListener('pointerup', onPointerUp)
-        wrapper.classList.remove('resizing')
-        try {
-          commitWidth(Math.round(img.offsetWidth))
-        } catch (err) {
-          // Node may have been removed/replaced mid-drag (autosave
-          // re-render, paste over selection, etc.). Drop the commit.
-        }
-      }
-      const onPointerDown = (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        startX = e.clientX
-        startWidth = img.offsetWidth
-        window.addEventListener('pointermove', onPointerMove)
-        window.addEventListener('pointerup', onPointerUp)
-        wrapper.classList.add('resizing')
-      }
-      handle.addEventListener('pointerdown', onPointerDown)
-
-      return {
-        dom: wrapper,
-        update: (updatedNode) => {
-          if (updatedNode.type.name !== 'image') return false
-          img.src = updatedNode.attrs.src
-          img.style.width = updatedNode.attrs.width ? updatedNode.attrs.width + 'px' : ''
-          return true
-        },
-        destroy: () => {
-          handle.removeEventListener('pointerdown', onPointerDown)
-          window.removeEventListener('pointermove', onPointerMove)
-          window.removeEventListener('pointerup', onPointerUp)
         }
       }
     }
@@ -974,48 +785,84 @@ defineExpose({ focus, extractMentions, runCommand })
     font-weight: 500;
   }
 
-  // Selected image gets an outline so the user knows what's focused.
-  // Hardcoded brand blue rather than a theme token so it stays visible
-  // against arbitrary email content (light backgrounds, dark images, etc.).
-  .ProseMirror-selectednode .inline-image {
-    outline: 2px solid #0066cc;
-  }
-
-  // Wrapper added by ResizableImage's nodeView.
   .image-resizer {
     display: inline-block;
     position: relative;
-    margin: 4px 0;
+    margin: 4px 5px;
+
+    .image-upload-placeholder {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 32px;
+      min-width: 360px;
+      min-height: 220px;
+      max-width: 100%;
+      background: hsl(var(--muted));
+      border: 1px dashed hsl(var(--border));
+      border-radius: 6px;
+      line-height: 1.4;
+      gap: 12px;
+    }
+
+    .image-upload-placeholder-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .image-upload-placeholder-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 320px;
+    }
+
+    &.uploading {
+      .inline-image {
+        display: none;
+      }
+      .image-upload-placeholder {
+        display: inline-flex;
+      }
+    }
 
     .image-resize-handle {
       display: none;
       position: absolute;
-      bottom: 4px;
-      right: 4px;
       width: 12px;
       height: 12px;
-      background: #0066cc;
-      border: 2px solid white;
+      background: hsl(var(--primary));
+      border: 2px solid hsl(var(--background));
       border-radius: 2px;
-      cursor: nwse-resize;
       z-index: 10;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 0 0 1px hsl(var(--border));
     }
 
-    // Floating size toolbar — sits above image to avoid BubbleMenu overlap.
+    .image-resize-handle-tl { top: -6px; left: -6px; cursor: nwse-resize; }
+    .image-resize-handle-tr { top: -6px; right: -6px; cursor: nesw-resize; }
+    .image-resize-handle-bl { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .image-resize-handle-br { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+    // Anchored to the image's left edge (no centering) so the toolbar
+    // never extends past the image's left side and into adjacent UI when
+    // the image sits near the editor's left edge.
     .image-size-toolbar {
       display: none;
       position: absolute;
       top: 4px;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 0;
       background: hsl(var(--background) / 0.95);
       border: 1px solid hsl(var(--border));
       border-radius: 6px;
       padding: 2px;
       z-index: 10000;
       white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 2px 8px hsl(var(--foreground) / 0.15);
       backdrop-filter: blur(4px);
 
       button {

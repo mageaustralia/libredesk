@@ -128,6 +128,7 @@ func handleOIDCCallback(r *fastglue.Request) error {
 	if err := app.user.UpdateLastLoginAt(user.ID); err != nil {
 		app.lo.Error("oidc update last login failed", "user_id", user.ID, "error", err)
 	}
+	app.user.InvalidateAgentCache(user.ID)
 
 	// Insert activity log.
 	if err := app.activityLog.Login(user.ID, user.Email.String, ip, country); err != nil {

@@ -44,6 +44,11 @@ var (
 	PasswordHint = fmt.Sprintf("Password must be %d-%d characters long should contain at least one uppercase letter, one lowercase letter, one number, and one special character.", minPassword, maxPassword)
 )
 
+const (
+	lastActiveFlushDebounce = 30 * time.Second
+	agentCacheTTL           = 10 * time.Minute
+)
+
 // Manager handles user-related operations.
 type Manager struct {
 	lo           *logf.Logger
@@ -53,14 +58,9 @@ type Manager struct {
 	agentCache   map[int]cachedAgent
 	agentCacheMu sync.RWMutex
 
-	lastActiveWriteAt   map[int]time.Time
-	lastActiveWriteAtMu sync.Mutex
+	lastActiveFlushAt   map[int]time.Time
+	lastActiveFlushAtMu sync.Mutex
 }
-
-const (
-	lastActiveWriteDebounce = 30 * time.Second
-	agentCacheTTL           = 10 * time.Minute
-)
 
 type cachedAgent struct {
 	user      models.User
@@ -78,6 +78,7 @@ type queries struct {
 	GetUser                       *sqlx.Stmt `query:"get-user"`
 	GetNotes                      *sqlx.Stmt `query:"get-notes"`
 	GetNote                       *sqlx.Stmt `query:"get-note"`
+	GetUserIDsByRole              *sqlx.Stmt `query:"get-user-ids-by-role"`
 	GetUserByExternalID           *sqlx.Stmt `query:"get-user-by-external-id"`
 	GetUsersCompact               string     `query:"get-users-compact"`
 	UpdateContact                 *sqlx.Stmt `query:"update-contact"`
@@ -140,7 +141,7 @@ func New(i18n *i18n.I18n, opts Opts) (*Manager, error) {
 		i18n:              i18n,
 		db:                opts.DB,
 		agentCache:        make(map[int]cachedAgent),
-		lastActiveWriteAt: make(map[int]time.Time),
+		lastActiveFlushAt: make(map[int]time.Time),
 	}, nil
 }
 
@@ -210,7 +211,6 @@ func (u *Manager) GetContactOrVisitor(id int, email string) (models.User, error)
 	return u.Get(id, email, []string{models.UserTypeContact, models.UserTypeVisitor})
 }
 
-// GetSystemUser retrieves the system user.
 func (u *Manager) GetSystemUser() (models.User, error) {
 	return u.Get(0, models.SystemUserEmail, []string{models.UserTypeAgent})
 }
@@ -317,7 +317,6 @@ func (u *Manager) UpdateLastLoginAt(id int) error {
 
 // SetResetPasswordToken sets a reset password token for an user and returns the token.
 func (u *Manager) SetResetPasswordToken(id int) (string, error) {
-	// TODO: column `reset_password_token`, does not have a UNIQUE constraint. Add it in a future migration.
 	token, err := stringutil.RandomAlphanumeric(32)
 	if err != nil {
 		u.lo.Error("error generating reset password token", "error", err)
@@ -330,26 +329,25 @@ func (u *Manager) SetResetPasswordToken(id int) (string, error) {
 	return token, nil
 }
 
-// ResetPassword sets a password for a given user's reset password token.
-func (u *Manager) ResetPassword(token, password string) error {
+// ResetPassword sets a password for a given user's reset password token and returns the user ID.
+func (u *Manager) ResetPassword(token, password string) (int, error) {
 	if !IsStrongPassword(password) {
-		return envelope.NewError(envelope.InputError, "Password is not strong enough, "+PasswordHint, nil)
+		return 0, envelope.NewError(envelope.InputError, "Password is not strong enough, "+PasswordHint, nil)
 	}
-	// Hash password.
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		u.lo.Error("error generating bcrypt password", "error", err)
-		return envelope.NewError(envelope.GeneralError, u.i18n.T("globals.messages.somethingWentWrong"), nil)
+		return 0, envelope.NewError(envelope.GeneralError, u.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
-	rows, err := u.q.SetPassword.Exec(passwordHash, token)
-	if err != nil {
+	var id int
+	if err := u.q.SetPassword.Get(&id, passwordHash, token); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, envelope.NewError(envelope.InputError, u.i18n.T("user.resetPasswordTokenExpired"), nil)
+		}
 		u.lo.Error("error setting new password", "error", err)
-		return envelope.NewError(envelope.GeneralError, u.i18n.T("globals.messages.somethingWentWrong"), nil)
+		return 0, envelope.NewError(envelope.GeneralError, u.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
-	if count, _ := rows.RowsAffected(); count == 0 {
-		return envelope.NewError(envelope.InputError, u.i18n.T("user.resetPasswordTokenExpired"), nil)
-	}
-	return nil
+	return id, nil
 }
 
 // UpdateAvailability updates the availability status of an user.
@@ -364,18 +362,12 @@ func (u *Manager) UpdateAvailability(id int, status string) error {
 
 // UpdateLastActive updates last_active_at and returns true if the user flipped from offline to online.
 func (u *Manager) UpdateLastActive(id int) (wasOffline bool, err error) {
-	// An offline cached user must bypass the debounce so the next read sees the online flip.
-	cached, cachedOK := u.GetAgentFromCache(id)
-	forceWrite := cachedOK && cached.AvailabilityStatus == "offline"
+	agent, cachedOK := u.GetAgentFromCache(id)
+	alreadyOnline := cachedOK && agent.AvailabilityStatus == models.Online
 
-	if !forceWrite {
-		u.lastActiveWriteAtMu.Lock()
-		if last, ok := u.lastActiveWriteAt[id]; ok && time.Since(last) < lastActiveWriteDebounce {
-			u.lastActiveWriteAtMu.Unlock()
-			return false, nil
-		}
-		u.lastActiveWriteAt[id] = time.Now()
-		u.lastActiveWriteAtMu.Unlock()
+	// Already online and within the debounce window - nothing to do.
+	if alreadyOnline && !u.reserveFlush(id) {
+		return false, nil
 	}
 
 	if err := u.q.UpdateLastActiveAt.Get(&wasOffline, id); err != nil {
@@ -383,10 +375,7 @@ func (u *Manager) UpdateLastActive(id int) (wasOffline bool, err error) {
 		return false, fmt.Errorf("updating user last active at: %w", err)
 	}
 
-	if forceWrite {
-		u.lastActiveWriteAtMu.Lock()
-		u.lastActiveWriteAt[id] = time.Now()
-		u.lastActiveWriteAtMu.Unlock()
+	if wasOffline {
 		u.InvalidateAgentCache(id)
 	}
 	return wasOffline, nil
@@ -561,6 +550,15 @@ func (u *Manager) MergeVisitorToContact(visitorID, contactID int) error {
 	return nil
 }
 
+func (u *Manager) GetUserIDsByRole(roleID int) ([]int, error) {
+	var ids []int
+	if err := u.q.GetUserIDsByRole.Select(&ids, roleID); err != nil {
+		u.lo.Error("error fetching user ids by role", "role_id", roleID, "error", err)
+		return nil, err
+	}
+	return ids, nil
+}
+
 // ChangeSystemUserPassword updates the system user's password with a newly prompted one.
 func ChangeSystemUserPassword(ctx context.Context, db *sqlx.DB) error {
 	// Prompt for password and get hashed password
@@ -695,4 +693,16 @@ func (u *Manager) generatePassword() ([]byte, error) {
 		return nil, fmt.Errorf("generating bcrypt password: %w", err)
 	}
 	return bytes, nil
+}
+
+// reserveFlush atomically claims the flush slot, returning false if still inside the debounce window.
+func (u *Manager) reserveFlush(id int) bool {
+	u.lastActiveFlushAtMu.Lock()
+	defer u.lastActiveFlushAtMu.Unlock()
+	if last, ok := u.lastActiveFlushAt[id]; ok && time.Since(last) < lastActiveFlushDebounce {
+		return false
+	}
+	// Stamp timestamp.
+	u.lastActiveFlushAt[id] = time.Now()
+	return true
 }

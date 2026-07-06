@@ -2,17 +2,32 @@
   <ComboBox
     :model-value="normalizedValue"
     @update:model-value="$emit('update:modelValue', $event)"
+    @select="$emit('select', $event)"
     :items="items"
     :placeholder="placeholder"
+    :align="align"
   >
+    <!-- Custom trigger passthrough -->
+    <template v-if="$slots.trigger" #trigger="slotProps">
+      <slot name="trigger" v-bind="slotProps" />
+    </template>
+
     <!-- Items -->
     <template #item="{ item }">
       <div class="flex items-center gap-2">
         <!--USER -->
-        <Avatar v-if="type === 'user'" class="w-7 h-7">
-          <AvatarImage :src="item.avatar_url || ''" :alt="item.label.slice(0, 2)" />
-          <AvatarFallback>{{ item.label.slice(0, 2).toUpperCase() }}</AvatarFallback>
-        </Avatar>
+        <div v-if="type === 'user'" class="relative">
+          <Avatar class="w-7 h-7">
+            <AvatarImage :src="item.avatar_url || ''" :alt="item.label.slice(0, 2)" />
+            <AvatarFallback>{{ item.label.slice(0, 2).toUpperCase() }}</AvatarFallback>
+          </Avatar>
+          <StatusDot
+            v-if="item.availability_status"
+            :status="item.availability_status"
+            size="sm"
+            class="absolute bottom-0 right-0 border border-background"
+          />
+        </div>
 
         <!-- Others -->
         <span v-else-if="item.emoji">{{ item.emoji }}</span>
@@ -28,10 +43,18 @@
       <div class="flex items-center gap-2 min-w-0">
         <div v-if="selected" class="flex items-center gap-2 min-w-0">
           <!--USER -->
-          <Avatar v-if="type === 'user'" class="w-7 h-7 shrink-0">
-            <AvatarImage :src="selected.avatar_url || ''" :alt="selected.label.slice(0, 2)" />
-            <AvatarFallback>{{ selected.label.slice(0, 2).toUpperCase() }}</AvatarFallback>
-          </Avatar>
+          <div v-if="type === 'user'" class="relative shrink-0">
+            <Avatar class="w-7 h-7">
+              <AvatarImage :src="selected.avatar_url || ''" :alt="selected.label.slice(0, 2)" />
+              <AvatarFallback>{{ selected.label.slice(0, 2).toUpperCase() }}</AvatarFallback>
+            </Avatar>
+            <StatusDot
+              v-if="selected.availability_status"
+              :status="selected.availability_status"
+              size="sm"
+              class="absolute bottom-0 right-0 border border-background"
+            />
+          </div>
 
           <!-- Others -->
           <span v-else-if="selected.emoji" class="shrink-0">{{ selected.emoji }}</span>
@@ -52,6 +75,7 @@
 import { computed } from 'vue'
 import { Avatar, AvatarImage, AvatarFallback } from '@shared-ui/components/ui/avatar'
 import ComboBox from '@shared-ui/components/ui/combobox/ComboBox.vue'
+import StatusDot from '@shared-ui/components/StatusDot.vue'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
@@ -63,10 +87,13 @@ const props = defineProps({
   items: Array,
   type: {
     type: String
+  },
+  align: {
+    type: String,
+    default: 'center'
   }
 })
 
-// Convert to str.
 const normalizedValue = computed(() => String(props.modelValue || ''))
 
 const isCurrentUser = (item) => {
@@ -77,5 +104,5 @@ const isCurrentUser = (item) => {
   )
 }
 
-defineEmits(['update:modelValue'])
+defineEmits(['update:modelValue', 'select'])
 </script>

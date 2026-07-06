@@ -13,6 +13,7 @@ const (
 	MessageTypePresenceUpdate         = "presence_update"
 	MessageTypeViewConversation       = "view_conversation"
 	MessageTypeListSubscribeReplace   = "list_subscribe_replace"
+	MessageTypeAgentAvailability      = "agent_availability_update"
 )
 
 // WSMessage represents a WS message.

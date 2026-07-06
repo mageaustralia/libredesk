@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/conversation/models"
@@ -33,6 +34,7 @@ import (
 // (older API consumers) pass "" and we default to "reply" for back-compat.
 func (m *Manager) UpsertConversationDraft(conversationID, userID int, content string, meta json.RawMessage, messageType string) (models.ConversationDraft, error) {
 	var draft models.ConversationDraft
+	content = rewriteInlineImagesToCID(content)
 
 	if messageType == "" {
 		messageType = "reply"
@@ -43,15 +45,18 @@ func (m *Manager) UpsertConversationDraft(conversationID, userID int, content st
 		return draft, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
+	draft.Content = m.resolveDraftInlineCIDs(draft.Content)
 	return draft, nil
 }
 
-// GetAllUserDrafts retrieves all drafts for a user.
 func (m *Manager) GetAllUserDrafts(userID int) ([]models.ConversationDraft, error) {
 	var drafts = make([]models.ConversationDraft, 0)
 	if err := m.q.GetAllUserDrafts.Select(&drafts, userID); err != nil {
 		m.lo.Error("error fetching user drafts", "user_id", userID, "error", err)
 		return nil, envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
+	}
+	for i := range drafts {
+		drafts[i].Content = m.resolveDraftInlineCIDs(drafts[i].Content)
 	}
 	return drafts, nil
 }
@@ -94,4 +99,20 @@ func (m *Manager) DeleteStaleDrafts(ctx context.Context, retentionPeriod time.Du
 	}
 
 	return nil
+}
+
+func (m *Manager) resolveDraftInlineCIDs(content string) string {
+	cids := extractInlineContentIDs(content)
+	for _, cid := range cids {
+		uuid := strings.TrimPrefix(cid, "ldsk-")
+		if uuid == "" {
+			continue
+		}
+		media, err := m.mediaStore.Get(0, uuid)
+		if err != nil {
+			continue
+		}
+		content = strings.ReplaceAll(content, "cid:"+cid, m.mediaStore.GetURL(media.UUID, media.ContentType, media.Filename))
+	}
+	return content
 }

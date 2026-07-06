@@ -161,7 +161,7 @@
     <!-- Content -->
     <div class="flex-grow overflow-y-auto overflow-x-auto">
       <EmptyList
-        v-if="!hasConversations && !hasErrored && !isLoading"
+        v-if="showEmpty"
         key="empty"
         class="px-4 py-8"
         :title="t('conversation.noConversationsFound')"
@@ -169,9 +169,8 @@
         :icon="MessageCircleQuestion"
       />
 
-      <!-- Error State -->
       <EmptyList
-        v-if="conversationStore.conversations.errorMessage"
+        v-if="hasErrored"
         key="error"
         class="px-4 py-8"
         :title="t('conversation.couldNotFetch')"
@@ -225,15 +224,15 @@
         <Button
           v-if="conversationStore.conversations.hasMore"
           variant="outline"
-          @click="loadNextPage"
-          :disabled="isLoading"
+          @click="conversationStore.fetchNextConversations"
+          :disabled="conversationStore.conversations.fetching"
           class="transition-all duration-200 ease-in-out transform hover:scale-105"
         >
-          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
-          {{ isLoading ? t('globals.terms.loading') : t('globals.terms.loadMore') }}
+          <Loader2 v-if="conversationStore.conversations.fetching" class="mr-2 h-4 w-4 animate-spin" />
+          {{ conversationStore.conversations.fetching ? t('globals.terms.loading') : t('globals.terms.loadMore') }}
         </Button>
         <p
-          class="text-sm text-gray-500"
+          class="text-sm text-muted-foreground"
           v-else-if="conversationStore.conversationsList.length > 10"
         >
           {{ $t('conversation.allLoaded') }}
@@ -388,5 +387,11 @@ const loadNextPage = () => {
 
 const hasConversations = computed(() => conversationStore.conversationsList.length !== 0)
 const hasErrored = computed(() => !!conversationStore.conversations.errorMessage)
-const isLoading = computed(() => conversationStore.conversations.loading)
+const showEmpty = computed(
+  () =>
+    !hasConversations.value &&
+    !hasErrored.value &&
+    !conversationStore.conversations.loading &&
+    conversationStore.conversations.initialized
+)
 </script>

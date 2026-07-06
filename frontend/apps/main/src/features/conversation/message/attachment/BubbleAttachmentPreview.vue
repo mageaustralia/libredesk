@@ -1,23 +1,11 @@
 <template>
   <div class="flex flex-row flex-wrap gap-2 break-all">
-    <div
+    <BubbleAttachmentItem
       v-for="attachment in attachments"
       :key="attachment.uuid"
-      class="flex items-center cursor-pointer"
-    >
-      <div>
-        <ImageAttachmentPreview
-          v-if="isImage(attachment)"
-          :attachment="attachment"
-          @preview="openLightbox"
-        />
-        <AudioAttachmentPreview
-          v-else-if="isAudio(attachment)"
-          :attachment="attachment"
-        />
-        <FileAttachmentPreview v-else :attachment="attachment" />
-      </div>
-    </div>
+      :attachment="attachment"
+      @preview="openLightbox"
+    />
   </div>
 
   <ImageLightbox
@@ -29,9 +17,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import ImageAttachmentPreview from '@/features/conversation/message/attachment/ImageAttachmentPreview.vue'
-import AudioAttachmentPreview from '@/features/conversation/message/attachment/AudioAttachmentPreview.vue'
-import FileAttachmentPreview from '@/features/conversation/message/attachment/FileAttachmentPreview.vue'
+import BubbleAttachmentItem from '@/features/conversation/message/attachment/BubbleAttachmentItem.vue'
 import ImageLightbox from '@/components/ImageLightbox.vue'
 
 const props = defineProps({
@@ -39,7 +25,6 @@ const props = defineProps({
 })
 
 const isImage = (attachment) => (attachment.content_type || '').startsWith('image/')
-const isAudio = (attachment) => (attachment.content_type || '').startsWith('audio/')
 
 const imageAttachments = computed(() =>
   (props.attachments || []).filter(isImage)

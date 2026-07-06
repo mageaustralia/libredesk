@@ -3,10 +3,7 @@
     <!-- Header -->
     <div class="h-12 flex-shrink-0 px-2 border-b flex items-center justify-between">
       <div>
-        <span v-if="!conversationStore.conversation.loading">
-          {{ conversationStore.currentContactName }}
-        </span>
-        <Skeleton class="w-[130px] h-6" v-else />
+        <span>{{ conversationStore.currentContactName }}</span>
       </div>
       <div>
         <DropdownMenu>
@@ -14,13 +11,12 @@
             <div
               class="flex items-center space-x-1 cursor-pointer px-2 py-1 rounded text-sm font-medium"
               :style="currentStatusStyle"
-              v-if="!conversationStore.conversation.loading"
+              v-if="conversationStore.current?.status && !conversationStore.conversation.loading"
             >
               <span class="font-medium inline-block">
                 {{ conversationStore.current?.status }}
               </span>
             </div>
-            <Skeleton class="w-[70px] h-6 rounded-full" v-else />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem
@@ -58,7 +54,6 @@ import { EMITTER_EVENTS } from '../../constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '../../constants/conversation'
 import { statusColorStyle } from '../../constants/statusColors'
 import { useEmitter } from '../../composables/useEmitter'
-import { Skeleton } from '@shared-ui/components/ui/skeleton'
 const conversationStore = useConversationStore()
 const emitter = useEmitter()
 

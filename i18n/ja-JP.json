@@ -775,6 +775,7 @@
   "globals.terms.setPassword": "パスワードの設定",
   "globals.terms.sharedView": "共有ビュー",
   "globals.terms.sla": "SLA",
+  "globals.terms.slaMetric": "SLA指標 | SLA指標",
   "globals.terms.slaPolicy": "SLAポリシー",
   "globals.terms.smtpHost": "SMTP ホスト",
   "globals.terms.smtpPort": "SMTP ポート",

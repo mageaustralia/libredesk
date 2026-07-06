@@ -56,7 +56,11 @@ function step(delta) {
 const KEY_ACTIONS = {
   ArrowLeft: () => step(-1),
   ArrowRight: () => step(1),
-  Escape: close
+  Escape: close,
+  ArrowUp: () => {},
+  ArrowDown: () => {},
+  PageUp: () => {},
+  PageDown: () => {}
 }
 
 // Capture phase so we run before the lib's bubble listener AND before sibling

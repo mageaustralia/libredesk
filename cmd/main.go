@@ -54,6 +54,7 @@ import (
 	"github.com/abhinavxd/libredesk/internal/template"
 	"github.com/abhinavxd/libredesk/internal/user"
 	"github.com/abhinavxd/libredesk/internal/webhook"
+	"github.com/abhinavxd/libredesk/internal/ws"
 	"github.com/knadh/go-i18n"
 	"github.com/knadh/koanf/v2"
 	"github.com/knadh/stuffbin"
@@ -136,6 +137,7 @@ type App struct {
 	redis            *redis.Client
 	importer         *importer.Importer
 	reminder         *reminder.Manager
+	wsHub            *ws.Hub
 
 	// Global state that stores data on an available app update.
 	update *AppUpdate
@@ -368,6 +370,7 @@ func main() {
 		rateLimit:        rateLimiter,
 		redis:            rdb,
 		userNotification: userNotification,
+		wsHub:            wsHub,
 	}
 	app.consts.Store(constants)
 
@@ -442,7 +445,7 @@ func onUsersOffline(conv *conversation.Manager) func([]umodels.OfflineUser) {
 		for _, u := range users {
 			switch u.Type {
 			case umodels.UserTypeAgent:
-				conv.BroadcastAgentStatusToWidget(u.ID, umodels.Offline)
+				conv.BroadcastAgentAvailability(u.ID, umodels.Offline)
 			case umodels.UserTypeContact, umodels.UserTypeVisitor:
 				conv.BroadcastContactUpdate(u.ID, map[string]any{"availability_status": umodels.Offline})
 			}

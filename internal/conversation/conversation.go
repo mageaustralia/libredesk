@@ -16,9 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhinavxd/libredesk/internal/authz"
+	authzmodels "github.com/abhinavxd/libredesk/internal/authz/models"
 	"github.com/abhinavxd/libredesk/internal/automation"
 	amodels "github.com/abhinavxd/libredesk/internal/automation/models"
-	authzmodels "github.com/abhinavxd/libredesk/internal/authz/models"
 	"github.com/abhinavxd/libredesk/internal/conversation/models"
 	pmodels "github.com/abhinavxd/libredesk/internal/conversation/priority/models"
 	smodels "github.com/abhinavxd/libredesk/internal/conversation/status/models"
@@ -292,6 +293,7 @@ type queries struct {
 	GetConversationUUID                *sqlx.Stmt `query:"get-conversation-uuid"`
 	GetConversationInboxID             *sqlx.Stmt `query:"get-conversation-inbox-id"`
 	GetConversation                    *sqlx.Stmt `query:"get-conversation"`
+	GetConversationListItem            *sqlx.Stmt `query:"get-conversation-list-item"`
 	GetConversationsCreatedAfter       *sqlx.Stmt `query:"get-conversations-created-after"`
 	GetUnassignedConversations         *sqlx.Stmt `query:"get-unassigned-conversations"`
 	GetConversations                   string     `query:"get-conversations"`
@@ -327,7 +329,6 @@ type queries struct {
 	DeleteConversation                 *sqlx.Stmt `query:"delete-conversation"`
 	RemoveConversationAssignee         *sqlx.Stmt `query:"remove-conversation-assignee"`
 	GetLatestMessage                   *sqlx.Stmt `query:"get-latest-message"`
-	GetLatestMessageForRecipients      *sqlx.Stmt `query:"get-latest-message-for-recipients"`
 	GetPreviousEmailMessages           *sqlx.Stmt `query:"get-previous-email-messages"`
 
 	// Draft queries.
@@ -436,7 +437,11 @@ func (c *Manager) CreateConversation(contactID, inboxID int, lastMessage string,
 		c.lo.Error("error inserting new conversation into the DB", "error", err)
 		return 0, "", err
 	}
-	c.BroadcastNewConversation(uuid)
+	if item, err := c.GetConversationListItem(uuid); err == nil {
+		c.BroadcastNewConversation(&item)
+	} else {
+		c.lo.Error("error fetching conversation list item for broadcast", "uuid", uuid, "error", err)
+	}
 	return id, uuid, nil
 }
 
@@ -887,16 +892,14 @@ func (c *Manager) UpdateConversationTeamAssignee(uuid string, teamID int, actor 
 
 // UpdateAssignee updates the assignee of a conversation.
 func (c *Manager) UpdateAssignee(uuid string, assigneeID int, assigneeType string) error {
-	var prop string
+	prev, prevErr := c.GetConversationListItem(uuid)
 	switch assigneeType {
 	case models.AssigneeTypeUser:
-		prop = "assigned_user_id"
 		if _, err := c.q.UpdateConversationAssignedUser.Exec(uuid, assigneeID); err != nil {
 			c.lo.Error("error updating conversation assignee", "error", err)
 			return fmt.Errorf("updating assignee: %w", err)
 		}
 	case models.AssigneeTypeTeam:
-		prop = "assigned_team_id"
 		if _, err := c.q.UpdateConversationAssignedTeam.Exec(uuid, assigneeID); err != nil {
 			c.lo.Error("error updating conversation assignee", "error", err)
 			return fmt.Errorf("updating assignee: %w", err)
@@ -904,8 +907,16 @@ func (c *Manager) UpdateAssignee(uuid string, assigneeID int, assigneeType strin
 	default:
 		return fmt.Errorf("invalid assignee type: %s", assigneeType)
 	}
-	// Broadcast update to all subscribers.
-	c.BroadcastConversationUpdate(uuid, map[string]any{prop: assigneeID})
+	next, nextErr := c.GetConversationListItem(uuid)
+	if nextErr != nil {
+		c.lo.Error("error fetching conversation list item for assignee broadcast", "uuid", uuid, "error", nextErr)
+		return nil
+	}
+	var prevPtr *models.ConversationListItem
+	if prevErr == nil {
+		prevPtr = &prev
+	}
+	c.BroadcastConvReassignment(prevPtr, &next)
 	return nil
 }
 
@@ -1061,7 +1072,6 @@ func (c *Manager) UpdateConversationStatus(uuid string, statusID int, status, sn
 		return envelope.NewError(envelope.GeneralError, c.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
-	// Broadcast updates using websocket.
 	agentData := map[string]any{"status": status}
 	if oldStatus != models.StatusResolved && status == models.StatusResolved {
 		resolvedAt := conversationBeforeChange.ResolvedAt.Time
@@ -1069,6 +1079,18 @@ func (c *Manager) UpdateConversationStatus(uuid string, statusID int, status, sn
 			resolvedAt = time.Now()
 		}
 		agentData["resolved_at"] = resolvedAt.Format(time.RFC3339)
+	}
+	if status == models.StatusClosed {
+		closedAt := time.Now()
+		if conversation.ID != 0 && !conversation.ClosedAt.Time.IsZero() {
+			closedAt = conversation.ClosedAt.Time
+		}
+		agentData["closed_at"] = closedAt.Format(time.RFC3339)
+	}
+	if status == models.StatusSnoozed {
+		agentData["snoozed_until"] = snoozeUntil.Format(time.RFC3339)
+	} else if oldStatus == models.StatusSnoozed {
+		agentData["snoozed_until"] = nil
 	}
 	c.BroadcastConversationUpdate(uuid, agentData)
 
@@ -1165,6 +1187,8 @@ func (c *Manager) SetConversationTags(uuid string, action string, tagNames []str
 			return envelope.NewError(envelope.GeneralError, c.i18n.T("globals.messages.somethingWentWrong"), nil)
 		}
 	}
+
+	c.BroadcastConversationUpdate(uuid, map[string]any{"tags": newTags})
 
 	return nil
 }
@@ -1571,11 +1595,16 @@ func (m *Manager) ApplySLA(conversation models.Conversation, policyID int, actor
 		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
-	// Record the SLA application as an activity.
-	if err := m.RecordSLASet(conversation.UUID, policy.Name, actor); err != nil {
-		return err
+	if updated, ferr := m.GetConversation(0, conversation.UUID, ""); ferr == nil {
+		m.BroadcastConversationUpdate(conversation.UUID, map[string]any{
+			"sla_policy_id":              updated.SLAPolicyID.Int,
+			"applied_sla_id":             updated.AppliedSLAID.Int,
+			"first_response_deadline_at": nullTimeOrNil(updated.FirstResponseDueAt),
+			"resolution_deadline_at":     nullTimeOrNil(updated.ResolutionDueAt),
+		})
 	}
-	return nil
+
+	return m.RecordSLASet(conversation.UUID, policy.Name, actor)
 }
 
 // ApplyAction applies an action to a conversation, this can be called from multiple packages across the app to perform actions on conversations.
@@ -1632,26 +1661,22 @@ func (m *Manager) ApplyAction(action amodels.RuleAction, conv models.Conversatio
 			return fmt.Errorf("sending private note: %w", err)
 		}
 	case amodels.ActionReply:
-		// Skip if the contact has no email — QueueReply would fail downstream
-		// and we'd leak a confusing error into the automation log.
+		// Automated replies always go to the contact only. CCs from the
+		// conversation history are deliberately not carried forward.
 		if conv.Contact.Email.String == "" {
 			return fmt.Errorf("auto-reply skipped: contact has no email for conversation: %s", conv.UUID)
 		}
-		to, cc, bcc, err := m.makeRecipients(conv.ID, conv.Contact.Email.String, conv.InboxMail, conv.InboxReplyTo)
-		if err != nil {
-			return fmt.Errorf("making recipients for reply action: %w", err)
-		}
-		_, err = m.QueueReply(
+		_, err := m.QueueReply(
 			[]mmodels.Media{},
 			conv.InboxID,
 			user.ID,
 			conv.ContactID,
 			conv.UUID,
 			action.Value[0],
-			to,
-			cc,
-			bcc,
-			map[string]any{}, /**meta**/
+			[]string{conv.Contact.Email.String},
+			nil,
+			nil,
+			map[string]any{"is_automated": true},
 		)
 		if err != nil {
 			return fmt.Errorf("sending reply: %w", err)
@@ -1674,6 +1699,7 @@ func (m *Manager) ApplyAction(action amodels.RuleAction, conv models.Conversatio
 
 // RemoveConversationAssignee removes assigned user from a conversation.
 func (m *Manager) RemoveConversationAssignee(uuid, typ string, actor umodels.User) error {
+	prev, prevErr := m.GetConversationListItem(uuid)
 	if _, err := m.q.RemoveConversationAssignee.Exec(uuid, typ); err != nil {
 		m.lo.Error("error removing conversation assignee", "error", err)
 		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.errorUpdatingConversation"), nil)
@@ -1699,13 +1725,16 @@ func (m *Manager) RemoveConversationAssignee(uuid, typ string, actor umodels.Use
 		}
 	}
 
-	// Broadcast ws update.
-	switch typ {
-	case models.AssigneeTypeUser:
-		m.BroadcastConversationUpdate(uuid, map[string]any{"assigned_user_id": nil})
-	case models.AssigneeTypeTeam:
-		m.BroadcastConversationUpdate(uuid, map[string]any{"assigned_team_id": nil})
+	next, nextErr := m.GetConversationListItem(uuid)
+	if nextErr != nil {
+		m.lo.Error("error fetching conversation list item for unassign broadcast", "uuid", uuid, "error", nextErr)
+		return nil
 	}
+	var prevPtr *models.ConversationListItem
+	if prevErr == nil {
+		prevPtr = &prev
+	}
+	m.BroadcastConvReassignment(prevPtr, &next)
 
 	return nil
 }
@@ -1743,20 +1772,14 @@ func (m *Manager) SendCSATReply(actorUserID int, conversation models.Conversatio
 		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
 	}
 
-	// Store `is_csat` meta to identify and filter CSAT public url from the message.
-	meta := map[string]interface{}{
-		"is_csat":   true,
-		"csat_uuid": csatResp.UUID,
+	meta := map[string]any{
+		"is_csat":      true,
+		"is_automated": true,
+		"csat_uuid":    csatResp.UUID,
 	}
 
-	// Make recipient list.
-	to, cc, bcc, err := m.makeRecipients(conversation.ID, conversation.Contact.Email.String, conversation.InboxMail, conversation.InboxReplyTo)
-	if err != nil {
-		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
-	}
-
-	// Send CSAT reply.
-	_, err = m.QueueReply(nil /**media**/, conversation.InboxID, actorUserID, conversation.ContactID, conversation.UUID, message, to, cc, bcc, meta)
+	// Only send CSAT to contact.
+	_, err = m.QueueReply(nil /**media**/, conversation.InboxID, actorUserID, conversation.ContactID, conversation.UUID, message, []string{conversation.Contact.Email.String}, nil, nil, meta)
 	if err != nil {
 		m.lo.Error("error sending CSAT reply", "conversation_uuid", conversation.UUID, "error", err)
 		return envelope.NewError(envelope.GeneralError, m.i18n.T("globals.messages.somethingWentWrong"), nil)
@@ -2574,6 +2597,35 @@ func (c *Manager) GetRecentActivities(page, pageSize int) ([]models.RecentActivi
 	return activities, total, nil
 }
 
+func (c *Manager) GetConversationListItem(uuid string) (models.ConversationListItem, error) {
+	var item models.ConversationListItem
+	if err := c.q.GetConversationListItem.Get(&item, uuid); err != nil {
+		return item, err
+	}
+	return item, nil
+}
+
+func (c *Manager) AuthorizedConnectedAgentIDs(assignedUserID, assignedTeamID null.Int) []int {
+	connected := c.wsHub.ConnectedUserIDs()
+	if len(connected) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(connected))
+	for _, id := range connected {
+		agent, err := c.userStore.GetAgentCachedOrLoad(id)
+		if err != nil {
+			continue
+		}
+		if !agent.Enabled {
+			continue
+		}
+		if authz.CanReadAssignment(agent, assignedUserID, assignedTeamID) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // FilterAuthorizedListUUIDs returns the subset of UUIDs the agent can read, mirroring the conversation read-permission chain.
 func (c *Manager) FilterAuthorizedListUUIDs(agentID int, uuids []string) ([]string, error) {
 	if len(uuids) == 0 {
@@ -2582,6 +2634,9 @@ func (c *Manager) FilterAuthorizedListUUIDs(agentID int, uuids []string) ([]stri
 	user, err := c.userStore.GetAgentCachedOrLoad(agentID)
 	if err != nil {
 		return nil, err
+	}
+	if !user.Enabled {
+		return nil, nil
 	}
 	var authorized []string
 	err = c.q.FilterAuthorizedListUUIDs.Select(&authorized,
@@ -2600,4 +2655,11 @@ func (c *Manager) FilterAuthorizedListUUIDs(agentID int, uuids []string) ([]stri
 		return nil, err
 	}
 	return authorized, nil
+}
+
+func nullTimeOrNil(t null.Time) any {
+	if !t.Valid || t.Time.IsZero() {
+		return nil
+	}
+	return t.Time.Format(time.RFC3339)
 }

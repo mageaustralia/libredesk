@@ -4,9 +4,11 @@ package ws
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/abhinavxd/libredesk/internal/ws/models"
 	"github.com/fasthttp/websocket"
+	"github.com/zerodha/logf"
 )
 
 // PresenceInfo holds information about a user viewing a conversation.
@@ -25,6 +27,8 @@ type PresenceInfo struct {
 // RemoveClient deliberately releases presenceMu before acquiring
 // clientsMutex.Lock to honour this invariant.
 type Hub struct {
+	lo *logf.Logger
+
 	clients      map[int][]*Client
 	clientsMutex sync.RWMutex
 
@@ -35,10 +39,10 @@ type Hub struct {
 	subsMu         sync.RWMutex
 
 	// Presence tracking: convUUID -> userID -> PresenceInfo
-	presence     map[string]map[int]*PresenceInfo
+	presence map[string]map[int]*PresenceInfo
 	// Reverse lookup: client -> convUUID they are viewing
-	clientConv   map[*Client]string
-	presenceMu   sync.Mutex
+	clientConv map[*Client]string
+	presenceMu sync.Mutex
 
 	userStore         userStore
 	conversationStore conversationStore
@@ -54,19 +58,34 @@ type conversationStore interface {
 }
 
 // NewHub creates a new websocket hub.
-func NewHub(userStore userStore) *Hub {
+func NewHub(lo *logf.Logger, userStore userStore) *Hub {
 	return &Hub{
-		clients:        make(map[int][]*Client, 64),
-		clientsMutex:   sync.RWMutex{},
-		convSubsList:   make(map[string]map[*Client]struct{}, 1024),
-		convSubsOpen:   make(map[string]map[*Client]struct{}, 64),
-		clientListSubs: make(map[*Client]map[string]struct{}, 64),
-		clientOpenSub:  make(map[*Client]string, 64),
-		presence:       make(map[string]map[int]*PresenceInfo),
-		clientConv:     make(map[*Client]string),
-		userStore:      userStore,
-		// To be set later via conversationStore.
+		lo:                lo,
+		clients:           make(map[int][]*Client, 64),
+		clientsMutex:      sync.RWMutex{},
+		convSubsList:      make(map[string]map[*Client]struct{}, 1024),
+		convSubsOpen:      make(map[string]map[*Client]struct{}, 64),
+		clientListSubs:    make(map[*Client]map[string]struct{}, 64),
+		clientOpenSub:     make(map[*Client]string, 64),
+		presence:          make(map[string]map[int]*PresenceInfo),
+		clientConv:        make(map[*Client]string),
+		userStore:         userStore,
 		conversationStore: nil,
+	}
+}
+
+func (h *Hub) KickUser(userID int) {
+	h.clientsMutex.RLock()
+	clients := append([]*Client(nil), h.clients[userID]...)
+	h.clientsMutex.RUnlock()
+	if len(clients) == 0 {
+		return
+	}
+	h.lo.Debug("kicking user ws connections", "user_id", userID, "connections", len(clients))
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "kicked")
+	for _, c := range clients {
+		_ = c.Conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(time.Second))
+		_ = c.Conn.Close()
 	}
 }
 
@@ -184,6 +203,18 @@ func (h *Hub) RemoveClient(client *Client) {
 		}
 	}
 	h.ClearClientSubs(client)
+}
+
+func (h *Hub) ConnectedUserIDs() []int {
+	h.clientsMutex.RLock()
+	defer h.clientsMutex.RUnlock()
+	out := make([]int, 0, len(h.clients))
+	for id, clients := range h.clients {
+		if len(clients) > 0 {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // PushToClients sends a raw payload directly to the given client connections.
