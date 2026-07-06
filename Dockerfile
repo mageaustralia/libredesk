@@ -1,4 +1,4 @@
-FROM alpine:3.18
+FROM alpine:3.22
 
 # Install necessary packages
 RUN apk --no-cache add ca-certificates tzdata libheif-tools
