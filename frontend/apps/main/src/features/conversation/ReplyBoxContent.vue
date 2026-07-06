@@ -94,6 +94,7 @@
         :aiPrompts="aiPrompts"
         :insertContent="insertContent"
         :autoFocus="true"
+        toolbar="none"
         :disabled="isDraftLoading"
         :enableMentions="messageType === 'private_note'"
         :getSuggestions="getSuggestions"
@@ -133,8 +134,10 @@
       :enableSend="enableSend"
       :handleSend="handleSend"
       :messageType="messageType"
+      :aiPrompts="aiPrompts"
       :conversationUUID="conversationStore.current?.uuid || ''"
       @emojiSelect="handleEmojiSelect"
+      @aiPromptSelected="handleAiPromptSelected"
     />
   </div>
 </template>

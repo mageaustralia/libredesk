@@ -2,8 +2,8 @@
   <div class="editor-wrapper h-full overflow-y-auto" :class="{ 'pointer-events-none': disabled }">
     <BubbleMenu
       :editor="editor"
-      :tippy-options="{ duration: 100, appendTo: () => document.body }"
-      v-if="editor"
+      :tippy-options="{ duration: 100 }"
+      v-if="toolbar === 'floating' && editor"
       class="bg-background p-1 box will-change-transform"
     >
       <div class="flex space-x-1 items-center">
@@ -195,6 +195,15 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Formatting toolbar mode:
+  //   'floating' (default) — TipTap BubbleMenu that pops up over a selection.
+  //   'none' — no in-editor toolbar (used where a fixed toolbar already exists,
+  //            e.g. the reply box / new-conversation composer via ReplyBoxMenuBar).
+  //            Avoids the floating bar's jump/positioning issues inside dialogs.
+  toolbar: {
+    type: String,
+    default: 'floating'
+  },
   enableMentions: {
     type: Boolean,
     default: false
@@ -205,7 +214,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send', 'aiPromptSelected', 'mentionsChanged', 'filesDropped'])
+const emit = defineEmits(['send', 'aiPromptSelected', 'mentionsChanged', 'filesDropped', 'focus'])
 
 const emitPrompt = (key) => emit('aiPromptSelected', key)
 const emitter = useEmitter()
@@ -787,6 +796,7 @@ const editor = useEditor({
       }
     }
   },
+  onFocus: () => emit('focus'),
   // To update state when user types.
   onUpdate: ({ editor }) => {
     isInternalUpdate.value = true
