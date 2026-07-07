@@ -765,9 +765,12 @@ export const useConversationStore = defineStore('conversation', () => {
     if (conversations.listType !== listType || conversations.teamID !== teamID || conversations.viewID !== viewID) {
       resetConversations()
     }
+    // Commit ALL context fields unconditionally: 0 must CLEAR a stale teamID/
+    // viewID, otherwise saveViewFilters keys off the previous view and ad-hoc
+    // filters get persisted under the wrong list.
     conversations.listType = listType
-    if (teamID) conversations.teamID = teamID
-    if (viewID) conversations.viewID = viewID
+    conversations.teamID = teamID
+    conversations.viewID = viewID
     // Snapshot the route-derived base filters before merging ad-hoc / status
     // additions. Saving the merged result back to `listFilters` here would
     // cause the next reFetch to re-merge the same ad-hoc filters, multiplying
