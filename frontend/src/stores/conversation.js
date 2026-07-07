@@ -595,9 +595,13 @@ export const useConversationStore = defineStore('conversation', () => {
     if (conversations.listType !== listType || conversations.teamID !== teamID || conversations.viewID !== viewID) {
       resetConversations()
     }
-    if (listType) conversations.listType = listType
-    if (teamID) conversations.teamID = teamID
-    if (viewID) conversations.viewID = viewID
+    // Commit ALL context fields unconditionally: 0 must CLEAR a stale teamID/
+    // viewID, otherwise saveViewFilters keys off the previous view and ad-hoc
+    // filters get persisted under the wrong list (e.g. an agent filter set on
+    // All later resurfacing on a shared view).
+    conversations.listType = listType
+    conversations.teamID = teamID
+    conversations.viewID = viewID
     // Save base filters BEFORE merging ad-hoc (prevents accumulation)
     if (filters) conversations.listFilters = [...filters]
     // Merge ad-hoc filters
