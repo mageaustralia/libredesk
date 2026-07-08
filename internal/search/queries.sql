@@ -167,25 +167,38 @@ LIMIT $6 OFFSET $7;
 -- FTS over the generated tsvector; one row per conversation (latest matching
 -- message). [[[ / ]]] delimit highlights - frontend splits on them (never
 -- rendered as HTML). Stop-word-only queries yield an empty tsquery and match
--- nothing, by design.
-SELECT *, COUNT(*) OVER() AS total FROM (
-    SELECT DISTINCT ON (m.conversation_id)
-        m.created_at,
-        c.uuid,
-        c.reference_number,
-        COALESCE(c.subject, '') AS subject,
-        ts_headline('english', m.text_content, websearch_to_tsquery('english', $1),
-            'StartSel=[[[, StopSel=]]], MaxWords=35, MinWords=15') AS snippet,
-        ts_rank(m.text_content_tsv, websearch_to_tsquery('english', $1)) AS match_rank
-    FROM conversation_messages m
-    JOIN conversations c ON m.conversation_id = c.id
-    WHERE m.type != 'activity'
-      AND m.text_content_tsv @@ websearch_to_tsquery('english', $1)
-      AND ($2::int = 0 OR c.status_id = $2)
-      AND ($3::int = 0 OR c.inbox_id = $3)
-      AND ($4::timestamptz IS NULL OR m.created_at >= $4)
-      AND ($5::timestamptz IS NULL OR m.created_at <= $5)
-    ORDER BY m.conversation_id, m.created_at DESC
-) sub
-ORDER BY match_rank DESC, created_at DESC
-LIMIT $6 OFFSET $7;
+-- nothing, by design. ts_headline is deferred to the outer select so it only
+-- runs on the final paginated rows, not every match (it re-parses each full
+-- body and is ~100x the cost of the ts_rank/index scan for common words).
+SELECT
+    ranked.created_at,
+    ranked.uuid,
+    ranked.reference_number,
+    ranked.subject,
+    ts_headline('english', ranked.text_content, websearch_to_tsquery('english', $1),
+        'StartSel=[[[, StopSel=]]], MaxWords=35, MinWords=15') AS snippet,
+    ranked.match_rank,
+    ranked.total
+FROM (
+    SELECT *, COUNT(*) OVER() AS total FROM (
+        SELECT DISTINCT ON (m.conversation_id)
+            m.created_at,
+            m.text_content,
+            c.uuid,
+            c.reference_number,
+            COALESCE(c.subject, '') AS subject,
+            ts_rank(m.text_content_tsv, websearch_to_tsquery('english', $1)) AS match_rank
+        FROM conversation_messages m
+        JOIN conversations c ON m.conversation_id = c.id
+        WHERE m.type != 'activity'
+          AND m.text_content_tsv @@ websearch_to_tsquery('english', $1)
+          AND ($2::int = 0 OR c.status_id = $2)
+          AND ($3::int = 0 OR c.inbox_id = $3)
+          AND ($4::timestamptz IS NULL OR m.created_at >= $4)
+          AND ($5::timestamptz IS NULL OR m.created_at <= $5)
+        ORDER BY m.conversation_id, m.created_at DESC
+    ) dedup
+    ORDER BY match_rank DESC, created_at DESC
+    LIMIT $6 OFFSET $7
+) ranked
+ORDER BY ranked.match_rank DESC, ranked.created_at DESC;
