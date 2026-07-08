@@ -601,6 +601,27 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Process other parts. enmime only classifies a part as an inline if it
+	// carries an explicit Content-Disposition header; some clients (Outlook)
+	// emit cid-referenced images with a Content-ID and no disposition at all,
+	// and those land in OtherParts. Treat ones with a ContentID as inlines so
+	// the cid: reference in the HTML resolves; the rest as attachments.
+	for _, part := range envelope.OtherParts {
+		disposition := attachment.DispositionInline
+		if part.ContentID == "" {
+			disposition = attachment.DispositionAttachment
+		}
+
+		incomingMsg.Message.Attachments = append(incomingMsg.Message.Attachments, attachment.Attachment{
+			Name:        part.FileName,
+			Content:     part.Content,
+			ContentType: part.ContentType,
+			ContentID:   part.ContentID,
+			Size:        len(part.Content),
+			Disposition: disposition,
+		})
+	}
+
 		// Skip outgoing BCC copies: emails sent BY the system (e.g., abandoned cart reminders)
 	// that land back in the inbox because the system BCCs itself.
 	// Skip BCC copies of our own outgoing emails.
@@ -671,7 +692,8 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 	}
 
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.Message.SourceID.String,
-		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines))
+		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines),
+		"other_parts", len(envelope.OtherParts))
 
 	if err := e.messageStore.EnqueueIncoming(incomingMsg); err != nil {
 		return err
