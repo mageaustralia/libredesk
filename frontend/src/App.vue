@@ -250,13 +250,13 @@ const handleGlobalKeydown = (event) => {
       event.preventDefault()
       sessionStorage.removeItem('searchQuery')
       sessionStorage.removeItem('searchResults')
-      sessionStorage.removeItem('searchTotal')
+      sessionStorage.removeItem('searchTotal'); sessionStorage.removeItem('searchScope'); sessionStorage.removeItem('searchFilters')
       if (route.name === 'search') {
         // Already on search page — clear and focus the input
         const input = document.querySelector('[data-search-input] input, [data-search-input]')
         if (input) { input.value = ''; input.dispatchEvent(new Event('input')); input.focus() }
       } else {
-        sessionStorage.removeItem('searchQuery'); sessionStorage.removeItem('searchResults'); sessionStorage.removeItem('searchTotal')
+        sessionStorage.removeItem('searchQuery'); sessionStorage.removeItem('searchResults'); sessionStorage.removeItem('searchTotal'); sessionStorage.removeItem('searchScope'); sessionStorage.removeItem('searchFilters')
         router.push({ name: 'search' })
       }
       break

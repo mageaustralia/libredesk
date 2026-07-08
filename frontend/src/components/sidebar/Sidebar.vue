@@ -74,7 +74,7 @@ const router = useRouter()
 const clearAndGoSearch = () => {
   sessionStorage.removeItem('searchQuery')
   sessionStorage.removeItem('searchResults')
-  sessionStorage.removeItem('searchTotal')
+  sessionStorage.removeItem('searchTotal'); sessionStorage.removeItem('searchScope'); sessionStorage.removeItem('searchFilters')
   if (route.name === 'search') {
     router.push({ name: 'search', query: { t: Date.now() } })
   } else {
