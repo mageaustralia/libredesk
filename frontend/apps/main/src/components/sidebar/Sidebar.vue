@@ -168,6 +168,8 @@ const handleDeleteView = () => {
 const goToSearch = () => {
   sessionStorage.removeItem('searchQuery')
   sessionStorage.removeItem('searchResults')
+      sessionStorage.removeItem('searchScope')
+      sessionStorage.removeItem('searchFilters')
   sessionStorage.removeItem('searchTotal')
   if (route.name === 'search') {
     router.push({ name: 'search', query: { t: Date.now() } })

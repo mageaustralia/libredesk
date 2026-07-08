@@ -171,6 +171,7 @@ CREATE TABLE users (
     CONSTRAINT constraint_users_on_last_name CHECK (LENGTH(last_name) <= 140)
 );
 CREATE INDEX index_tgrm_users_on_email ON users USING GIN (email gin_trgm_ops);
+CREATE INDEX index_trgm_users_on_full_name ON users USING GIN ((first_name || ' ' || last_name) gin_trgm_ops);
 CREATE INDEX index_users_on_api_key ON users(api_key);
 CREATE UNIQUE INDEX index_unique_users_on_email_when_type_is_agent
 	ON users(email)
@@ -271,6 +272,7 @@ CREATE INDEX index_conversations_on_assigned_user_id ON conversations (assigned_
 CREATE INDEX index_conversations_on_assigned_team_id ON conversations (assigned_team_id);
 CREATE INDEX index_conversations_on_snoozed_until ON conversations (snoozed_until);
 CREATE INDEX index_conversations_on_contact_id ON conversations (contact_id);
+CREATE INDEX index_trgm_conversations_on_subject ON conversations USING GIN (subject gin_trgm_ops);
 CREATE INDEX index_conversations_on_inbox_id ON conversations (inbox_id);
 CREATE INDEX index_conversations_on_status_id ON conversations (status_id);
 CREATE INDEX index_conversations_on_priority_id ON conversations (priority_id);
@@ -296,6 +298,7 @@ CREATE TABLE conversation_messages (
     content_type content_type NULL,
     "content" TEXT NULL,
 	text_content TEXT NULL,
+	text_content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', left(coalesce(text_content, ''), 100000))) STORED,
     source_id TEXT NULL,
  	sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     sender_type message_sender_type NOT NULL,
@@ -309,6 +312,7 @@ CREATE TABLE conversation_messages (
 );
 CREATE INDEX IF NOT EXISTS index_conversation_messages_on_has_pci_data ON conversation_messages (has_pci_data, pci_detected_at) WHERE has_pci_data = true;
 CREATE INDEX index_trgm_conversation_messages_on_text_content ON conversation_messages USING GIN (text_content gin_trgm_ops);
+CREATE INDEX index_fts_conversation_messages_on_text_content ON conversation_messages USING GIN (text_content_tsv);
 CREATE INDEX index_conversation_messages_on_conversation_id ON conversation_messages (conversation_id);
 CREATE INDEX index_conversation_messages_on_created_at ON conversation_messages (created_at);
 CREATE INDEX index_conversation_messages_on_source_id ON conversation_messages (source_id);

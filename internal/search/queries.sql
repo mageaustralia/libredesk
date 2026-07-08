@@ -102,3 +102,111 @@ ORDER BY
     CASE WHEN reference_number::text = $1 THEN 0 ELSE 1 END,
     created_at DESC
 LIMIT $2 OFFSET $3;
+
+
+-- name: search-unified-contacts
+-- Trigram match on full name (typo-tolerant via % operator) plus substring
+-- match on name/email. Only contacts with at least one conversation surface —
+-- pure directory lookups belong in the Contacts area, not ticket search.
+SELECT *, COUNT(*) OVER() AS total FROM (
+    SELECT
+        u.id,
+        u.created_at,
+        u.first_name,
+        u.last_name,
+        COALESCE(u.email::text, '') AS email,
+        GREATEST(
+            similarity(u.first_name || ' ' || u.last_name, $1),
+            similarity(COALESCE(u.email::text, ''), $1)
+        ) AS sim
+    FROM users u
+    WHERE u.type = 'contact'
+      AND u.deleted_at IS NULL
+      AND EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = u.id)
+      AND (
+        (u.first_name || ' ' || u.last_name) % $1
+        OR (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
+        OR u.email ILIKE '%' || $1 || '%'
+      )
+) sub
+ORDER BY sim DESC
+LIMIT $2 OFFSET $3;
+
+-- name: search-unified-conversations
+-- Ranked tiers: exact ref (0) > contact name (1) > contact email (2) >
+-- subject (3), then most recent activity. status_id/inbox_id 0 = no filter;
+-- dates NULL = no filter.
+SELECT *, COUNT(*) OVER() AS total FROM (
+    SELECT
+        c.created_at,
+        c.last_message_at,
+        c.last_message_sender,
+        c.uuid,
+        c.reference_number,
+        COALESCE(c.subject, '') AS subject,
+        TRIM(u.first_name || ' ' || u.last_name) AS contact_name,
+        COALESCE(u.email::text, '') AS contact_email,
+        CASE
+            WHEN c.reference_number::text = $1 THEN 0
+            WHEN (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
+                 OR (u.first_name || ' ' || u.last_name) % $1 THEN 1
+            WHEN u.email ILIKE '%' || $1 || '%' THEN 2
+            ELSE 3
+        END AS match_rank
+    FROM conversations c
+    JOIN users u ON c.contact_id = u.id
+    WHERE (
+        c.reference_number::text = $1
+        OR (u.first_name || ' ' || u.last_name) % $1
+        OR (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
+        OR u.email ILIKE '%' || $1 || '%'
+        OR c.subject ILIKE '%' || $1 || '%'
+    )
+    AND ($2::int = 0 OR c.status_id = $2)
+    AND ($3::int = 0 OR c.inbox_id = $3)
+    AND ($4::timestamptz IS NULL OR COALESCE(c.last_message_at, c.created_at) >= $4)
+    AND ($5::timestamptz IS NULL OR COALESCE(c.last_message_at, c.created_at) <= $5)
+) sub
+ORDER BY match_rank, COALESCE(last_message_at, created_at) DESC
+LIMIT $6 OFFSET $7;
+
+-- name: search-unified-messages
+-- FTS over the generated tsvector; one row per conversation (latest matching
+-- message). [[[ / ]]] delimit highlights - frontend splits on them (never
+-- rendered as HTML). ts_headline is deferred to the outer select so it only
+-- runs on the final paginated rows, not every match (it re-parses each full
+-- body and is ~100x the cost of the ts_rank/index scan for common words).
+-- T3y: never surface a PCI-flagged message (would leak the raw PAN).
+SELECT
+    ranked.created_at,
+    ranked.uuid,
+    ranked.reference_number,
+    ranked.subject,
+    ts_headline('english', ranked.text_content, websearch_to_tsquery('english', $1),
+        'StartSel=[[[, StopSel=]]], MaxWords=35, MinWords=15') AS snippet,
+    ranked.match_rank,
+    ranked.total
+FROM (
+    SELECT *, COUNT(*) OVER() AS total FROM (
+        SELECT DISTINCT ON (m.conversation_id)
+            m.created_at,
+            m.text_content,
+            c.uuid,
+            c.reference_number,
+            COALESCE(c.subject, '') AS subject,
+            ts_rank(m.text_content_tsv, websearch_to_tsquery('english', $1)) AS match_rank
+        FROM conversation_messages m
+        JOIN conversations c ON m.conversation_id = c.id
+        WHERE m.type != 'activity'
+          AND m.has_pci_data = false
+          AND m.text_content_tsv @@ websearch_to_tsquery('english', $1)
+          AND ($2::int = 0 OR c.status_id = $2)
+          AND ($3::int = 0 OR c.inbox_id = $3)
+          AND ($4::timestamptz IS NULL OR m.created_at >= $4)
+          AND ($5::timestamptz IS NULL OR m.created_at <= $5)
+        ORDER BY m.conversation_id, m.created_at DESC
+    ) dedup
+    ORDER BY match_rank DESC, created_at DESC
+    LIMIT $6 OFFSET $7
+) ranked
+ORDER BY ranked.match_rank DESC, ranked.created_at DESC;
