@@ -73,6 +73,7 @@ func handleUnifiedSearch(r *fastglue.Request) error {
 	var filters search.Filters
 	filters.StatusID, _ = strconv.Atoi(string(r.RequestCtx.QueryArgs().Peek("status_id")))
 	filters.InboxID, _ = strconv.Atoi(string(r.RequestCtx.QueryArgs().Peek("inbox_id")))
+	filters.AssignedUserID, _ = strconv.Atoi(string(r.RequestCtx.QueryArgs().Peek("assigned_user_id")))
 	if v := string(r.RequestCtx.QueryArgs().Peek("from_date")); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			filters.FromDate = &t

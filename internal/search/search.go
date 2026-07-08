@@ -144,12 +144,13 @@ const (
 )
 
 // Filters are optional constraints on the conversation/message groups.
-// Zero/nil values mean "no filter".
+// Zero/nil values mean "no filter". AssignedUserID -1 means unassigned.
 type Filters struct {
-	StatusID int
-	InboxID  int
-	FromDate *time.Time
-	ToDate   *time.Time
+	StatusID       int
+	InboxID        int
+	FromDate       *time.Time
+	ToDate         *time.Time
+	AssignedUserID int
 }
 
 type ContactGroup struct {
@@ -207,7 +208,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 
 	if scope == ScopeAll || scope == ScopeConversations {
 		limit, off := limitFor(allScopeGroupLimit)
-		if err := s.q.SearchUnifiedConversations.Select(&resp.Conversations.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, limit, off); err != nil {
+		if err := s.q.SearchUnifiedConversations.Select(&resp.Conversations.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, f.AssignedUserID, limit, off); err != nil {
 			s.lo.Error("error in unified conversation search", "error", err)
 			return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.conversation")), nil)
 		}
@@ -218,7 +219,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 
 	if scope == ScopeAll || scope == ScopeMessages {
 		limit, off := limitFor(allScopeGroupLimit)
-		if err := s.q.SearchUnifiedMessages.Select(&resp.Messages.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, limit, off); err != nil {
+		if err := s.q.SearchUnifiedMessages.Select(&resp.Messages.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, f.AssignedUserID, limit, off); err != nil {
 			s.lo.Error("error in unified message search", "error", err)
 			return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.message")), nil)
 		}

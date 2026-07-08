@@ -127,8 +127,8 @@ LIMIT $2 OFFSET $3;
 
 -- name: search-unified-conversations
 -- Ranked tiers: exact ref (0) > contact name (1) > contact email (2) >
--- subject (3), then most recent activity. status_id/inbox_id 0 = no filter;
--- dates NULL = no filter.
+-- subject (3), then most recent activity. status_id/inbox_id/assigned 0 = no
+-- filter (assigned -1 = unassigned); dates NULL = no filter.
 SELECT *, COUNT(*) OVER() AS total FROM (
     SELECT
         c.created_at,
@@ -159,9 +159,10 @@ SELECT *, COUNT(*) OVER() AS total FROM (
     AND ($3::int = 0 OR c.inbox_id = $3)
     AND ($4::timestamptz IS NULL OR COALESCE(c.last_message_at, c.created_at) >= $4)
     AND ($5::timestamptz IS NULL OR COALESCE(c.last_message_at, c.created_at) <= $5)
+    AND ($6::int = 0 OR ($6 = -1 AND c.assigned_user_id IS NULL) OR c.assigned_user_id = $6)
 ) sub
 ORDER BY match_rank, COALESCE(last_message_at, created_at) DESC
-LIMIT $6 OFFSET $7;
+LIMIT $7 OFFSET $8;
 
 -- name: search-unified-messages
 -- FTS over the generated tsvector; one row per conversation (latest matching
@@ -196,9 +197,10 @@ FROM (
           AND ($3::int = 0 OR c.inbox_id = $3)
           AND ($4::timestamptz IS NULL OR m.created_at >= $4)
           AND ($5::timestamptz IS NULL OR m.created_at <= $5)
+          AND ($6::int = 0 OR ($6 = -1 AND c.assigned_user_id IS NULL) OR c.assigned_user_id = $6)
         ORDER BY m.conversation_id, m.created_at DESC
     ) dedup
     ORDER BY match_rank DESC, created_at DESC
-    LIMIT $6 OFFSET $7
+    LIMIT $7 OFFSET $8
 ) ranked
 ORDER BY ranked.match_rank DESC, ranked.created_at DESC;

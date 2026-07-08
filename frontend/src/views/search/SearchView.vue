@@ -37,6 +37,19 @@
             </SelectItem>
           </SelectContent>
         </Select>
+        <Select v-model="filters.assignedId" @update:modelValue="onFilterChange">
+          <SelectTrigger class="h-7 w-40 text-xs">
+            <SelectValue :placeholder="$t('search.filter.anyAgent')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">{{ $t('search.filter.anyAgent') }}</SelectItem>
+            <SelectItem value="me">{{ $t('search.filter.assignedToMe') }}</SelectItem>
+            <SelectItem value="-1">{{ $t('search.filter.unassigned') }}</SelectItem>
+            <SelectItem v-for="ag in agents" :key="ag.id" :value="String(ag.id)">
+              {{ [ag.first_name, ag.last_name].filter(Boolean).join(' ') }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
         <Select v-model="filters.days" @update:modelValue="onFilterChange">
           <SelectTrigger class="h-7 w-36 text-xs">
             <SelectValue :placeholder="$t('search.filter.anyTime')" />
@@ -112,6 +125,7 @@ import SearchHeader from '@/features/search/SearchHeader.vue'
 import SearchResults from '@/features/search/SearchResults.vue'
 import Spinner from '@/components/ui/spinner/Spinner.vue'
 import api from '@/api'
+import { useUserStore } from '@/stores/user'
 
 const MIN_SEARCH_LENGTH = 3
 const DEBOUNCE_DELAY = 300
@@ -144,8 +158,12 @@ const scope = ref(sessionStorage.getItem('searchScope') || 'all')
 const filters = reactive(
   JSON.parse(sessionStorage.getItem('searchFilters') || '{"statusId":"0","inboxId":"0","days":"0"}')
 )
+// Sessions persisted before the assigned filter existed lack the key.
+if (!filters.assignedId) filters.assignedId = '0'
 const statuses = ref([])
 const inboxes = ref([])
+const agents = ref([])
+const userStore = useUserStore()
 const page = ref(1)
 const loading = ref(false)
 const error = ref(null)
@@ -174,16 +192,25 @@ watch(
 
 onMounted(async () => {
   try {
-    const [stResp, ibResp] = await Promise.all([api.getStatuses(), api.getInboxes()])
+    const [stResp, ibResp, agResp] = await Promise.all([
+      api.getStatuses(),
+      api.getInboxes(),
+      api.getUsersCompact()
+    ])
     statuses.value = stResp.data.data || []
     inboxes.value = ibResp.data.data || []
+    agents.value = agResp.data.data || []
   } catch {
     // Filter dropdowns degrade to "Any" — search still works.
   }
 })
 
 const hasActiveFilters = computed(
-  () => filters.statusId !== '0' || filters.inboxId !== '0' || filters.days !== '0'
+  () =>
+    filters.statusId !== '0' ||
+    filters.inboxId !== '0' ||
+    filters.days !== '0' ||
+    filters.assignedId !== '0'
 )
 
 // Pagination only applies to a specific scope; "all" is a capped overview.
@@ -202,6 +229,9 @@ const buildParams = (pageNum) => {
   }
   if (filters.statusId !== '0') params.status_id = filters.statusId
   if (filters.inboxId !== '0') params.inbox_id = filters.inboxId
+  // "me" resolves client-side so the backend only ever sees a concrete id.
+  if (filters.assignedId === 'me') params.assigned_user_id = userStore.userID
+  else if (filters.assignedId !== '0') params.assigned_user_id = filters.assignedId
   const days = Number(filters.days)
   if (days > 0) params.from_date = new Date(Date.now() - days * 86400000).toISOString()
   return params
@@ -275,6 +305,7 @@ const clearFilters = () => {
   filters.statusId = '0'
   filters.inboxId = '0'
   filters.days = '0'
+  filters.assignedId = '0'
   onFilterChange()
 }
 
