@@ -115,6 +115,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
     FROM users u
     WHERE u.type = 'contact'
       AND u.deleted_at IS NULL
+      AND EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = u.id)
       AND (
         (u.first_name || ' ' || u.last_name) % $1
         OR (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
