@@ -26,6 +26,7 @@
             @blur="handleBlur"
             @click="open = true"
             @input.stop
+            @change.stop
           />
         </ComboboxInput>
       </ComboboxAnchor>
