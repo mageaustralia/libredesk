@@ -100,7 +100,10 @@ LIMIT $2 OFFSET $3;
 
 -- name: search-unified-contacts
 -- Trigram match on full name (typo-tolerant via % operator) plus substring
--- match on name/email. sim orders best match first.
+-- match on name/email. sim orders best match first. $4 is the fuzzy term:
+-- the query with any @domain stripped, so shared "@gmail.com" trigrams can't
+-- score against contacts whose stored name is an email address. Exact and
+-- substring matching keep the full query ($1).
 SELECT *, COUNT(*) OVER() AS total FROM (
     SELECT
         u.id,
@@ -109,7 +112,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
         u.last_name,
         COALESCE(u.email::text, '') AS email,
         GREATEST(
-            similarity(u.first_name || ' ' || u.last_name, $1),
+            similarity(u.first_name || ' ' || u.last_name, $4),
             similarity(COALESCE(u.email::text, ''), $1)
         ) AS sim
     FROM users u
@@ -117,7 +120,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
       AND u.deleted_at IS NULL
       AND EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = u.id)
       AND (
-        (u.first_name || ' ' || u.last_name) % $1
+        (u.first_name || ' ' || u.last_name) % $4
         OR (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
         OR u.email ILIKE '%' || $1 || '%'
       )
@@ -128,7 +131,9 @@ LIMIT $2 OFFSET $3;
 -- name: search-unified-conversations
 -- Ranked tiers: exact ref (0) > contact name (1) > contact email (2) >
 -- subject (3), then most recent activity. status_id/inbox_id/assigned 0 = no
--- filter (assigned -1 = unassigned); dates NULL = no filter.
+-- filter (assigned -1 = unassigned); dates NULL = no filter. $9 is the fuzzy
+-- term (query minus any @domain) used for trigram name matching only — see
+-- search-unified-contacts.
 SELECT *, COUNT(*) OVER() AS total FROM (
     SELECT
         c.created_at,
@@ -142,7 +147,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
         CASE
             WHEN c.reference_number::text = $1 THEN 0
             WHEN (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
-                 OR (u.first_name || ' ' || u.last_name) % $1 THEN 1
+                 OR (u.first_name || ' ' || u.last_name) % $9 THEN 1
             WHEN u.email ILIKE '%' || $1 || '%' THEN 2
             ELSE 3
         END AS match_rank
@@ -150,7 +155,7 @@ SELECT *, COUNT(*) OVER() AS total FROM (
     JOIN users u ON c.contact_id = u.id
     WHERE (
         c.reference_number::text = $1
-        OR (u.first_name || ' ' || u.last_name) % $1
+        OR (u.first_name || ' ' || u.last_name) % $9
         OR (u.first_name || ' ' || u.last_name) ILIKE '%' || $1 || '%'
         OR u.email ILIKE '%' || $1 || '%'
         OR c.subject ILIKE '%' || $1 || '%'
