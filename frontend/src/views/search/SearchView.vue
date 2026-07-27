@@ -81,7 +81,7 @@
           {{ $t('search.noResultsForQuery', { query: searchQuery }) }}
         </p>
         <template v-else-if="searchPerformed">
-          <SearchResults :grouped="grouped" :scope="scope" @set-scope="setScope" class="h-full" />
+          <SearchResults :grouped="grouped" :scope="scope" :query="searchQuery" @set-scope="setScope" class="h-full" />
           <div v-if="hasMore" class="flex justify-center py-6">
             <Button variant="outline" @click="loadMore" :disabled="loading">
               <Spinner v-if="loading" class="mr-2 h-4 w-4" />

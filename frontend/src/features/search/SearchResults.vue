@@ -1,7 +1,10 @@
 <template>
-  <div class="max-w-5xl mx-auto p-6 min-h-screen space-y-6">
+  <div class="max-w-5xl mx-auto p-6 min-h-screen flex flex-col gap-6">
     <!-- Contacts -->
-    <section v-if="showSection('contacts') && grouped.contacts.results.length">
+    <section
+      v-if="showSection('contacts') && grouped.contacts.results.length"
+      :style="{ order: sectionOrder('contacts') }"
+    >
       <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         {{ $t('search.scope.contacts') }} ({{ grouped.contacts.total }})
       </h3>
@@ -31,7 +34,10 @@
     </section>
 
     <!-- Conversations -->
-    <section v-if="showSection('conversations') && grouped.conversations.results.length">
+    <section
+      v-if="showSection('conversations') && grouped.conversations.results.length"
+      :style="{ order: sectionOrder('conversations') }"
+    >
       <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         {{ $t('search.scope.conversations') }} ({{ grouped.conversations.total }})
       </h3>
@@ -75,7 +81,10 @@
     </section>
 
     <!-- Messages -->
-    <section v-if="showSection('messages') && grouped.messages.results.length">
+    <section
+      v-if="showSection('messages') && grouped.messages.results.length"
+      :style="{ order: sectionOrder('messages') }"
+    >
       <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         {{ $t('search.scope.messages') }} ({{ grouped.messages.total }})
       </h3>
@@ -121,13 +130,50 @@ import { Button } from '@/components/ui/button'
 
 const props = defineProps({
   grouped: { type: Object, required: true },
-  scope: { type: String, default: 'all' }
+  scope: { type: String, default: 'all' },
+  query: { type: String, default: '' }
 })
 defineEmits(['set-scope'])
 
 const { t } = useI18n()
 
 const showSection = (key) => props.scope === 'all' || props.scope === key
+
+// For email-like queries, sections whose results contain the query literally
+// jump above sections that only fuzzy-matched. An email pasted into search is
+// an exact-lookup intent: a message that actually contains the address beats
+// contacts/conversations surfaced by name similarity. Name queries keep the
+// fixed contacts > conversations > messages order — fuzzy name matches are
+// usually the person being looked for.
+const BASE_ORDER = { contacts: 1, conversations: 2, messages: 3 }
+
+const sectionHasLiteralHit = (key) => {
+  const q = props.query.trim().toLowerCase()
+  if (!q) return false
+  const results = props.grouped[key]?.results || []
+  if (key === 'contacts')
+    return results.some(
+      (c) =>
+        (c.email || '').toLowerCase().includes(q) ||
+        `${c.first_name} ${c.last_name || ''}`.toLowerCase().includes(q)
+    )
+  if (key === 'conversations')
+    return results.some(
+      (c) =>
+        String(c.reference_number) === q ||
+        (c.contact_email || '').toLowerCase().includes(q) ||
+        (c.contact_name || '').toLowerCase().includes(q) ||
+        (c.subject || '').toLowerCase().includes(q)
+    )
+  // Messages are full-text hits; a highlight marker means the query text was
+  // genuinely found in the body.
+  return results.some((m) => (m.snippet || '').includes('[[['))
+}
+
+const sectionOrder = (key) => {
+  if (props.scope !== 'all' || !props.query.includes('@')) return BASE_ORDER[key]
+  return sectionHasLiteralHit(key) ? BASE_ORDER[key] : BASE_ORDER[key] + 10
+}
 
 const formatDate = (dateString) => format(parseISO(dateString), 'MMM d, yyyy HH:mm')
 
