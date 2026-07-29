@@ -589,6 +589,27 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 		})
 	}
 
+	// Process other parts. enmime only classifies a part as an inline if it
+	// carries an explicit Content-Disposition header; some clients (Outlook)
+	// emit cid-referenced images with a Content-ID and no disposition at all,
+	// and those land in OtherParts. Treat ones with a ContentID as inlines so
+	// the cid: reference in the HTML resolves; the rest as attachments.
+	for _, part := range envelope.OtherParts {
+		disposition := attachment.DispositionInline
+		if part.ContentID == "" {
+			disposition = attachment.DispositionAttachment
+		}
+
+		incomingMsg.Attachments = append(incomingMsg.Attachments, attachment.Attachment{
+			Name:        part.FileName,
+			Content:     part.Content,
+			ContentType: part.ContentType,
+			ContentID:   part.ContentID,
+			Size:        len(part.Content),
+			Disposition: disposition,
+		})
+	}
+
 	// Skip BCC copies of our own outgoing emails. When the inbox itself is BCC'd on
 	// outgoing system mail (e.g. abandoned cart reminders), those messages re-enter
 	// IMAP and would otherwise spawn new conversations. Same-domain senders like
@@ -664,7 +685,8 @@ func (e *Email) processFullMessage(item imapclient.FetchItemDataBodySection, inc
 	incomingMsg.Contact.LastName = stringutil.SanitizeUTF8(incomingMsg.Contact.LastName)
 
 	e.lo.Debug("enqueuing incoming email message", "message_id", incomingMsg.SourceID.String,
-		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines))
+		"attachments", len(envelope.Attachments), "inline_attachments", len(envelope.Inlines),
+		"other_parts", len(envelope.OtherParts))
 
 	if err := e.messageStore.EnqueueIncoming(incomingMsg); err != nil {
 		return err
