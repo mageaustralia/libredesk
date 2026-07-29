@@ -136,7 +136,8 @@ import {
   AtSign,
   UserPlus,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  MailX
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -158,7 +159,8 @@ const getNotificationIcon = (type) => {
     mention: AtSign,
     assignment: UserPlus,
     sla_warning: AlertTriangle,
-    sla_breach: AlertCircle
+    sla_breach: AlertCircle,
+    send_failure: MailX
   }
   return icons[type] || Bell
 }
@@ -168,7 +170,8 @@ const getNotificationIconClass = (type) => {
     mention: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
     assignment: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
     sla_warning: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
-    sla_breach: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+    sla_breach: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+    send_failure: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   }
   return classes[type] || 'bg-muted text-muted-foreground'
 }

@@ -18,6 +18,7 @@ const (
 	NotificationTypeNewReply    NotificationType = "new_reply"
 	NotificationTypeContactNote   NotificationType = "contact_note"
 	NotificationTypeFollowerAdded NotificationType = "follower_added"
+	NotificationTypeSendFailure   NotificationType = "send_failure"
 )
 
 // UserNotification represents an in-app notification for a user.

@@ -21,6 +21,8 @@ import (
 	inboxpkg "github.com/abhinavxd/libredesk/internal/inbox"
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	mmodels "github.com/abhinavxd/libredesk/internal/media/models"
+	notifier "github.com/abhinavxd/libredesk/internal/notification"
+	nmodels "github.com/abhinavxd/libredesk/internal/notification/models"
 	"github.com/abhinavxd/libredesk/internal/sla"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
@@ -136,6 +138,7 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		if err != nil {
 			m.lo.Error(errorMsg, "error", err, "message_id", message.ID)
 			m.UpdateMessageStatus(message.UUID, models.MessageStatusFailed)
+			m.notifySendFailure(message)
 			return true
 		}
 		return false
@@ -292,6 +295,41 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		// Evaluate automation rules for outgoing message.
 		m.automation.EvaluateConversationUpdateRulesByID(message.ConversationID, "", amodels.EventConversationMessageOutgoing)
 	}
+}
+
+// notifySendFailure raises an in-app notification for the sending agent when an
+// outgoing message could not be delivered. Without this the failure is only a
+// red marker inside the conversation thread — invisible when the agent used
+// Reply & Close and never reopens the ticket.
+func (m *Manager) notifySendFailure(message models.Message) {
+	if message.SenderID <= 0 {
+		return
+	}
+
+	title := "Email failed to send"
+	if conversation, err := m.GetConversation(0, message.ConversationUUID, ""); err == nil && conversation.ReferenceNumber != "" {
+		title = fmt.Sprintf("Email on #%s failed to send", conversation.ReferenceNumber)
+	}
+
+	body := "The email was not delivered to the customer. Open the conversation and use Retry."
+	if len(message.Meta) > 0 {
+		var meta struct {
+			To []string `json:"to"`
+		}
+		if err := json.Unmarshal(message.Meta, &meta); err == nil && len(meta.To) > 0 {
+			body = fmt.Sprintf("The email to %s was not delivered. Open the conversation and use Retry.", strings.Join(meta.To, ", "))
+		}
+	}
+
+	m.dispatcher.Send(notifier.Notification{
+		Type:             nmodels.NotificationTypeSendFailure,
+		RecipientIDs:     []int{message.SenderID},
+		Title:            title,
+		Body:             null.StringFrom(body),
+		ConversationID:   null.IntFrom(message.ConversationID),
+		MessageID:        null.IntFrom(message.ID),
+		ConversationUUID: message.ConversationUUID,
+	})
 }
 
 // RenderMessageInTemplate renders message content in template.
