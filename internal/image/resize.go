@@ -14,6 +14,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	stdimage "image"
+	"image/color"
+	stddraw "image/draw"
 	"io"
 
 	"github.com/disintegration/imaging"
@@ -84,6 +87,90 @@ func ResizeForAI(reader io.Reader, contentType string) ([]byte, string, error) {
 	}
 
 	return buf.Bytes(), outputContentType, nil
+}
+
+const (
+	// MaxEmailDimension is the max width or height for inline images embedded
+	// in outgoing emails. Pasted screenshots are often full-desktop PNGs of
+	// several MB; anything past ~1600px adds size without adding legibility.
+	MaxEmailDimension = 1600
+	// ResizeEmailMinBytes: inline images smaller than this are sent untouched —
+	// re-encoding them saves little and costs quality.
+	ResizeEmailMinBytes = 300 * 1024
+)
+
+// ResizeForEmail downscales an oversized inline image for email delivery.
+// Mostly-opaque PNGs are flattened onto white and re-encoded as JPEG —
+// screenshots saved as PNG are the classic multi-MB offender, and macOS window
+// captures carry a transparent shadow border that would otherwise force them
+// to stay PNG. Genuinely transparent images (logos etc.) stay PNG.
+// Returns (data, contentType, true) when a smaller version was produced, or
+// (original, original type, false) when the image is already reasonable, the
+// format is unsupported (gif/webp/svg), or the "resized" bytes came out larger.
+func ResizeForEmail(data []byte, contentType string) ([]byte, string, bool) {
+	if len(data) < ResizeEmailMinBytes {
+		return data, contentType, false
+	}
+	if contentType != "image/jpeg" && contentType != "image/png" {
+		return data, contentType, false
+	}
+
+	decoded, err := imaging.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data, contentType, false
+	}
+
+	bounds := decoded.Bounds()
+	if bounds.Dx() > MaxEmailDimension || bounds.Dy() > MaxEmailDimension {
+		decoded = imaging.Fit(decoded, MaxEmailDimension, MaxEmailDimension, imaging.Lanczos)
+	}
+	img := imaging.Clone(decoded)
+
+	format := imaging.PNG
+	outType := "image/png"
+	if contentType == "image/jpeg" || opaqueFraction(img) >= 0.9 {
+		format = imaging.JPEG
+		outType = "image/jpeg"
+		img = flattenWhite(img)
+	}
+
+	var buf bytes.Buffer
+	opts := []imaging.EncodeOption{}
+	if format == imaging.JPEG {
+		opts = append(opts, imaging.JPEGQuality(JpegQuality))
+	}
+	if err := imaging.Encode(&buf, img, format, opts...); err != nil {
+		return data, contentType, false
+	}
+	if buf.Len() >= len(data) {
+		return data, contentType, false
+	}
+	return buf.Bytes(), outType, true
+}
+
+// opaqueFraction returns the fraction of fully opaque pixels.
+func opaqueFraction(img *stdimage.NRGBA) float64 {
+	total := len(img.Pix) / 4
+	if total == 0 {
+		return 1
+	}
+	opaque := 0
+	for i := 3; i < len(img.Pix); i += 4 {
+		if img.Pix[i] == 0xff {
+			opaque++
+		}
+	}
+	return float64(opaque) / float64(total)
+}
+
+// flattenWhite composites the image over a white background, discarding alpha
+// so it can be JPEG-encoded. White matches the default background of virtually
+// every email client.
+func flattenWhite(img *stdimage.NRGBA) *stdimage.NRGBA {
+	dst := stdimage.NewNRGBA(img.Bounds())
+	stddraw.Draw(dst, dst.Bounds(), stdimage.NewUniform(color.White), stdimage.Point{}, stddraw.Src)
+	stddraw.Draw(dst, dst.Bounds(), img, img.Bounds().Min, stddraw.Over)
+	return dst
 }
 
 // ToBase64DataURL converts image bytes to a data URL the OpenAI /

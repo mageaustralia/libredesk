@@ -23,6 +23,8 @@ import (
 	imodels "github.com/abhinavxd/libredesk/internal/inbox/models"
 	"github.com/abhinavxd/libredesk/internal/inbox/channel/livechat"
 	mmodels "github.com/abhinavxd/libredesk/internal/media/models"
+	notifier "github.com/abhinavxd/libredesk/internal/notification"
+	nmodels "github.com/abhinavxd/libredesk/internal/notification/models"
 	"github.com/abhinavxd/libredesk/internal/sla"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	umodels "github.com/abhinavxd/libredesk/internal/user/models"
@@ -143,6 +145,7 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		if err != nil {
 			m.lo.Error(errorMsg, "error", err, "message_id", message.ID)
 			m.UpdateMessageStatus(message.UUID, models.MessageStatusFailed)
+			m.notifySendFailure(message)
 			return true
 		}
 		return false
@@ -376,6 +379,41 @@ func (m *Manager) sendOutgoingMessage(message models.Message) {
 		// Evaluate automation rules for outgoing message.
 		m.automation.EvaluateConversationUpdateRulesByID(message.ConversationID, "", amodels.EventConversationMessageOutgoing)
 	}
+}
+
+// notifySendFailure raises an in-app notification for the sending agent when an
+// outgoing message could not be delivered. Without this the failure is only a
+// red marker inside the conversation thread — invisible when the agent used
+// Reply & Close and never reopens the ticket.
+func (m *Manager) notifySendFailure(message models.Message) {
+	if message.SenderID <= 0 {
+		return
+	}
+
+	title := "Email failed to send"
+	if conversation, err := m.GetConversation(0, message.ConversationUUID, ""); err == nil && conversation.ReferenceNumber != "" {
+		title = fmt.Sprintf("Email on #%s failed to send", conversation.ReferenceNumber)
+	}
+
+	body := "The email was not delivered to the customer. Open the conversation and use Retry."
+	if len(message.Meta) > 0 {
+		var meta struct {
+			To []string `json:"to"`
+		}
+		if err := json.Unmarshal(message.Meta, &meta); err == nil && len(meta.To) > 0 {
+			body = fmt.Sprintf("The email to %s was not delivered. Open the conversation and use Retry.", strings.Join(meta.To, ", "))
+		}
+	}
+
+	m.dispatcher.Send(notifier.Notification{
+		Type:             nmodels.NotificationTypeSendFailure,
+		RecipientIDs:     []int{message.SenderID},
+		Title:            title,
+		Body:             null.StringFrom(body),
+		ConversationID:   null.IntFrom(message.ConversationID),
+		MessageID:        null.IntFrom(message.ID),
+		ConversationUUID: message.ConversationUUID,
+	})
 }
 
 // BuildTemplateData builds the common template data map for rendering message content variables.
@@ -1599,6 +1637,14 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 	// inline part even if it appears multiple times in the body.
 	cidByUUID := map[string]string{}
 
+	// Only images actually referenced in the body get downscaled — pasted
+	// screenshots are the multi-MB offenders that make sends fail. Files the
+	// agent deliberately attached are never resized.
+	inlineUUIDs := map[string]bool{}
+	for _, sub := range matches {
+		inlineUUIDs[sub[2]] = true
+	}
+
 	// Re-use any inline image already on the message (e.g. uploaded via the
 	// reply box) instead of fetching and attaching it twice. Anything already
 	// attached is by definition authorised.
@@ -1606,6 +1652,17 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 		att := &message.Attachments[i]
 		if att.UUID == "" || !strings.HasPrefix(strings.ToLower(att.ContentType), "image/") {
 			continue
+		}
+		if inlineUUIDs[att.UUID] {
+			if data, ctype, resized := image.ResizeForEmail(att.Content, att.ContentType); resized {
+				m.lo.Info("downscaled inline image for email", "uuid", att.UUID, "from_bytes", att.Size, "to_bytes", len(data))
+				att.Content = data
+				att.Size = len(data)
+				if ctype != att.ContentType {
+					att.ContentType = ctype
+					att.Name = jpegFilename(att.Name)
+				}
+			}
 		}
 		cid := "ld-" + att.UUID
 		att.ContentID = cid
@@ -1659,15 +1716,24 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 			m.lo.Warn("inline-image blob fetch failed, leaving URL unrewritten", "uuid", uuid, "error", err)
 			continue
 		}
+		name, ctype := media.Filename, media.ContentType
+		if data, newType, resized := image.ResizeForEmail(blob, ctype); resized {
+			m.lo.Info("downscaled inline image for email", "uuid", media.UUID, "from_bytes", len(blob), "to_bytes", len(data))
+			blob = data
+			if newType != ctype {
+				ctype = newType
+				name = jpegFilename(name)
+			}
+		}
 		cid := "ld-" + media.UUID
 		message.Attachments = append(message.Attachments, attachment.Attachment{
-			Name:        media.Filename,
+			Name:        name,
 			UUID:        media.UUID,
-			ContentType: media.ContentType,
+			ContentType: ctype,
 			Content:     blob,
-			Size:        media.Size,
+			Size:        len(blob),
 			ContentID:   cid,
-			Header:      attachment.MakeHeader(media.ContentType, cid, media.Filename, "base64", "inline"),
+			Header:      attachment.MakeHeader(ctype, cid, name, "base64", "inline"),
 		})
 		cidByUUID[uuid] = cid
 	}
@@ -1696,6 +1762,16 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 	})
 
 	return nil
+}
+
+// jpegFilename swaps the extension for inline images re-encoded to JPEG so the
+// filename matches the actual content type.
+func jpegFilename(name string) string {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return name + ".jpg"
+	}
+	return strings.TrimSuffix(name, ext) + ".jpg"
 }
 
 // replaceCIDInContent rewrites a cid: reference inside message HTML.

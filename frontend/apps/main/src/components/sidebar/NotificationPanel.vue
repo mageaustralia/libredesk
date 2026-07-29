@@ -135,7 +135,8 @@ import {
   AtSign,
   UserPlus,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  MailX
 } from 'lucide-vue-next'
 import { Button } from '@shared-ui/components/ui/button'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
@@ -154,7 +155,8 @@ const getNotificationIcon = (type) => {
     mention: AtSign,
     assignment: UserPlus,
     sla_warning: AlertTriangle,
-    sla_breach: AlertCircle
+    sla_breach: AlertCircle,
+    send_failure: MailX
   }
   return icons[type] || Bell
 }
@@ -164,7 +166,8 @@ const getNotificationIconClass = (type) => {
     mention: 'text-primary',
     assignment: 'text-accent-foreground',
     sla_warning: 'text-destructive',
-    sla_breach: 'text-destructive'
+    sla_breach: 'text-destructive',
+    send_failure: 'text-destructive'
   }
   return classes[type] || 'text-muted-foreground'
 }

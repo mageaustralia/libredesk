@@ -172,6 +172,17 @@
       class="mt-2"
     />
 
+    <!-- Large-email warning: emails past ~10MB of attachments risk slow or
+         failed sends. Inline pasted images are auto-resized server-side, so
+         this mostly fires on deliberate multi-file attachments. -->
+    <div
+      v-if="attachmentsTooLarge"
+      class="mt-1 flex items-center gap-1.5 rounded bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+    >
+      <AlertTriangle class="h-3.5 w-3.5 shrink-0" />
+      This email is large ({{ totalAttachmentMB }} MB of attachments) and may fail to send — consider smaller files or fewer attachments.
+    </div>
+
     <!-- Editor menu bar with send button -->
     <ReplyBoxMenuBar
       class="mt-1 shrink-0"
@@ -196,7 +207,7 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
 import { MACRO_CONTEXT } from '@main/constants/conversation'
-import { Maximize2, Minimize2 } from 'lucide-vue-next'
+import { Maximize2, Minimize2, AlertTriangle } from 'lucide-vue-next'
 import Editor from '@main/components/editor/TextEditor.vue'
 import EmailTagInput from '@main/components/EmailTagInput.vue'
 import { useConversationStore } from '@main/stores/conversation'
@@ -359,6 +370,15 @@ const enableSend = computed(() => {
     !props.uploadingFiles.length && !props.isDraftLoading
   )
 })
+
+// Warn when the total attachment payload approaches sizes that get slow or
+// fail outright over SMTP (base64 inflates the wire size by ~37%).
+const EMAIL_ATTACHMENT_WARN_BYTES = 10 * 1024 * 1024
+const totalAttachmentBytes = computed(() =>
+  (props.uploadedFiles || []).reduce((sum, f) => sum + (f.size || 0), 0)
+)
+const attachmentsTooLarge = computed(() => totalAttachmentBytes.value > EMAIL_ATTACHMENT_WARN_BYTES)
+const totalAttachmentMB = computed(() => (totalAttachmentBytes.value / (1024 * 1024)).toFixed(1))
 
 /**
  * Validates email addresses in To, CC, and BCC fields.
