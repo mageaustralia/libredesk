@@ -3,6 +3,7 @@ package search
 
 import (
 	"embed"
+	"strings"
 	"time"
 
 	"github.com/abhinavxd/libredesk/internal/dbutil"
@@ -126,12 +127,13 @@ const (
 )
 
 // Filters are optional constraints on the conversation/message groups.
-// Zero/nil values mean "no filter".
+// Zero/nil values mean "no filter". AssignedUserID -1 means unassigned.
 type Filters struct {
-	StatusID int
-	InboxID  int
-	FromDate *time.Time
-	ToDate   *time.Time
+	StatusID       int
+	InboxID        int
+	FromDate       *time.Time
+	ToDate         *time.Time
+	AssignedUserID int
 }
 
 type ContactGroup struct {
@@ -157,6 +159,18 @@ type GroupedResponse struct {
 	Page          int               `json:"page"`
 }
 
+// fuzzyQuery returns the portion of query used for trigram name matching.
+// For email-like queries the domain is stripped: shared "@gmail.com" trigrams
+// otherwise dominate similarity scoring and surface unrelated contacts whose
+// stored name is an email address. Exact/substring email matching elsewhere
+// still uses the full query.
+func fuzzyQuery(query string) string {
+	if i := strings.Index(query, "@"); i > 0 {
+		return query[:i]
+	}
+	return query
+}
+
 // UnifiedGrouped searches contacts, conversations and messages as separate
 // ranked groups. scope=all returns a capped overview of all three; a specific
 // scope paginates within that group only.
@@ -168,6 +182,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 		Messages:      MessageGroup{Results: make([]models.UnifiedMessageResult, 0)},
 	}
 	offset := (page - 1) * pageSize
+	fuzzy := fuzzyQuery(query)
 
 	limitFor := func(allLimit int) (int, int) {
 		if scope == ScopeAll {
@@ -178,7 +193,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 
 	if scope == ScopeAll || scope == ScopeContacts {
 		limit, off := limitFor(allScopeContactsLimit)
-		if err := s.q.SearchUnifiedContacts.Select(&resp.Contacts.Results, query, limit, off); err != nil {
+		if err := s.q.SearchUnifiedContacts.Select(&resp.Contacts.Results, query, limit, off, fuzzy); err != nil {
 			s.lo.Error("error in unified contact search", "error", err)
 			return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.contact")), nil)
 		}
@@ -189,7 +204,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 
 	if scope == ScopeAll || scope == ScopeConversations {
 		limit, off := limitFor(allScopeGroupLimit)
-		if err := s.q.SearchUnifiedConversations.Select(&resp.Conversations.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, limit, off); err != nil {
+		if err := s.q.SearchUnifiedConversations.Select(&resp.Conversations.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, f.AssignedUserID, limit, off, fuzzy); err != nil {
 			s.lo.Error("error in unified conversation search", "error", err)
 			return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.conversation")), nil)
 		}
@@ -200,7 +215,7 @@ func (s *Manager) UnifiedGrouped(query, scope string, f Filters, page, pageSize 
 
 	if scope == ScopeAll || scope == ScopeMessages {
 		limit, off := limitFor(allScopeGroupLimit)
-		if err := s.q.SearchUnifiedMessages.Select(&resp.Messages.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, limit, off); err != nil {
+		if err := s.q.SearchUnifiedMessages.Select(&resp.Messages.Results, query, f.StatusID, f.InboxID, f.FromDate, f.ToDate, f.AssignedUserID, limit, off); err != nil {
 			s.lo.Error("error in unified message search", "error", err)
 			return nil, envelope.NewError(envelope.GeneralError, s.i18n.Ts("globals.messages.errorSearching", "name", s.i18n.Ts("globals.terms.message")), nil)
 		}
