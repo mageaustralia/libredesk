@@ -1508,12 +1508,31 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 
 	cidByUUID := map[string]string{}
 
+	// Only images actually referenced in the body get downscaled — pasted
+	// screenshots are the multi-MB offenders that make sends fail. Files the
+	// agent deliberately attached are never resized.
+	inlineUUIDs := map[string]bool{}
+	for _, sub := range matches {
+		inlineUUIDs[sub[3]] = true
+	}
+
 	// Re-use any inline image already on the message (uploaded via the reply
 	// box) instead of fetching twice. Anything already attached is authorised.
 	for i := range message.Attachments {
 		att := &message.Attachments[i]
 		if att.UUID == "" || !strings.HasPrefix(strings.ToLower(att.ContentType), "image/") {
 			continue
+		}
+		if inlineUUIDs[att.UUID] {
+			if data, ctype, resized := image.ResizeForEmail(att.Content, att.ContentType); resized {
+				m.lo.Info("downscaled inline image for email", "uuid", att.UUID, "from_bytes", att.Size, "to_bytes", len(data))
+				att.Content = data
+				att.Size = len(data)
+				if ctype != att.ContentType {
+					att.ContentType = ctype
+					att.Name = jpegFilename(att.Name)
+				}
+			}
 		}
 		cid := "ld-" + att.UUID
 		att.ContentID = cid
@@ -1558,15 +1577,24 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 			m.lo.Warn("inline-image blob fetch failed, leaving URL unrewritten", "uuid", uuid, "error", err)
 			continue
 		}
+		name, ctype := media.Filename, media.ContentType
+		if data, newType, resized := image.ResizeForEmail(blob, ctype); resized {
+			m.lo.Info("downscaled inline image for email", "uuid", media.UUID, "from_bytes", len(blob), "to_bytes", len(data))
+			blob = data
+			if newType != ctype {
+				ctype = newType
+				name = jpegFilename(name)
+			}
+		}
 		cid := "ld-" + media.UUID
 		message.Attachments = append(message.Attachments, attachment.Attachment{
-			Name:        media.Filename,
+			Name:        name,
 			UUID:        media.UUID,
-			ContentType: media.ContentType,
+			ContentType: ctype,
 			Content:     blob,
-			Size:        media.Size,
+			Size:        len(blob),
 			ContentID:   cid,
-			Header:      attachment.MakeHeader(media.ContentType, cid, media.Filename, "base64", "inline"),
+			Header:      attachment.MakeHeader(ctype, cid, name, "base64", "inline"),
 		})
 		cidByUUID[uuid] = cid
 	}
@@ -1593,4 +1621,14 @@ func (m *Manager) embedInlineImagesAsCID(message *models.Message) error {
 	})
 
 	return nil
+}
+
+// jpegFilename swaps the extension for inline images re-encoded to JPEG so the
+// filename matches the actual content type.
+func jpegFilename(name string) string {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return name + ".jpg"
+	}
+	return strings.TrimSuffix(name, ext) + ".jpg"
 }
