@@ -16,7 +16,15 @@
       <FormItem>
         <FormLabel>{{ t('globals.terms.filter', 2) }}</FormLabel>
         <FormControl>
-          <FilterBuilder :fields="filterFields" :showButtons="false" v-bind="componentField" />
+          <!-- Bind only the model, not the full componentField: its native onInput/onChange
+               handlers would catch input/change events bubbling from inputs nested inside
+               FilterBuilder and overwrite the filters array with event.target.value (a string). -->
+          <FilterBuilder
+            :fields="filterFields"
+            :showButtons="false"
+            :model-value="componentField.modelValue"
+            @update:model-value="componentField['onUpdate:modelValue']"
+          />
         </FormControl>
         <FormDescription>{{ t('view.form.filters.description') }}</FormDescription>
         <FormMessage />
