@@ -572,7 +572,7 @@ export const useConversationStore = defineStore('conversation', () => {
 
   function fetchNextConversations () {
     conversations.page++
-    fetchConversationsList(true, conversations.listType, conversations.teamID, conversations.listFilters, conversations.viewID, conversations.page)
+    return fetchConversationsList(true, conversations.listType, conversations.teamID, conversations.listFilters, conversations.viewID, conversations.page)
   }
 
   function reFetchConversationsList (showLoader = true) {

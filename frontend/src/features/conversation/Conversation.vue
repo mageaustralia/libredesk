@@ -29,6 +29,26 @@
         </div>
       </div>
       <div class="flex items-center gap-1">
+        <!-- Prev/Next conversation navigation -->
+        <template v-if="navIndex !== -1">
+          <span class="text-xs text-muted-foreground tabular-nums">
+            {{ navIndex + 1 }} of {{ conversationStore.conversationsList.length }}<template v-if="conversationStore.conversations.hasMore">+</template>
+          </span>
+          <Button variant="ghost" size="icon" class="h-7 w-7" :disabled="navIndex <= 0" @click="navigateSibling(-1)" title="Previous conversation">
+            <ChevronLeft class="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-7 w-7 mr-1"
+            :disabled="navIndex >= conversationStore.conversationsList.length - 1 && !conversationStore.conversations.hasMore"
+            @click="navigateSibling(1)"
+            title="Next conversation"
+          >
+            <ChevronRight class="w-4 h-4" />
+          </Button>
+        </template>
+
         <!-- Quick Close button -->
         <Button
           v-if="!conversationStore.conversation.loading && conversationStore.current?.status !== 'Closed' && conversationStore.current?.status !== 'Trashed'"
@@ -272,7 +292,7 @@ import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from "./ReplyBox.vue"
 import MergeDialog from "./MergeDialog.vue"
-import { Reply, StickyNote, Forward, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
+import { Reply, StickyNote, Forward, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -280,7 +300,7 @@ import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { handleHTTPError } from '@/utils/http'
 
@@ -292,6 +312,37 @@ const presenceStore = usePresenceStore()
 const userStore = useUserStore()
 const emitter = useEmitter()
 const router = useRouter()
+const route = useRoute()
+
+// Prev/Next navigation within the current list (view/inbox/team), in its current sort order.
+const navIndex = computed(() =>
+  conversationStore.conversationsList.findIndex(c => c.uuid === conversationStore.current?.uuid)
+)
+
+const navigateSibling = async (dir) => {
+  let list = conversationStore.conversationsList
+  const idx = navIndex.value + dir
+  if (idx < 0) return
+  if (idx >= list.length) {
+    if (!conversationStore.conversations.hasMore) return
+    await conversationStore.fetchNextConversations()
+    list = conversationStore.conversationsList
+    if (idx >= list.length) return
+  }
+  const name = route.name.includes('team')
+    ? 'team-inbox-conversation'
+    : route.name.includes('view')
+      ? 'view-inbox-conversation'
+      : 'inbox-conversation'
+  router.push({
+    name,
+    params: {
+      uuid: list[idx].uuid,
+      ...(name === 'team-inbox-conversation' && { teamID: route.params.teamID }),
+      ...(name === 'view-inbox-conversation' && { viewID: route.params.viewID })
+    }
+  })
+}
 const { currentTheme } = useTheme()
 
 // Follow/unfollow state
