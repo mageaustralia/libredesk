@@ -31,6 +31,26 @@
         </div>
       </div>
       <div class="flex items-center gap-1">
+        <!-- Prev/Next conversation navigation within the current list -->
+        <template v-if="navIndex !== -1">
+          <span class="text-xs text-muted-foreground tabular-nums">
+            {{ navIndex + 1 }} of {{ conversationStore.conversationsList.length }}<template v-if="conversationStore.conversations.hasMore">+</template>
+          </span>
+          <Button variant="ghost" size="icon" class="h-7 w-7" :disabled="navIndex <= 0" @click="navigateSibling(-1)" title="Previous conversation">
+            <ChevronLeft class="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-7 w-7 mr-1"
+            :disabled="navIndex >= conversationStore.conversationsList.length - 1 && !conversationStore.conversations.hasMore"
+            @click="navigateSibling(1)"
+            title="Next conversation"
+          >
+            <ChevronRight class="w-4 h-4" />
+          </Button>
+        </template>
+
         <!--
           UX3: Quick-Close button alongside the status pill. Saves the
           extra click of opening the status dropdown for the most common
@@ -326,7 +346,7 @@ import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
 import { useToast } from '@/composables/useToast'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, EyeOff, GitMerge, ChevronDown, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, EyeOff, GitMerge, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
@@ -344,6 +364,36 @@ const router = useRouter()
 const { t } = useI18n()
 
 const showMergeDialog = ref(false)
+
+// Prev/Next navigation within the current list (view/inbox/team), in its current sort order.
+const navIndex = computed(() =>
+  conversationStore.conversationsList.findIndex(c => c.uuid === conversationStore.current?.uuid)
+)
+
+const navigateSibling = async (dir) => {
+  let list = conversationStore.conversationsList
+  const idx = navIndex.value + dir
+  if (idx < 0) return
+  if (idx >= list.length) {
+    if (!conversationStore.conversations.hasMore) return
+    await conversationStore.fetchNextConversations()
+    list = conversationStore.conversationsList
+    if (idx >= list.length) return
+  }
+  const name = route.name.includes('team')
+    ? 'team-inbox-conversation'
+    : route.name.includes('view')
+      ? 'view-inbox-conversation'
+      : 'inbox-conversation'
+  router.push({
+    name,
+    params: {
+      uuid: list[idx].uuid,
+      ...(name === 'team-inbox-conversation' && { teamID: route.params.teamID }),
+      ...(name === 'view-inbox-conversation' && { viewID: route.params.viewID })
+    }
+  })
+}
 
 // Unified scroll container — provided to MessageList so it can route its
 // scroll math (isAtBottom, scrollToBottom, scrollToMessage) through the
