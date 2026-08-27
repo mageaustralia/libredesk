@@ -439,6 +439,13 @@ const sanitizedContent = computed(() => {
   let content = props.message.content || ''
 
   if (isOutgoing.value) {
+    // The Letter sanitizer strips class attributes, so real mention chips
+    // render identically to plain-text "@Name" — inline styles survive
+    // sanitization, making registered mentions visibly highlighted.
+    content = content.replace(
+      /<span class="mention"/g,
+      '<span style="background-color: rgba(37, 99, 235, 0.12); color: #1d4ed8; border-radius: 4px; padding: 1px 4px; font-weight: 600" class="mention"'
+    )
     return revertCIDToImageSrc(content)
   } else {
     const baseUrl = settingsStore.settings['app.root_url']
