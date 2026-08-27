@@ -102,6 +102,23 @@ func (m *Manager) notifyParticipants(message *cmodels.Message) {
 	// Exclude the sender.
 	delete(recipientMap, message.SenderID)
 
+	// Exclude users @mentioned in this message — they get the dedicated
+	// mention notification and would otherwise receive both emails.
+	// InsertMentions runs after the message insert that spawned this
+	// goroutine, so wait briefly for the mention rows to land.
+	time.Sleep(3 * time.Second)
+	var mentionedIDs []int
+	if err := m.db.Select(&mentionedIDs,
+		`SELECT COALESCE(tm.user_id, cm.mentioned_user_id) FROM conversation_mentions cm
+		 LEFT JOIN team_members tm ON tm.team_id = cm.mentioned_team_id
+		 WHERE cm.message_id = $1 AND COALESCE(tm.user_id, cm.mentioned_user_id) IS NOT NULL`,
+		message.ID); err != nil {
+		m.lo.Warn("failed to fetch mentions for participant notification dedup", "message_id", message.ID, "error", err)
+	}
+	for _, id := range mentionedIDs {
+		delete(recipientMap, id)
+	}
+
 	if len(recipientMap) == 0 {
 		return
 	}
