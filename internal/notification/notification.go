@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/abhinavxd/libredesk/internal/attachment"
 	"github.com/zerodha/logf"
@@ -106,7 +107,14 @@ func (s *Service) worker(ctx context.Context) {
 				continue
 			}
 			if err := provider.Send(message); err != nil {
-				s.lo.Error("error sending message", "error", err)
+				// Transient SMTP failures (e.g. "451 4.4.2 Timeout" on a stale
+				// pooled connection) would otherwise drop the notification
+				// permanently — retry once on a fresh connection.
+				s.lo.Error("error sending message, retrying once", "error", err)
+				time.Sleep(5 * time.Second)
+				if err := provider.Send(message); err != nil {
+					s.lo.Error("error sending message after retry, dropping", "error", err)
+				}
 			}
 		}
 	}
