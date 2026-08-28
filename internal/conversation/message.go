@@ -487,11 +487,28 @@ func (m *Manager) RenderMessageInTemplate(channel string, message *models.Messag
 		}
 		data["IsContinuityEmail"] = isContinuity
 
-		message.Content, err = m.template.RenderEmailWithTemplate(data, message.Content)
-		if err != nil {
-			m.lo.Error("could not render email content using template", "id", message.ID, "error", err)
-			return fmt.Errorf("could not render email content using template: %w", err)
+		// The quoted thread below the <!-- thread --> marker is raw customer
+		// HTML and may contain literal "{{" (e.g. eM Client emails ship CSS
+		// with content: '{{ ') which is invalid Go template syntax. Only the
+		// agent-authored part above the marker supports placeholders, so
+		// escape template delimiters in the quoted portion.
+		if idx := strings.Index(message.Content, "<!-- thread -->"); idx != -1 {
+			message.Content = message.Content[:idx] + escapeTemplateDelims(message.Content[idx:])
 		}
+
+		rendered, err := m.template.RenderEmailWithTemplate(data, message.Content)
+		if err != nil {
+			// Agent-typed content may also contain a stray "{{" that was never
+			// meant as a placeholder. Rather than failing the send, retry with
+			// all template delimiters escaped so the text goes out verbatim.
+			m.lo.Warn("could not render email content using template, retrying with escaped delimiters", "id", message.ID, "error", err)
+			rendered, err = m.template.RenderEmailWithTemplate(data, escapeTemplateDelims(message.Content))
+			if err != nil {
+				m.lo.Error("could not render email content using template", "id", message.ID, "error", err)
+				return fmt.Errorf("could not render email content using template: %w", err)
+			}
+		}
+		message.Content = rendered
 	case inbox.ChannelLiveChat:
 		// Live chat doesn't use templates for rendering messages.
 		return nil
@@ -503,6 +520,13 @@ func (m *Manager) RenderMessageInTemplate(channel string, message *models.Messag
 }
 
 // GetConversationMessages retrieves messages for a specific conversation.
+
+// escapeTemplateDelims neutralises Go template action delimiters so arbitrary
+// HTML can pass through template parsing verbatim. Only "{{" starts an action;
+// a bare "}}" is already plain text, so escaping the opener is sufficient.
+func escapeTemplateDelims(s string) string {
+	return strings.ReplaceAll(s, "{{", `{{"{{"}}`)
+}
 func (m *Manager) GetConversationMessages(conversationUUID string, page, pageSize int, private *bool, msgTypes []string) ([]models.Message, int, error) {
 	var (
 		messages = make([]models.Message, 0)
