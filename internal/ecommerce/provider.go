@@ -7,7 +7,7 @@ import (
 
 // Provider defines the interface for ecommerce platform integrations
 type Provider interface {
-	// Name returns the provider identifier (e.g., "magento1", "magento2", "shopify")
+	// Name returns the provider identifier (e.g., "maho", "magento2", "shopify")
 	Name() string
 
 	// GetCustomerByEmail looks up a customer by email

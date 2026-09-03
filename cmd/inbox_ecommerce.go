@@ -147,7 +147,7 @@ func handleUpdateInboxEcommerce(r *fastglue.Request) error {
 	// Validate type if non-empty.
 	if req.Type != "" {
 		switch req.Type {
-		case "magento1", "magento2", "shopify", "woocommerce":
+		case "maho", "magento1", "magento2", "shopify", "woocommerce":
 			// ok
 		default:
 			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.Ts("globals.messages.invalid", "name", "{globals.terms.provider}"), nil, envelope.InputError)

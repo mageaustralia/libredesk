@@ -47,7 +47,7 @@ type cachedInboxProvider struct {
 
 // NewManager creates a new ecommerce manager. The factory parameter lets
 // the cmd layer inject a constructor that knows about the concrete
-// provider implementations (magento1, magento2, shopify, woocommerce)
+// provider implementations (maho, magento2, shopify, woocommerce)
 // without forcing this package to import them.
 //
 // Pass a nil factory if you only need the global provider (no per-inbox

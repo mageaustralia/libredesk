@@ -88,7 +88,7 @@ type EcommerceContext struct {
 
 // ProviderConfig contains the configuration for an ecommerce provider
 type ProviderConfig struct {
-	Type         string            `json:"type"` // "magento1", "magento2", "shopify"
+	Type         string            `json:"type"` // "maho", "magento2", "shopify"
 	BaseURL      string            `json:"base_url"`
 	ClientID     string            `json:"client_id"`
 	ClientSecret string            `json:"client_secret"` // Encrypted in database

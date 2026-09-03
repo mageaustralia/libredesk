@@ -84,7 +84,7 @@ type Config struct {
 // Matches the shape of ecommerce.ProviderConfig but lives here to avoid
 // a circular import between internal/inbox and internal/ecommerce.
 type EcommerceConfig struct {
-	// Type is one of: "magento1", "magento2", "shopify", "woocommerce".
+	// Type is one of: "maho", "magento2", "shopify", "woocommerce".
 	// Empty disables ecommerce for this inbox (acts the same as nil
 	// Ecommerce — falls back to global).
 	Type         string            `json:"type"`

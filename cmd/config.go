@@ -71,13 +71,13 @@ func handleGetConfig(r *fastglue.Request) error {
 }
 
 // availableEcommerceProviders returns the list of provider types this
-// binary can construct. CE binaries return just ["magento1"]; Pro
+// binary can construct. CE binaries return just ["maho"]; Pro
 // binaries return all four. The frontend uses this to populate the
 // provider dropdown rather than hard-coding the list — saves changing
 // frontend + backend in lockstep when we add the next provider.
 func availableEcommerceProviders() []string {
 	if IsPro {
-		return []string{"magento1", "magento2", "shopify", "woocommerce"}
+		return []string{"maho", "magento2", "shopify", "woocommerce"}
 	}
-	return []string{"magento1"}
+	return []string{"maho"}
 }

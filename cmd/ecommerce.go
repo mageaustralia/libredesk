@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/abhinavxd/libredesk/internal/ecommerce"
-	"github.com/abhinavxd/libredesk/internal/ecommerce/magento1"
+	"github.com/abhinavxd/libredesk/internal/ecommerce/maho"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/valyala/fasthttp"
@@ -302,9 +302,9 @@ func createEcommerceProvider(app *App, config ecommerce.ProviderConfig) (ecommer
 	// connection handlers) funnels through here.
 	config.HTTPClient = app.ecommerceClient
 	switch config.Type {
-	case "magento1":
+	case "maho", "magento1": // "magento1" kept for configs saved before the rename
 		// Free in CE — no license check, always compiled in.
-		return magento1.New(config, app.lo)
+		return maho.New(config, app.lo)
 	case "magento2", "shopify", "woocommerce":
 		return createProEcommerceProvider(config, app.lo)
 	default:
