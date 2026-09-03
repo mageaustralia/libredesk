@@ -259,30 +259,30 @@ func (m *mahoCustomer) toEcommerce() *ecommerce.Customer {
 }
 
 type mahoOrder struct {
-	ID                  int                  `json:"id"`
-	IncrementID         string               `json:"incrementId"`
-	CustomerID          int                  `json:"customerId"`
-	CustomerEmail       string               `json:"customerEmail"`
-	CustomerFirstname   string               `json:"customerFirstname"`
-	CustomerLastname    string               `json:"customerLastname"`
-	Status              string               `json:"status"`
-	State               string               `json:"state"`
-	Currency            string               `json:"currency"`
-	TotalItemCount      int                  `json:"totalItemCount"`
-	TotalQtyOrdered     float64              `json:"totalQtyOrdered"`
-	PaymentMethod       string               `json:"paymentMethod"`
-	PaymentMethodTitle  string               `json:"paymentMethodTitle"`
-	ShippingMethod      string               `json:"shippingMethod"`
-	ShippingDescription string               `json:"shippingDescription"`
-	CouponCode          string               `json:"couponCode"`
-	Items               []mahoOrderItem      `json:"items"`
-	Prices              mahoOrderPrices      `json:"prices"`
-	ShippingAddress     *mahoAddress         `json:"shippingAddress"`
-	BillingAddress      *mahoAddress         `json:"billingAddress"`
-	Shipments           mahoShipmentList     `json:"shipments"`
-	StatusHistory       []mahoStatusEntry    `json:"statusHistory"`
-	CreatedAt           string               `json:"createdAt"`
-	UpdatedAt           string               `json:"updatedAt"`
+	ID                  int               `json:"id"`
+	IncrementID         string            `json:"incrementId"`
+	CustomerID          int               `json:"customerId"`
+	CustomerEmail       string            `json:"customerEmail"`
+	CustomerFirstname   string            `json:"customerFirstname"`
+	CustomerLastname    string            `json:"customerLastname"`
+	Status              string            `json:"status"`
+	State               string            `json:"state"`
+	Currency            string            `json:"currency"`
+	TotalItemCount      int               `json:"totalItemCount"`
+	TotalQtyOrdered     float64           `json:"totalQtyOrdered"`
+	PaymentMethod       string            `json:"paymentMethod"`
+	PaymentMethodTitle  string            `json:"paymentMethodTitle"`
+	ShippingMethod      string            `json:"shippingMethod"`
+	ShippingDescription string            `json:"shippingDescription"`
+	CouponCode          string            `json:"couponCode"`
+	Items               []mahoOrderItem   `json:"items"`
+	Prices              mahoOrderPrices   `json:"prices"`
+	ShippingAddress     *mahoAddress      `json:"shippingAddress"`
+	BillingAddress      *mahoAddress      `json:"billingAddress"`
+	Shipments           mahoShipmentList  `json:"shipments"`
+	StatusHistory       []mahoStatusEntry `json:"statusHistory"`
+	CreatedAt           string            `json:"createdAt"`
+	UpdatedAt           string            `json:"updatedAt"`
 }
 
 // mahoShipmentList tolerates the API serializing shipments either as embedded
@@ -308,17 +308,17 @@ func (l *mahoShipmentList) UnmarshalJSON(data []byte) error {
 }
 
 type mahoStatusEntry struct {
-	Note                string `json:"note"`
-	CreatedAt           string `json:"createdAt"`
-	IsCustomerNotified  bool   `json:"isCustomerNotified"`
-	IsVisibleOnFront    bool   `json:"isVisibleOnFront"`
+	Note               string `json:"note"`
+	CreatedAt          string `json:"createdAt"`
+	IsCustomerNotified bool   `json:"isCustomerNotified"`
+	IsVisibleOnFront   bool   `json:"isVisibleOnFront"`
 }
 
 type mahoShipment struct {
-	ID          int                `json:"id"`
-	IncrementID string             `json:"incrementId"`
-	TotalQty    float64            `json:"totalQty"`
-	CreatedAt   string             `json:"createdAt"`
+	ID          int                 `json:"id"`
+	IncrementID string              `json:"incrementId"`
+	TotalQty    float64             `json:"totalQty"`
+	CreatedAt   string              `json:"createdAt"`
 	Tracks      []mahoShipmentTrack `json:"tracks"`
 }
 
@@ -430,24 +430,24 @@ func (m *mahoOrder) toEcommerce() ecommerce.Order {
 	}
 
 	order := ecommerce.Order{
-		ID:              fmt.Sprintf("%d", m.ID),
-		IncrementID:     m.IncrementID,
-		CustomerEmail:   m.CustomerEmail,
-		CustomerName:    m.CustomerFirstname + " " + m.CustomerLastname,
-		Status:          m.Status,
-		State:           m.State,
-		Items:           items,
-		Subtotal:        m.Prices.Subtotal,
-		GrandTotal:      m.Prices.GrandTotal,
-		TotalPaid:       m.Prices.TotalPaid,
-		TotalRefunded:   m.Prices.TotalRefunded,
-		ShippingAmount:  m.Prices.ShippingAmount,
-		Currency:        cur,
-		PaymentMethod:   payMethod,
-		ShippingMethod:  shipMethod,
-		Shipments:       shipments,
-		StatusHistory:   history,
-		CreatedAt:       created,
+		ID:             fmt.Sprintf("%d", m.ID),
+		IncrementID:    m.IncrementID,
+		CustomerEmail:  m.CustomerEmail,
+		CustomerName:   m.CustomerFirstname + " " + m.CustomerLastname,
+		Status:         m.Status,
+		State:          m.State,
+		Items:          items,
+		Subtotal:       m.Prices.Subtotal,
+		GrandTotal:     m.Prices.GrandTotal,
+		TotalPaid:      m.Prices.TotalPaid,
+		TotalRefunded:  m.Prices.TotalRefunded,
+		ShippingAmount: m.Prices.ShippingAmount,
+		Currency:       cur,
+		PaymentMethod:  payMethod,
+		ShippingMethod: shipMethod,
+		Shipments:      shipments,
+		StatusHistory:  history,
+		CreatedAt:      created,
 	}
 	if m.ShippingAddress != nil {
 		order.ShippingAddress = convertAddress(m.ShippingAddress)
