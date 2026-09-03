@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/zerodha/logf"
 )
@@ -399,17 +401,50 @@ func formatOrderFull(o *Order) string {
 			o.ShippingAddress.City, o.ShippingAddress.Region, o.ShippingAddress.PostCode))
 	}
 
-	// Status history - include all notes (most recent first for relevance)
+	// Status history - include all notes (most recent first for relevance).
+	// Timestamps from the API (and courier times embedded in note text) are
+	// UTC; convert to local Australian time so the AI quotes correct times.
 	if len(o.StatusHistory) > 0 {
-		sb.WriteString("- Order History:\n")
+		sb.WriteString("- Order History (times are local Australian time):\n")
 		for _, entry := range o.StatusHistory {
 			if entry.Note != "" {
-				sb.WriteString(fmt.Sprintf("  - [%s] %s\n", entry.CreatedAt, entry.Note))
+				sb.WriteString(fmt.Sprintf("  - [%s] %s\n", toLocalTime(entry.CreatedAt), localiseTimestamps(entry.Note)))
 			}
 		}
 	}
 
 	return sb.String()
+}
+
+var localTZ = func() *time.Location {
+	if loc, err := time.LoadLocation("Australia/Melbourne"); err == nil {
+		return loc
+	}
+	return time.FixedZone("AEST", 10*3600)
+}()
+
+var isoUTCRegex = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?Z`)
+
+// toLocalTime converts an ISO-8601 timestamp string to local Australian time
+// for display; unparseable values are returned unchanged.
+func toLocalTime(ts string) string {
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, ts); err == nil {
+			return t.In(localTZ).Format("2 Jan 2006 3:04 PM MST")
+		}
+	}
+	return ts
+}
+
+// localiseTimestamps rewrites ISO-8601 UTC timestamps embedded in free text
+// (e.g. courier scan times in shipping-app notes) to local Australian time.
+func localiseTimestamps(text string) string {
+	return isoUTCRegex.ReplaceAllStringFunc(text, func(m string) string {
+		if t, err := time.Parse(time.RFC3339, m); err == nil {
+			return t.In(localTZ).Format("2 Jan 2006 3:04 PM MST")
+		}
+		return m
+	})
 }
 
 func formatOrderSummary(o *Order) string {
