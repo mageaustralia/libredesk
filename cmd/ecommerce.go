@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/abhinavxd/libredesk/internal/ecommerce"
-	"github.com/abhinavxd/libredesk/internal/ecommerce/magento1"
+	"github.com/abhinavxd/libredesk/internal/ecommerce/maho"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/stringutil"
 	"github.com/valyala/fasthttp"
@@ -183,8 +183,8 @@ func handleGetEcommerceStatus(r *fastglue.Request) error {
 // createEcommerceProvider creates a provider instance from config
 func createEcommerceProvider(config ecommerce.ProviderConfig) (ecommerce.Provider, error) {
 	switch config.Type {
-	case "magento1":
-		return magento1.New(config)
+	case "maho", "magento1": // "magento1" kept for configs saved before the rename
+		return maho.New(config)
 	// Future providers:
 	// case "magento2":
 	//     return magento2.New(config)

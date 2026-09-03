@@ -36,7 +36,7 @@ const orderResult = ref(null)
 
 const providerName = computed(() => {
   switch (providerType.value) {
-    case 'magento1': return 'Maho Commerce'
+    case 'maho': return 'Maho Commerce'
     case 'magento2': return 'Magento 2'
     case 'shopify': return 'Shopify'
     default: return 'Ecommerce'
@@ -182,7 +182,7 @@ async function testOrderLookup() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Disabled</SelectItem>
-                  <SelectItem value="magento1">Maho Commerce (Magento 1 fork)</SelectItem>
+                  <SelectItem value="maho">Maho Commerce (Magento 1 fork)</SelectItem>
                   <SelectItem value="magento2">Magento 2</SelectItem>
                   <SelectItem value="shopify">Shopify</SelectItem>
                 </SelectContent>
@@ -204,7 +204,7 @@ async function testOrderLookup() {
                   <template v-if="providerType === 'shopify'">
                     Your Shopify store URL (e.g., https://your-store.myshopify.com)
                   </template>
-                  <template v-else-if="providerType === 'magento1'">
+                  <template v-else-if="providerType === 'maho'">
                     Your store's base URL without /api (e.g., https://your-store.com)
                   </template>
                   <template v-else>
@@ -216,7 +216,7 @@ async function testOrderLookup() {
               <div class="space-y-2">
                 <Label for="client-id">
                   <template v-if="providerType === 'shopify'">API Key</template>
-                  <template v-else-if="providerType === 'magento1'">Client ID</template>
+                  <template v-else-if="providerType === 'maho'">Client ID</template>
                   <template v-else>Integration Access Token</template>
                 </Label>
                 <Input
@@ -228,7 +228,7 @@ async function testOrderLookup() {
                   <template v-if="providerType === 'shopify'">
                     Your Shopify Admin API access token
                   </template>
-                  <template v-else-if="providerType === 'magento1'">
+                  <template v-else-if="providerType === 'maho'">
                     OAuth2 client ID for the Maho API Platform v2 client_credentials grant
                   </template>
                   <template v-else>
@@ -240,7 +240,7 @@ async function testOrderLookup() {
               <div class="space-y-2">
                 <Label for="client-secret">
                   <template v-if="providerType === 'shopify'">Admin API Secret Key</template>
-                  <template v-else-if="providerType === 'magento1'">Client Secret</template>
+                  <template v-else-if="providerType === 'maho'">Client Secret</template>
                   <template v-else>Integration Secret</template>
                 </Label>
                 <Input
@@ -253,7 +253,7 @@ async function testOrderLookup() {
                   <template v-if="providerType === 'shopify'">
                     Your Shopify Admin API secret key (stored encrypted)
                   </template>
-                  <template v-else-if="providerType === 'magento1'">
+                  <template v-else-if="providerType === 'maho'">
                     OAuth2 client secret for the Maho API Platform v2 client_credentials grant (stored encrypted)
                   </template>
                   <template v-else>

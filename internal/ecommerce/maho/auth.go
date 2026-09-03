@@ -1,4 +1,4 @@
-package magento1
+package maho
 
 import (
 	"bytes"

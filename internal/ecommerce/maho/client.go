@@ -1,4 +1,4 @@
-package magento1
+package maho
 
 import (
 	"bytes"
@@ -56,7 +56,7 @@ func userAgentString() string {
 // credentials (ClientSecret is encrypted at rest by the settings layer).
 func New(config ecommerce.ProviderConfig) (*Client, error) {
 	if config.BaseURL == "" || config.ClientID == "" || config.ClientSecret == "" {
-		return nil, fmt.Errorf("magento1: baseURL, clientID, and clientSecret are required")
+		return nil, fmt.Errorf("maho: baseURL, clientID, and clientSecret are required")
 	}
 	ua := userAgentString()
 	return &Client{
@@ -67,7 +67,7 @@ func New(config ecommerce.ProviderConfig) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Name() string { return "magento1" }
+func (c *Client) Name() string { return "maho" }
 
 // doRequest makes an authenticated request to the API
 func (c *Client) doRequest(ctx context.Context, endpoint string, params url.Values) ([]byte, int, error) {
