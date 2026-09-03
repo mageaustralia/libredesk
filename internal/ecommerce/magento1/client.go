@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -210,6 +211,18 @@ func (c *Client) GetOrderByNumber(ctx context.Context, orderNumber string) (*eco
 		return nil, ecommerce.ErrNotFound
 	}
 
+	// The collection endpoint omits statusHistory and shipments (they are
+	// detail-view only fields), so follow up with a fetch by internal ID to
+	// get the full order. Fall back to collection data if the detail fetch fails.
+	if orders[0].ID > 0 {
+		if full, ferr := c.GetOrderByID(ctx, strconv.Itoa(orders[0].ID)); ferr == nil {
+			log.Printf("[ecommerce] found order #%s status=%s history_entries=%d shipments=%d", full.IncrementID, full.Status, len(full.StatusHistory), len(full.Shipments))
+			return full, nil
+		} else {
+			log.Printf("[ecommerce] detail fetch for order #%s failed, using collection data: %v", orders[0].IncrementID, ferr)
+		}
+	}
+
 	log.Printf("[ecommerce] found order #%s status=%s history_entries=%d", orders[0].IncrementID, orders[0].Status, len(orders[0].StatusHistory))
 	order := orders[0].toEcommerce()
 	return &order, nil
@@ -289,10 +302,32 @@ type mahoOrder struct {
 	Prices              mahoOrderPrices      `json:"prices"`
 	ShippingAddress     *mahoAddress         `json:"shippingAddress"`
 	BillingAddress      *mahoAddress         `json:"billingAddress"`
-	Shipments           []mahoShipment       `json:"shipments"`
+	Shipments           mahoShipmentList     `json:"shipments"`
 	StatusHistory       []mahoStatusEntry    `json:"statusHistory"`
 	CreatedAt           string               `json:"createdAt"`
 	UpdatedAt           string               `json:"updatedAt"`
+}
+
+// mahoShipmentList tolerates the API serializing shipments either as embedded
+// objects or as IRI reference strings (the detail endpoint emits IRIs for
+// related shipment resources); string entries are skipped.
+type mahoShipmentList []mahoShipment
+
+func (l *mahoShipmentList) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	out := make([]mahoShipment, 0, len(raw))
+	for _, r := range raw {
+		var sh mahoShipment
+		if err := json.Unmarshal(r, &sh); err != nil {
+			continue // IRI string or unexpected shape - skip
+		}
+		out = append(out, sh)
+	}
+	*l = out
+	return nil
 }
 
 type mahoStatusEntry struct {
