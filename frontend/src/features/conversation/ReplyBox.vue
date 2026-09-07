@@ -713,10 +713,16 @@ watch(messageType, async (newType, oldType) => {
     }
     // Hide quoted thread for private notes
     quotedThreadHtml.value = ''
-  } else if (oldType === 'private_note') {
+  } else if (oldType === 'private_note' || oldType === 'forward') {
     // Rebuild quoted thread when switching back to reply
     if (!quotedThreadHtml.value && conversationStore.conversationMessages?.length > 0) {
       quotedThreadHtml.value = _buildThread()
+    }
+    // Forward mode cleared the recipients - restore them from the conversation
+    if (oldType === 'forward') {
+      to.value = conversationStore.currentTo?.join(', ') || ''
+      cc.value = conversationStore.currentCC?.join(', ') || ''
+      bcc.value = conversationStore.currentBCC?.join(', ') || ''
     }
     // Re-add signature when switching back to reply
     if (inboxSignature.value && (!htmlContent.value || !htmlContent.value.includes(sigMarker))) {
