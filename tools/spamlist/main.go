@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/abhinavxd/libredesk/internal/crypto"
 	"github.com/emersion/go-imap/v2"
@@ -25,6 +26,8 @@ func main() {
 	tokenEnc := os.Getenv("LD_TOKEN_ENC")
 	user := os.Getenv("LD_USER")
 	mailbox := os.Getenv("LD_MAILBOX")
+	subject := os.Getenv("LD_SUBJECT")
+	since := os.Getenv("LD_SINCE") // YYYY-MM-DD
 	if mailbox == "" {
 		mailbox = "[Gmail]/Spam"
 	}
@@ -56,13 +59,41 @@ func main() {
 		fmt.Fprintln(os.Stderr, "select failed:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Mailbox %q: %d messages\n", mailbox, sel.NumMessages)
 	if sel.NumMessages == 0 {
+		fmt.Printf("Mailbox %q: empty\n", mailbox)
 		return
 	}
 
-	seqSet := imap.SeqSet{}
-	seqSet.AddRange(1, sel.NumMessages)
+	var seqSet imap.SeqSet
+	if subject != "" || since != "" {
+		criteria := &imap.SearchCriteria{}
+		if subject != "" {
+			criteria.Header = []imap.SearchCriteriaHeaderField{{Key: "Subject", Value: subject}}
+		}
+		if since != "" {
+			t, err := time.Parse("2006-01-02", since)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "bad LD_SINCE:", err)
+				os.Exit(1)
+			}
+			criteria.Since = t
+		}
+		res, err := client.Search(criteria, nil).Wait()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "search failed:", err)
+			os.Exit(1)
+		}
+		nums := res.AllSeqNums()
+		fmt.Printf("Mailbox %q: %d matches\n", mailbox, len(nums))
+		if len(nums) == 0 {
+			return
+		}
+		seqSet.AddNum(nums...)
+	} else {
+		fmt.Printf("Mailbox %q: %d messages\n", mailbox, sel.NumMessages)
+		seqSet.AddRange(1, sel.NumMessages)
+	}
+
 	fetchCmd := client.Fetch(seqSet, &imap.FetchOptions{Envelope: true})
 	defer fetchCmd.Close()
 
