@@ -1098,6 +1098,13 @@ const showDiscardDraft = ref(false)
  * Show confirmation before deleting draft.
  */
 const handleDeleteDraft = () => {
+  // Nothing typed yet: this is a plain "cancel out of private note / forward",
+  // so skip the confirmation dialog and just return to the reply tab.
+  if (!hasDraftContent.value) {
+    messageType.value = 'reply'
+    emitter.emit('collapse-reply')
+    return
+  }
   showDiscardDraft.value = true
 }
 
@@ -1110,6 +1117,9 @@ const confirmDeleteDraft = () => {
   emailErrors.value = []
   mentions.value = []
   showDiscardDraft.value = false
+  // Discarding also drops out of private-note/forward mode back to the reply
+  // tab, so the box does not stay stuck in the (purple) note state.
+  messageType.value = 'reply'
   emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
     description: 'Draft discarded'
   })

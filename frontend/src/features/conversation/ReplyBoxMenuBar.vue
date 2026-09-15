@@ -184,14 +184,17 @@
       </Button>
     </div>
     <div class="flex items-center" v-if="showSendButton">
-      <!-- Delete draft button -->
+      <!-- Delete draft / cancel button. Also shown on an empty private note or
+           forward, so there is always a visible way out of those modes. An
+           accidentally-opened note previously had no exit except typing a
+           character to make this button appear, or reloading the page. -->
       <Button
-        v-if="hasDraft"
+        v-if="hasDraft || messageType !== 'reply'"
         variant="ghost"
         size="sm"
         class="h-8 px-2 mr-1 text-muted-foreground hover:text-destructive"
         @click="$emit('deleteDraft')"
-        title="Delete draft"
+        :title="hasDraft ? 'Delete draft' : 'Cancel'"
       >
         <Trash2 class="h-4 w-4" />
       </Button>
