@@ -220,14 +220,27 @@ export function useDraftManager (key, uploadedFiles = null) {
    */
   const clearDraft = async (draftKey) => {
     if (!draftKey) return
+    // Wipe local state BEFORE the network round-trip. Previously resetState()
+    // only ran after the await, so for the duration of the request the editor
+    // still held the discarded content — any debounced save (or a tab switch
+    // racing the delete) could write it straight back to localStorage and the
+    // text would reappear when the agent returned to that tab.
     removeLocalDraft(draftKey)
+    resetState()
+    skipNextSave.value = true
     const { uuid, messageType } = splitDraftKey(draftKey)
     try {
       await api.deleteDraft(uuid, messageType)
-      conversationStore.removeDraft(draftKey)
-      resetState()
     } catch (error) {
-      // Silent fail
+      // Silent fail — the agent asked for it gone, so drop it from the store
+      // regardless. A stale row on the server gets cleaned up by the
+      // delete-on-empty path in loadDraft.
+    } finally {
+      conversationStore.removeDraft(draftKey)
+      // A debounced save may have re-created the local copy while the delete
+      // was in flight; drop it again.
+      removeLocalDraft(draftKey)
+      isDirty.value = false
     }
   }
 

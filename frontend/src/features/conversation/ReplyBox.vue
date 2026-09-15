@@ -1111,14 +1111,17 @@ const handleDeleteDraft = () => {
 /**
  * Actually delete the draft after confirmation, then collapse the reply box.
  */
-const confirmDeleteDraft = () => {
-  clearDraft(currentDraftKey.value)
+const confirmDeleteDraft = async () => {
+  showDiscardDraft.value = false
   clearMediaFiles()
   emailErrors.value = []
   mentions.value = []
-  showDiscardDraft.value = false
-  // Discarding also drops out of private-note/forward mode back to the reply
-  // tab, so the box does not stay stuck in the (purple) note state.
+  // Await the clear while currentDraftKey still points at the tab being
+  // discarded. Flipping messageType first would change the key mid-flight and
+  // the draft manager would clear/reload the wrong tab.
+  await clearDraft(currentDraftKey.value)
+  // Only then drop out of private-note/forward mode back to the reply tab, so
+  // the box does not stay stuck in the (purple) note state.
   messageType.value = 'reply'
   emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
     description: 'Draft discarded'
