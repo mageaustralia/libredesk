@@ -9,6 +9,18 @@ check_updates = true
 # Encryption key. Generate using `openssl rand -hex 16` must be 32 characters long.
 encryption_key = "your-32-char-random-string-here!"
 
+# Google sign-in for the mobile app (POST /api/v1/auth/google-mobile).
+# The ID token is validated against these OAuth client IDs — this is what binds
+# a token to THIS app. Leave client_ids empty to disable the endpoint entirely.
+# Never leave it empty-but-enabled: an unchecked audience accepts any Google
+# ID token from any OAuth client on the internet.
+[app.google_mobile_auth]
+client_ids = []
+# Optional: require the Google Workspace `hd` claim to match one of these
+# domains. Consumer gmail.com accounts carry no `hd` and are always rejected
+# when this is set.
+allowed_domains = []
+
 # HTTP server.
 [app.server]
 # Address to bind the HTTP server to.
