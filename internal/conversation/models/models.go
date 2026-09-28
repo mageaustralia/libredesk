@@ -116,6 +116,9 @@ type Conversation struct {
 	UpdatedAt             time.Time              `db:"updated_at" json:"updated_at"`
 	UUID                  string                 `db:"uuid" json:"uuid"`
 	ContactID             int                    `db:"contact_id" json:"contact_id"`
+	// ContactUpdatedAt is set when an agent reassigns the conversation to a
+	// different contact. NULL for conversations whose contact never changed.
+	ContactUpdatedAt      null.Time              `db:"contact_updated_at" json:"contact_updated_at"`
 	InboxID               int                    `db:"inbox_id" json:"inbox_id"`
 	ClosedAt              null.Time              `db:"closed_at" json:"closed_at"`
 	TrashedAt             null.Time              `db:"trashed_at" json:"trashed_at"`

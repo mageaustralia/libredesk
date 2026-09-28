@@ -146,6 +146,7 @@ SELECT
    c.assigned_team_id,
    c.subject,
    c.contact_id,
+   c.contact_updated_at,
    c.sla_policy_id,
    c.meta,
    sla.name as sla_policy_name,
@@ -855,7 +856,12 @@ WHERE user_id = $1 AND conversation_id = (SELECT id FROM conversations WHERE uui
 UPDATE conversations SET subject = $2, updated_at = NOW() WHERE uuid = $1;
 
 -- name: update-conversation-contact
-UPDATE conversations SET contact_id = $2, updated_at = NOW() WHERE uuid = $1;
+-- contact_updated_at records WHEN the contact was reassigned. Reply
+-- recipients are normally derived from the latest message's headers; this
+-- timestamp is what lets the UI know the agent has since pointed the
+-- conversation at a different contact (e.g. a ticket forwarded in by a
+-- third party) so replies go to the contact, not the original sender.
+UPDATE conversations SET contact_id = $2, contact_updated_at = NOW(), updated_at = NOW() WHERE uuid = $1;
 
 -- name: get-recent-activities
 SELECT COUNT(*) OVER() as total,

@@ -253,7 +253,7 @@ const changeContact = async (contact) => {
     // reassigned. Without this the reply box's TO field stays on the
     // previous contact (e.g. the forwarder on a forwarded ticket) because
     // the watchEffect derives TO from the latest message's headers.
-    conversationStore.markContactChanged()
+    conversationStore.markContactChanged(conversation.value.uuid)
     showContactSearch.value = false
     contactQuery.value = ''
     contactResults.value = []
