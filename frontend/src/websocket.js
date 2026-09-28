@@ -12,6 +12,10 @@ export class WebSocketClient {
     this.maxReconnectAttempts = 50
     this.isReconnecting = false
     this.manualClose = false
+    // Whether we have ever been connected. Lets handleOpen tell a first
+    // connect (nothing to reconcile) from a RE-connect (we may have missed
+    // new_message events while the socket was down).
+    this.hasConnected = false
     this.pingInterval = null
     this.lastPong = Date.now()
     this.convStore = useConversationStore()
@@ -41,11 +45,20 @@ export class WebSocketClient {
 
   handleOpen () {
     console.log('WebSocket connected')
+    const isReconnect = this.hasConnected
+    this.hasConnected = true
     this.reconnectInterval = 1000
     this.reconnectAttempts = 0
     this.isReconnecting = false
     this.lastPong = Date.now()
     this.setupPing()
+    // Any new_message events broadcast while we were disconnected are gone for
+    // good — the server does not replay them. Reconcile the open conversation
+    // so a message sent during the gap (commonly an agent's own reply or
+    // private note) appears without the agent having to reload the page.
+    if (isReconnect) {
+      this.convStore.syncOpenConversationMessages()
+    }
   }
 
   handleMessage (event) {
@@ -117,7 +130,13 @@ export class WebSocketClient {
     window.addEventListener('focus', () => {
       if (this.socket?.readyState !== WebSocket.OPEN) {
         this.reconnect()
+        return
       }
+      // Socket still reports OPEN, but it may be a zombie: after a laptop sleep
+      // (or inside the ping watchdog's 60s detection window) the connection can
+      // look alive while new_message events were silently dropped. Reconcile the
+      // open conversation on refocus so nothing stays invisible until a reload.
+      this.convStore.syncOpenConversationMessages()
     })
   }
 

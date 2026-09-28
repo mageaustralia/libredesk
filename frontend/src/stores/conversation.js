@@ -912,6 +912,50 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
+  /**
+   * Re-reconciles the open conversation's messages against the server.
+   *
+   * Sent messages only ever reach the UI via the `new_message` websocket
+   * event; nothing appends them locally. So any event that arrives while the
+   * socket is down (deploy/restart, laptop sleep, network blip, idle timeout)
+   * was lost permanently and the message stayed invisible until the agent
+   * reloaded the page — the "private note doesn't show up after the 5s undo
+   * window" report.
+   *
+   * NB: this deliberately does NOT go through fetchMessages(). MessageCache
+   * .addMessages() does `pages.set(page, uniqueMsgs)`, so re-fetching page 1
+   * would REPLACE the cached page with only the messages not already cached
+   * (i.e. an empty array) and wipe the thread. addMessage() appends a single
+   * message to page 1 without touching what's there.
+   */
+  async function syncOpenConversationMessages () {
+    const uuid = conversation.data?.uuid
+    if (!uuid) return
+    // Only reconcile a conversation we already have messages for; an unopened
+    // one gets a normal paged fetch when it's opened.
+    if (messages.data.getLastFetchedPage(uuid) < 1) return
+    try {
+      const response = await api.getConversationMessages(uuid, { page: 1, page_size: MESSAGE_LIST_PAGE_SIZE })
+      const fetched = response.data?.data?.results || []
+      const added = []
+      for (const msg of fetched) {
+        if (!messages.data.hasMessage(uuid, msg.uuid)) {
+          messages.data.addMessage(uuid, msg)
+          added.push(msg)
+        }
+      }
+      if (added.length === 0) return
+      incrementMessageVersion()
+      // Drive MessageList's scroll behaviour the same way the live path does.
+      for (const msg of added) {
+        emitter.emit(EMITTER_EVENTS.NEW_MESSAGE, { conversation_uuid: uuid, message: msg })
+      }
+    } catch (error) {
+      // Silent: this is a background reconcile. A genuinely broken connection
+      // surfaces through the websocket's own reconnect handling.
+    }
+  }
+
   function addNewConversation (conv) {
     if (!conversationUUIDExists(conv.uuid)) {
       // Buffer as a pending update instead of auto-refreshing.
@@ -1162,6 +1206,7 @@ export const useConversationStore = defineStore('conversation', () => {
     updateAssigneeLastSeen,
     markAsUnread,
     updateConversationMessage,
+    syncOpenConversationMessages,
     updateConversationList,
     snoozeConversation,
     fetchConversation,
