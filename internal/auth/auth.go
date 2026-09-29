@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,11 @@ type Config struct {
 	// for OIDC discovery / token exchange (e.g. self-hosted IdP on a
 	// private subnet). Empty by default — all private/reserved ranges blocked.
 	AllowedHosts []string
+	// GoogleMobileClientIDs are the OAuth client IDs the mobile app signs in
+	// with (typically one per platform). An ID token is accepted by
+	// VerifyGoogleIDToken only if its `aud` is one of these. Empty disables
+	// the mobile auth endpoint entirely — see the security note there.
+	GoogleMobileClientIDs []string
 }
 
 // defaultSessionLifetime is used when Config.SessionLifetime is unset or non-positive.
@@ -306,12 +312,20 @@ const googleIssuer = "https://accounts.google.com"
 // to validate tokens from the Flutter app's native Google Sign-In before
 // issuing an API key.
 //
-// SkipClientIDCheck is intentionally true: the mobile app uses its own
-// platform-specific Google OAuth client ID (one for Android, another for
-// iOS) and we don't want every fork to have to enumerate them in config.
-// Signature verification against Google's JWKS already proves the token
-// came from Google; the email_verified claim then proves the user controls
-// the address; agent lookup then proves they're authorised on this server.
+// SECURITY: the `aud` claim MUST be checked. A valid signature proves Google
+// ISSUED the token, not that it was issued FOR US — every Google OAuth client
+// on the internet mints tokens signed by the same JWKS. Without an audience
+// check, any third-party site with a "Sign in with Google" button could capture
+// an agent's ID token and replay it here to mint a long-lived API key for that
+// agent. email_verified and the agent lookup do not close this: they only
+// establish that the address is real and belongs to an agent, which is exactly
+// what a replayed token also shows.
+//
+// The verifier still runs with SkipClientIDCheck (go-oidc's Config carries a
+// single ClientID, and the mobile app has one per platform); the audience is
+// then matched against the configured allow-list below. Issuer is verified by
+// the provider itself. With no client IDs configured we fail closed rather
+// than accept anything.
 //
 // The verifier is lazily created on first call and reused on subsequent
 // calls. Discovery + JWKS fetching go through the SSRF-guarded http.Client.
@@ -354,11 +368,32 @@ func (a *Auth) VerifyGoogleIDToken(ctx context.Context, idToken string) (OIDCcla
 		return OIDCclaim{}, fmt.Errorf("error verifying Google ID token: %w", err)
 	}
 
+	if err := a.checkGoogleMobileAudience(idTk.Audience); err != nil {
+		return OIDCclaim{}, err
+	}
+
 	var claims OIDCclaim
 	if err := idTk.Claims(&claims); err != nil {
 		return OIDCclaim{}, errors.New("error extracting claims from Google ID token")
 	}
 	return claims, nil
+}
+
+// checkGoogleMobileAudience reports whether an ID token was minted for one of
+// our own mobile OAuth clients. See the security note on VerifyGoogleIDToken.
+func (a *Auth) checkGoogleMobileAudience(audience []string) error {
+	allowed := a.cfg.GoogleMobileClientIDs
+	if len(allowed) == 0 {
+		return errors.New("google mobile auth is not configured (no client IDs); refusing to accept an unaudited ID token")
+	}
+	for _, aud := range audience {
+		for _, want := range allowed {
+			if aud != "" && aud == strings.TrimSpace(want) {
+				return nil
+			}
+		}
+	}
+	return errors.New("google ID token audience does not match a configured mobile client ID")
 }
 
 // SaveSession creates and sets a session (post successful login/auth).

@@ -20,11 +20,12 @@ type googleMobileAuthReq struct {
 // The endpoint is unauthenticated by design — the Google ID token IS the
 // auth proof. The flow:
 //
-//  1. Verify the token's signature against Google's published JWKS
-//     (audience check is intentionally skipped — the mobile app uses
-//     platform-specific Google client IDs and we don't want every fork to
-//     enumerate them in config; signature alone proves the token came from
-//     Google).
+//  1. Verify the token's signature against Google's published JWKS AND that
+//     its `aud` is one of `app.google_mobile_auth.client_ids`. The audience
+//     check is what binds a token to this install: a Google signature only
+//     proves Google issued the token, not that it was issued for us, so
+//     without it any third party's Google ID token would be accepted here.
+//     With no client IDs configured the endpoint fails closed.
 //  2. Require email_verified=true to prove the user controls the address.
 //  3. Look up an enabled agent account by that email — no JIT user
 //     creation; admins still control who has access.
