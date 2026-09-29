@@ -944,12 +944,20 @@ const processSendWithStatus = (status) => {
  * confirmation that the action took effect.
  */
 const handleDeleteDraft = () => {
+  // Nothing typed yet: this is a plain "cancel out of private note / forward",
+  // so just return to the reply tab without claiming a draft was deleted.
+  const hadContent = hasDraftContent.value
   clearDraft(currentDraftKey.value)
   clearMediaFiles()
   emailErrors.value = []
   mentions.value = []
   htmlContent.value = ''
-  toast.success(t('replyBox.draftDeleted'))
+  // Drop out of private-note/forward mode so the box doesn't stay stuck in the
+  // note state with no other way back.
+  messageType.value = 'reply'
+  if (hadContent) {
+    toast.success(t('replyBox.draftDeleted'))
+  }
 }
 
 /**
