@@ -178,7 +178,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, nextTick } from 'vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import RuleBox from '@/features/admin/automation/RuleBox.vue'
@@ -363,9 +363,31 @@ const form = useForm({
   validationSchema: toTypedSchema(createFormSchema(t))
 })
 
-const onSubmit = form.handleSubmit(async (values) => {
-  handleSave(values)
-})
+const onSubmit = form.handleSubmit(
+  async (values) => {
+    handleSave(values)
+  },
+  // Invalid submit. Without this, a failed validation renders the message
+  // inline next to the offending field and nothing else happens — on a form
+  // this tall the field is usually scrolled off-screen, so pressing Save looks
+  // like a no-op (the reported case: a blank Description). Say what's wrong,
+  // and take the user to it.
+  ({ errors }) => {
+    const messages = Object.values(errors).filter(Boolean)
+    if (messages.length > 0) {
+      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+        variant: 'destructive',
+        description: messages.join(' · ')
+      })
+    }
+    nextTick(() => {
+      // FormMessage renders the error text with .text-destructive; the first
+      // one in document order is the first offending field.
+      const firstError = document.querySelector('.text-destructive')
+      firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+)
 
 const handleSave = async (values) => {
   const validationError = getRulesValidationError()
