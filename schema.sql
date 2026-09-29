@@ -228,6 +228,7 @@ CREATE TABLE conversations (
 
 	-- Cascade deletes when contact is deleted.
     contact_id BIGINT REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
+    contact_updated_at TIMESTAMPTZ NULL,
 
 	-- Set to NULL when assigned user or team is deleted.
     assigned_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,

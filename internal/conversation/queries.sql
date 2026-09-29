@@ -217,6 +217,7 @@ SELECT
    c.assigned_team_id,
    c.subject,
    c.contact_id,
+   c.contact_updated_at,
    c.sla_policy_id,
    c.meta,
    sla.name as sla_policy_name,
@@ -461,8 +462,14 @@ SET subject = $2,
 WHERE uuid = $1;
 
 -- name: update-conversation-contact
+-- contact_updated_at records WHEN the contact was reassigned. Reply recipients
+-- are normally derived from the latest message's headers; this timestamp is what
+-- lets the UI know the agent has since pointed the conversation at a different
+-- contact (e.g. a ticket forwarded in by a third party) so replies go to the
+-- contact, not the original sender.
 UPDATE conversations
 SET contact_id = $2,
+    contact_updated_at = NOW(),
     updated_at = NOW()
 WHERE uuid = $1;
 

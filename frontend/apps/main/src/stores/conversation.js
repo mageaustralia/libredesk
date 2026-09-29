@@ -27,14 +27,15 @@ export const useConversationStore = defineStore('conversation', () => {
   const currentTo = ref([])
   const currentBCC = ref([])
   const currentCC = ref([])
-  // Timestamp of the most recent contact reassignment via the sidebar contact
-  // picker. The recipients-derivation watchEffect compares this against the
-  // latest message's created_at: if the contact was changed AFTER the latest
-  // message, replies go to the new contact's email rather than whoever the
-  // last incoming message was from. When a new message subsequently arrives,
-  // normal derivation resumes (replying to whoever just wrote is the right
-  // default). Set via markContactChanged() from ConversationSideBarContact.
-  const lastContactChangeAt = ref(0)
+  // Optimistic, per-conversation record of "the agent just reassigned the
+  // contact", keyed by conversation UUID. The authoritative value is
+  // conversation.contact_updated_at, persisted server-side; this map only
+  // covers the window between the PUT succeeding and the next conversation
+  // fetch. Previously this was a single global timestamp in memory, which had
+  // two bugs: it was lost on page reload / for other agents (so replies to a
+  // forwarded ticket reverted to the forwarder's address), and being global it
+  // leaked across conversations.
+  const contactChangedAtByUUID = ref({})
   const macros = ref({})
   // FS8: Tracks whether the New Conversation dialog is mounted. Used by the
   // command picker to route a chosen macro into NEW_CONVERSATION context even
@@ -545,7 +546,17 @@ export const useConversationStore = defineStore('conversation', () => {
     const latestMessageAt = latestMessage.created_at
       ? new Date(latestMessage.created_at).getTime()
       : 0
-    if (lastContactChangeAt.value > latestMessageAt && conv.contact?.email) {
+    // Prefer the persisted contact_updated_at (survives reloads and is visible
+    // to every agent); fall back to the optimistic in-memory marker for this
+    // conversation while the fetch that would carry it is still in flight.
+    const persistedContactChangeAt = conv.contact_updated_at
+      ? new Date(conv.contact_updated_at).getTime()
+      : 0
+    const contactChangedAt = Math.max(
+      persistedContactChangeAt,
+      contactChangedAtByUUID.value[conv.uuid] || 0
+    )
+    if (contactChangedAt > latestMessageAt && conv.contact?.email) {
       currentTo.value = [conv.contact.email]
       currentCC.value = []
       currentBCC.value = []
@@ -574,8 +585,13 @@ export const useConversationStore = defineStore('conversation', () => {
   // Sidebar contact picker calls this immediately after a successful
   // updateConversationContact API call. The timestamp is consumed by the
   // recipients watchEffect (see comment above).
-  function markContactChanged () {
-    lastContactChangeAt.value = Date.now()
+  function markContactChanged (uuid) {
+    const key = uuid || current.value?.uuid
+    if (!key) return
+    contactChangedAtByUUID.value = {
+      ...contactChangedAtByUUID.value,
+      [key]: Date.now()
+    }
   }
 
   async function fetchParticipants (uuid) {
