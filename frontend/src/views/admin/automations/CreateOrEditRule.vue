@@ -212,6 +212,7 @@ import {
 } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
 import { CustomBreadcrumb } from '@/components/ui/breadcrumb'
+import { useConversationStore } from '@/stores/conversation'
 import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
 
@@ -219,6 +220,7 @@ const isLoading = ref(false)
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const conversationStore = useConversationStore()
 const emitter = useEmitter()
 const rule = ref({
   id: 0,
@@ -484,6 +486,35 @@ onMounted(async () => {
   }
   if (route.query.type) {
     form.setFieldValue('type', route.query.type)
+  }
+
+  // Seeded from the conversation header's "Filter emails like this…" action.
+  // Only ever applies when CREATING (props.id === 0) so opening an existing
+  // rule with stray query params can't rewrite it. Every value is a normal
+  // form value from here — the agent reviews and saves as usual.
+  if (!props.id && route.query.from) {
+    const from = String(route.query.from).trim()
+    if (from) {
+      form.setFieldValue('type', 'new_conversation')
+      rule.value.type = 'new_conversation'
+      form.setFieldValue('name', `Filter: ${from}`)
+      rule.value.rules[0].groups[0].rules = [
+        {
+          field: 'contact_email',
+          value: from,
+          operator: 'equals',
+          field_type: 'conversation'
+        }
+      ]
+      rule.value.rules[0].groups[0].logical_op = 'AND'
+      if (route.query.action === 'spam') {
+        // Resolve by name, not a hardcoded id — status ids differ per install.
+        const spam = conversationStore.statuses.find((s) => s.name === 'Spam')
+        if (spam) {
+          rule.value.rules[0].actions = [{ type: 'set_status', value: [String(spam.id)] }]
+        }
+      }
+    }
   }
   firstRuleGroup.value = getFirstGroup()
   secondRuleGroup.value = getSecondGroup()

@@ -121,6 +121,18 @@
               <ShieldCheck class="w-4 h-4 mr-2" />
               Not Spam
             </DropdownMenuItem>
+            <!--
+              "Mark as Spam" handles THIS conversation; this handles every future
+              one from the same sender by seeding a new automation rule. Only
+              offered when we actually have a sender address to match on.
+            -->
+            <DropdownMenuItem
+              v-if="conversationStore.current?.contact?.email"
+              @click="handleFilterEmailsLikeThis"
+            >
+              <Filter class="w-4 h-4 mr-2" />
+              Filter emails like this…
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem @click="toggleFollow">
               <EyeOff v-if="isFollowing" class="w-4 h-4 mr-2" />
@@ -292,7 +304,7 @@ import { Button } from '@/components/ui/button'
 import MessageList from '@/features/conversation/message/MessageList.vue'
 import ReplyBox from "./ReplyBox.vue"
 import MergeDialog from "./MergeDialog.vue"
-import { Reply, StickyNote, Forward, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
+import { Reply, StickyNote, Forward, MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, GitMerge, Eye, EyeOff, CheckCircle2, Pencil, Check, Filter } from 'lucide-vue-next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { sendMessage as wsSendMessage } from '@/websocket'
@@ -470,6 +482,23 @@ async function executePendingSend() {
       })
     }
   }
+}
+
+/**
+ * Seed a new automation rule that suppresses future email from this sender.
+ *
+ * Deliberately a deep-link into the existing rule form rather than creating the
+ * rule outright: the agent sees the match before anything is saved, and can
+ * widen it to the domain, add a subject condition, or pick Closed instead of
+ * Spam. Nothing is persisted until they hit Save.
+ */
+function handleFilterEmailsLikeThis () {
+  const email = conversationStore.current?.contact?.email
+  if (!email) return
+  router.push({
+    name: 'new-automation',
+    query: { type: 'new_conversation', from: email, action: 'spam' }
+  })
 }
 
 function sendViewingPresence(uuid) {
