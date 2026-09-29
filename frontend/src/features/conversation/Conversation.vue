@@ -121,6 +121,7 @@
               <ShieldCheck class="w-4 h-4 mr-2" />
               Not Spam
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <!--
               "Mark as Spam" handles THIS conversation; this handles every future
               one from the same sender by seeding a new automation rule. Only
