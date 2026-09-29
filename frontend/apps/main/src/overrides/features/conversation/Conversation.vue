@@ -134,6 +134,19 @@
               <ShieldCheck class="w-4 h-4 mr-2" />
               {{ t('conversation.markAsNotSpam') }}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <!--
+              "Mark as spam" handles THIS conversation; this seeds an automation
+              rule so future mail from the same sender is handled too. Only shown
+              when there is a sender address to match on.
+            -->
+            <DropdownMenuItem
+              v-if="conversationStore.current?.contact?.email"
+              @click="handleFilterEmailsLikeThis"
+            >
+              <Filter class="w-4 h-4 mr-2" />
+              {{ t('conversation.filterEmailsLikeThis') }}
+            </DropdownMenuItem>
             <DropdownMenuSeparator
               v-if="!conversationStore.current?.merged_into_id"
             />
@@ -346,7 +359,7 @@ import { CONVERSATION_DEFAULT_STATUSES } from '@/constants/conversation'
 import { useEmitter } from '@/composables/useEmitter'
 import { useToast } from '@/composables/useToast'
 import { Skeleton } from '@shared-ui/components/ui/skeleton'
-import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, EyeOff, GitMerge, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Pencil, Check } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, RotateCcw, ShieldAlert, ShieldCheck, Eye, EyeOff, GitMerge, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Pencil, Check, Filter } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@/api'
@@ -752,6 +765,23 @@ const handleMoveToTrash = () => runConversationAction(api.moveToTrash, t('conver
 const handleRestore = () => runConversationAction(api.restoreFromTrash, t('conversation.restoreFromTrash'))
 const handleMarkAsSpam = () => runConversationAction(api.markAsSpam, t('conversation.markAsSpam'))
 const handleMarkAsNotSpam = () => runConversationAction(api.markAsNotSpam, t('conversation.markAsNotSpam'))
+
+/**
+ * Seed a new automation rule that suppresses future email from this sender.
+ *
+ * Deliberately a deep-link into the existing rule form rather than creating the
+ * rule outright: the agent sees the match before anything is saved, and can
+ * widen it to the domain, add a subject condition, or pick Closed instead of
+ * Spam. Nothing is persisted until they hit Save.
+ */
+const handleFilterEmailsLikeThis = () => {
+  const email = conversationStore.current?.contact?.email
+  if (!email) return
+  router.push({
+    name: 'new-automation',
+    query: { type: 'new_conversation', from: email, action: 'spam' }
+  })
+}
 
 const handleUpdateStatus = (status) => {
   if (status === CONVERSATION_DEFAULT_STATUSES.SNOOZED) {

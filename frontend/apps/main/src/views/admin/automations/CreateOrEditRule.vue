@@ -149,7 +149,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, nextTick } from 'vue'
 import { Input } from '@shared-ui/components/ui/input'
 import { Button } from '@shared-ui/components/ui/button'
 import RuleBox from '@/features/admin/automation/RuleBox.vue'
@@ -183,6 +183,7 @@ import {
 } from '@shared-ui/components/ui/form'
 import LoadingOverlay from '@/components/layout/LoadingOverlay.vue'
 import { CustomBreadcrumb } from '@shared-ui/components/ui/breadcrumb'
+import { useConversationStore } from '@main/stores/conversation'
 import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
 
@@ -191,6 +192,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const emitter = useEmitter()
+const conversationStore = useConversationStore()
 const rule = ref({
   id: 0,
   name: '',
@@ -317,9 +319,31 @@ const form = useForm({
   validationSchema: toTypedSchema(createFormSchema(t))
 })
 
-const onSubmit = form.handleSubmit(async (values) => {
-  handleSave(values)
-})
+const onSubmit = form.handleSubmit(
+  async (values) => {
+    handleSave(values)
+  },
+  // Invalid submit. Without this, a failed validation renders the message
+  // inline next to the offending field and nothing else happens — on a form
+  // this tall the field is usually scrolled off-screen, so pressing Save looks
+  // like a no-op (the reported case: a blank Description). Say what's wrong,
+  // and take the user to it.
+  ({ errors }) => {
+    const messages = Object.values(errors).filter(Boolean)
+    if (messages.length > 0) {
+      emitter.emit(EMITTER_EVENTS.SHOW_TOAST, {
+        variant: 'destructive',
+        description: messages.join(' · ')
+      })
+    }
+    nextTick(() => {
+      // FormMessage renders the error text with .text-destructive; the first
+      // one in document order is the first offending field.
+      const firstError = document.querySelector('.text-destructive')
+      firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+)
 
 const handleSave = async (values) => {
   const validationError = getRulesValidationError()
@@ -438,6 +462,35 @@ onMounted(async () => {
   }
   if (route.query.type) {
     form.setFieldValue('type', route.query.type)
+  }
+
+  // Seeded from the conversation header's "Filter emails like this…" action.
+  // Only ever applies when CREATING (props.id === 0) so opening an existing
+  // rule with stray query params can't rewrite it. Every value is a normal
+  // form value from here — the agent reviews and saves as usual.
+  if (!props.id && route.query.from) {
+    const from = String(route.query.from).trim()
+    if (from) {
+      form.setFieldValue('type', 'new_conversation')
+      rule.value.type = 'new_conversation'
+      form.setFieldValue('name', `Filter: ${from}`)
+      rule.value.rules[0].groups[0].rules = [
+        {
+          field: 'contact_email',
+          value: from,
+          operator: 'equals',
+          field_type: 'conversation'
+        }
+      ]
+      rule.value.rules[0].groups[0].logical_op = 'AND'
+      if (route.query.action === 'spam') {
+        // Resolve by name, not a hardcoded id — status ids differ per install.
+        const spam = conversationStore.statuses.find((s) => s.name === 'Spam')
+        if (spam) {
+          rule.value.rules[0].actions = [{ type: 'set_status', value: [String(spam.id)] }]
+        }
+      }
+    }
   }
   firstRuleGroup.value = getFirstGroup()
   secondRuleGroup.value = getSecondGroup()

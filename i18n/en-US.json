@@ -811,6 +811,7 @@
   "conversation.list.viewMode.table": "Table view",
   "conversation.markAsNotSpam": "Not spam",
   "conversation.markAsSpam": "Mark as spam",
+  "conversation.filterEmailsLikeThis": "Filter emails like this…",
   "conversation.mentions": "Mentions",
   "conversation.merge.action": "Merge",
   "conversation.merge.addAtLeastTwo": "Add at least 2 tickets to merge",
