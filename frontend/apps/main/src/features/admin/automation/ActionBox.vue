@@ -70,6 +70,7 @@
               v-model:htmlContent="action.value[0]"
               @update:htmlContent="(value) => handleEditorChange(value, index)"
               :placeholder="t('editor.newLine')"
+              toolbar="fixed"
             />
           </div>
         </div>
