@@ -20,6 +20,7 @@
               v-model:htmlContent="componentField.modelValue"
               @update:htmlContent="(value) => componentField.onChange(value)"
               :placeholder="t('editor.newLine')"
+              toolbar="fixed"
             />
           </div>
         </FormControl>

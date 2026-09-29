@@ -30,6 +30,7 @@
               v-model:htmlContent="newNote"
               @update:htmlContent="(value) => (newNote = value)"
               :placeholder="t('editor.newLine') + t('editor.send')"
+              toolbar="fixed"
             />
           </div>
           <div class="flex justify-end space-x-3 pt-2">

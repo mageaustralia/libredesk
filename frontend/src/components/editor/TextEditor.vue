@@ -1,10 +1,22 @@
 <template>
   <div class="editor-wrapper h-full overflow-y-auto" :class="{ 'pointer-events-none': disabled }">
-    <BubbleMenu
-      :editor="editor"
-      :tippy-options="{ duration: 100, maxWidth: 'none' }"
-      v-if="toolbar === 'floating' && editor"
-      class="bg-background p-1 box will-change-transform"
+    <!--
+      One toolbar definition, two presentations. 'floating' keeps the original
+      TipTap BubbleMenu that pops up over a selection; 'fixed' renders the very
+      same buttons as a static bar pinned to the top of the editor, so the
+      controls are always visible and never cover the text being edited.
+      Rendering through <component :is> avoids duplicating the ~150 lines of
+      button markup (and the drift that would come with it).
+    -->
+    <component
+      :is="toolbar === 'fixed' ? 'div' : BubbleMenu"
+      v-if="editor && toolbar !== 'none'"
+      v-bind="toolbar === 'fixed'
+        ? {}
+        : { editor, tippyOptions: { duration: 100, maxWidth: 'none' } }"
+      :class="toolbar === 'fixed'
+        ? 'bg-background p-1 border-b border-border sticky top-0 z-10 overflow-x-auto'
+        : 'bg-background p-1 box will-change-transform'"
     >
       <div class="flex space-x-1 items-center">
         <DropdownMenu v-if="aiPrompts.length > 0">
@@ -170,7 +182,7 @@
           <ImageIcon size="14" />
         </Button>
       </div>
-    </BubbleMenu>
+    </component>
     <EditorContent :editor="editor" class="native-html" />
 
     <!-- Hidden file input for image upload -->
@@ -369,6 +381,9 @@ const props = defineProps({
   },
   // Formatting toolbar mode:
   //   'floating' (default) — TipTap BubbleMenu that pops up over a selection.
+  //   'fixed' — the same buttons as a permanent bar above the content. Used by
+  //             the macro / contact-note / automation editors, where the
+  //             floating bar covered the text it was formatting.
   //   'none' — no in-editor toolbar (used where a fixed toolbar already exists,
   //            e.g. the reply box / new-conversation composer via ReplyBoxMenuBar).
   //            Avoids the floating bar's jump/positioning issues inside dialogs.
