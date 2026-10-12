@@ -238,6 +238,7 @@ type PreviousConversation struct {
 	UUID            string                      `db:"uuid" json:"uuid"`
 	ReferenceNumber null.String                 `db:"reference_number" json:"reference_number"`
 	Subject         string                      `db:"subject" json:"subject"`
+	MergedIntoID    null.Int                    `db:"merged_into_id" json:"merged_into_id"`
 	Contact         PreviousConversationContact `db:"contact" json:"contact"`
 	LastMessage     null.String                 `db:"last_message" json:"last_message"`
 	LastMessageAt   null.Time                   `db:"last_message_at" json:"last_message_at"`

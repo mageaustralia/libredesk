@@ -248,6 +248,7 @@ SELECT
     c.uuid,
     c.reference_number,
     c.subject,
+    c.merged_into_id,
     u.first_name AS "contact.first_name",
     u.last_name AS "contact.last_name",
     u.avatar_url AS "contact.avatar_url",

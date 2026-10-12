@@ -12,13 +12,13 @@
       <div class="space-y-3 py-2">
         <!-- Add ticket by reference number -->
         <div class="space-y-1.5">
-          <p class="text-sm font-medium">Add ticket by number:</p>
+          <p class="text-sm font-medium">Search by ticket number, subject or email:</p>
           <div class="flex gap-2">
             <div class="relative flex-1">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">#</span>
               <Input
                 v-model="ticketNumber"
-                placeholder="e.g. 105"
+                placeholder="e.g. 18942, or part of a subject"
                 class="pl-6"
                 @keydown.enter.prevent="lookupTicket"
               />
@@ -29,6 +29,37 @@
             </Button>
           </div>
           <p v-if="lookupError" class="text-xs text-destructive">{{ lookupError }}</p>
+          <div v-if="searchResults.length > 0" class="space-y-1 max-h-40 overflow-y-auto">
+            <button
+              v-for="r in searchResults"
+              :key="r.uuid"
+              type="button"
+              class="flex items-center gap-2 w-full p-2 rounded-md border border-muted text-left hover:bg-muted/30"
+              @click="addByUUID(r.uuid, r.reference_number)"
+            >
+              <Plus class="w-3 h-3 shrink-0 text-muted-foreground" />
+              <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ r.reference_number }}</span>
+              <span class="text-sm truncate">{{ r.subject || 'No subject' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Other conversations from the same contact (matched by email) -->
+        <div v-if="suggestions.length > 0" class="space-y-1.5">
+          <p class="text-sm font-medium">Other conversations from this contact:</p>
+          <div class="space-y-1 max-h-40 overflow-y-auto">
+            <button
+              v-for="conv in suggestions"
+              :key="conv.uuid"
+              type="button"
+              class="flex items-center gap-2 w-full p-2 rounded-md border border-muted text-left hover:bg-muted/30"
+              @click="addTicket(conv)"
+            >
+              <Plus class="w-3 h-3 shrink-0 text-muted-foreground" />
+              <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ conv.reference_number }}</span>
+              <span class="text-sm truncate">{{ conv.subject || 'No subject' }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Ticket list with primary selection -->
@@ -128,6 +159,8 @@ const lookupError = ref('')
 const ticketNumber = ref('')
 const mergeTickets = ref([])
 const primaryUUID = ref('')
+const suggestions = ref([])
+const searchResults = ref([])
 
 // Initialize when dialog opens
 watch(() => props.open, (val) => {
@@ -137,6 +170,8 @@ watch(() => props.open, (val) => {
   primaryUUID.value = ''
   ticketNumber.value = ''
   lookupError.value = ''
+  suggestions.value = []
+  searchResults.value = []
 
   // If opened from single ticket view, add that ticket
   if (props.initialConversation) {
@@ -153,57 +188,105 @@ watch(() => props.open, (val) => {
         mergeTickets.value.push({ ...conv })
       }
     }
-    if (!primaryUUID.value && mergeTickets.value.length > 0) {
-      primaryUUID.value = mergeTickets.value[0].uuid
-    }
   }
+  pickDefaultPrimary()
+  loadSuggestions()
 })
 
-async function lookupTicket() {
-  const num = ticketNumber.value.trim().replace(/^#/, '')
-  if (!num) return
+// Other conversations from the same contact, excluding ones already merged away.
+async function loadSuggestions() {
+  const contactID = props.initialConversation?.contact_id
+  if (!contactID) return
+  try {
+    const res = await api.getContactConversations(contactID)
+    suggestions.value = (res.data?.data || []).filter(
+      c => !mergeTickets.value.some(t => t.uuid === c.uuid) && !c.merged_into_id
+    )
+  } catch {
+    // Suggestions are a convenience; the number/search lookup still works.
+  }
+}
 
-  // Check if already added
-  if (mergeTickets.value.some(t => String(t.reference_number) === num)) {
+// The earlier (lower-numbered) ticket is the one a split-off reply gets put
+// back onto, so it is the default primary. The agent can still change it.
+function pickDefaultPrimary() {
+  const sorted = [...mergeTickets.value].sort(
+    (a, b) => Number(a.reference_number) - Number(b.reference_number)
+  )
+  primaryUUID.value = sorted[0]?.uuid || ''
+}
+
+function addTicket(conv) {
+  if (mergeTickets.value.some(t => t.uuid === conv.uuid)) return
+  mergeTickets.value.push(conv)
+  suggestions.value = suggestions.value.filter(c => c.uuid !== conv.uuid)
+  pickDefaultPrimary()
+}
+
+// Fetch full details (search results don't include contact info), then add.
+async function addByUUID(uuid, num) {
+  if (mergeTickets.value.some(t => t.uuid === uuid)) {
     lookupError.value = `Ticket #${num} is already in the list`
+    return false
+  }
+  lookupError.value = ''
+  try {
+    const fullRes = await api.getConversation(uuid)
+    const fullConv = fullRes.data?.data
+    if (!fullConv) {
+      lookupError.value = `Ticket #${num} not found`
+      return false
+    }
+    if (fullConv.merged_into_id) {
+      lookupError.value = `Ticket #${num} is already merged into another ticket`
+      return false
+    }
+    addTicket(fullConv)
+    ticketNumber.value = ''
+    searchResults.value = []
+    return true
+  } catch (err) {
+    lookupError.value = 'Failed to look up ticket'
+    return false
+  }
+}
+
+async function lookupTicket() {
+  const input = ticketNumber.value.trim().replace(/^#/, '')
+  if (!input) return
+  lookupError.value = ''
+  searchResults.value = []
+
+  const isNumber = /^\d+$/.test(input)
+  if (isNumber && mergeTickets.value.some(t => String(t.reference_number) === input)) {
+    lookupError.value = `Ticket #${input} is already in the list`
+    return
+  }
+  if (input.length < 3) {
+    lookupError.value = 'Enter at least 3 characters to search'
     return
   }
 
   lookingUp.value = true
-  lookupError.value = ''
-
   try {
-    // Search for the ticket by reference number
-    const res = await api.searchConversations({ query: num })
+    const res = await api.searchConversations({ query: input })
     const results = res.data?.data || []
 
-    // Find exact match by reference number
-    const match = results.find(c => String(c.reference_number) === num)
-    if (!match) {
-      lookupError.value = `Ticket #${num} not found`
+    if (isNumber) {
+      // Exact match by reference number
+      const match = results.find(c => String(c.reference_number) === input)
+      if (!match) {
+        lookupError.value = `Ticket #${input} not found`
+        return
+      }
+      await addByUUID(match.uuid, input)
       return
     }
 
-    // Fetch full conversation details (search results don't include contact info)
-    const fullRes = await api.getConversation(match.uuid)
-    const fullConv = fullRes.data?.data
-    if (!fullConv) {
-      lookupError.value = `Ticket #${num} not found`
-      return
-    }
-
-    // Check if it's already merged
-    if (fullConv.merged_into_id) {
-      lookupError.value = `Ticket #${num} is already merged into another ticket`
-      return
-    }
-
-    mergeTickets.value.push(fullConv)
-    ticketNumber.value = ''
-
-    // Auto-select primary if this is the first ticket
-    if (!primaryUUID.value) {
-      primaryUUID.value = fullConv.uuid
+    // Free text (subject / contact email): let the agent pick from the hits.
+    searchResults.value = results.filter(r => !mergeTickets.value.some(t => t.uuid === r.uuid))
+    if (searchResults.value.length === 0) {
+      lookupError.value = 'No matching tickets found'
     }
   } catch (err) {
     lookupError.value = 'Failed to look up ticket'
@@ -214,9 +297,7 @@ async function lookupTicket() {
 
 function removeTicket(uuid) {
   mergeTickets.value = mergeTickets.value.filter(t => t.uuid !== uuid)
-  if (primaryUUID.value === uuid) {
-    primaryUUID.value = mergeTickets.value.length > 0 ? mergeTickets.value[0].uuid : ''
-  }
+  if (primaryUUID.value === uuid) pickDefaultPrimary()
 }
 
 async function handleMerge() {
