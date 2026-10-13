@@ -564,6 +564,24 @@ function handleSendQueued (data) {
   }, UNDO_DELAY_MS)
 }
 
+// Sends are held for UNDO_DELAY_MS so they can be undone, and the editor and
+// draft are cleared immediately. If the tab is closed or reloaded inside that
+// window nothing would ever send it, so the note/reply is silently lost.
+// pagehide is the last chance to hand it to the browser; keepalive lets the
+// request outlive the page. Hiding the tab (visibilitychange) must NOT flush,
+// or switching tabs would defeat undo.
+function flushPendingSendOnUnload () {
+  const send = pendingSend.value
+  if (!send) return
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  if (!api.sendMessageKeepalive(send.uuid, send.payload)) return
+  pendingSend.value = null
+  if (send.statusAfterSend) {
+    api.updateConversationStatusKeepalive(send.uuid, { status: send.statusAfterSend })
+  }
+}
+
 const isFresh = computed(() => currentTheme.value === 'fresh')
 const replyExpanded = ref(false)
 const scrollContainer = ref(null)
@@ -615,6 +633,7 @@ function handleShortcutNote () {
 }
 
 onMounted(() => {
+  window.addEventListener('pagehide', flushPendingSendOnUnload)
   emitter.on('send-queued', handleSendQueued)
   emitter.on('collapse-reply', handleCollapseReply)
   emitter.on('shortcut-escape', handleShortcutEscape)
@@ -624,6 +643,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', flushPendingSendOnUnload)
   // Clear presence when leaving
   sendViewingPresence('')
   // Execute pending send if navigating away — by design the agent chose to

@@ -342,6 +342,26 @@ const sendMessage = (uuid, data) =>
     },
     timeout: 30000
   })
+// Fire-and-forget POST/PUT that survives the page being closed or reloaded.
+// axios (XHR) requests are cancelled on unload; fetch with keepalive is not.
+// Browsers cap keepalive bodies at 64KB, so returns false when the payload is
+// too large and the caller should fall back to a normal request.
+const sendKeepalive = (method, url, data) => {
+  const body = JSON.stringify(data)
+  if (body.length > 60000) return false
+  fetch(url, {
+    method,
+    body,
+    keepalive: true,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFTOKEN': getCSRFToken() }
+  }).catch(() => {})
+  return true
+}
+const sendMessageKeepalive = (uuid, data) =>
+  sendKeepalive('POST', `/api/v1/conversations/${uuid}/messages`, data)
+const updateConversationStatusKeepalive = (uuid, data) =>
+  sendKeepalive('PUT', `/api/v1/conversations/${uuid}/status`, data)
 const getConversation = (uuid) => http.get(`/api/v1/conversations/${uuid}`)
 const getConversationParticipants = (uuid) => http.get(`/api/v1/conversations/${uuid}/participants`)
 const followConversation = (uuid) => http.post(`/api/v1/conversations/${uuid}/follow`)
@@ -692,6 +712,8 @@ export default {
   deleteAutomationRule,
   createConversation,
   sendMessage,
+  sendMessageKeepalive,
+  updateConversationStatusKeepalive,
   redactMessagePCI,
   retryMessage,
   updatePrivateNote,
