@@ -40,7 +40,8 @@ SELECT
 FROM users
 WHERE type = 'contact'
 AND deleted_at IS NULL
-AND (email ILIKE '%' || $1 || '%' OR first_name ILIKE '%' || $1 || '%' OR last_name ILIKE '%' || $1 || '%')
+AND (email ILIKE '%' || $1 || '%' OR first_name ILIKE '%' || $1 || '%' OR last_name ILIKE '%' || $1 || '%'
+     OR (first_name || ' ' || last_name) ILIKE '%' || $1 || '%')
 LIMIT 15;
 
 -- name: search-conversations-by-subject

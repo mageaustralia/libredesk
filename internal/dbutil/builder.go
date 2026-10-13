@@ -30,6 +30,11 @@ type Filter struct {
 	Value    string `json:"value"`
 }
 
+// UserSearchField is a virtual field on the users model. With the ilike
+// operator it matches email, first name, last name or the full name
+// ("first last"), so a person can be found by any of them with one box.
+const UserSearchField = "search"
+
 // AllowedFields is a map of model names to a list of allowed fields for that model.
 type AllowedFields map[string][]string
 
@@ -105,6 +110,19 @@ func buildWhereClause(filters []Filter, existingArgs []interface{}, allowedField
 		}
 
 		field := fmt.Sprintf("%s.%s", f.Model, f.Field)
+
+		if f.Model == "users" && f.Field == UserSearchField {
+			if f.Operator != "ilike" {
+				return "", nil, fmt.Errorf("invalid operator: %s for field: %s", f.Operator, f.Field)
+			}
+			// Collapse runs of whitespace so "John  Smith" still matches the full name.
+			term := strings.Join(strings.Fields(f.Value), " ")
+			conditions = append(conditions, fmt.Sprintf(
+				"(users.email ILIKE $%[1]d OR users.first_name ILIKE $%[1]d OR users.last_name ILIKE $%[1]d OR (users.first_name || ' ' || users.last_name) ILIKE $%[1]d)", paramCount))
+			args = append(args, "%"+term+"%")
+			paramCount++
+			continue
+		}
 
 		switch f.Operator {
 		case "equals":

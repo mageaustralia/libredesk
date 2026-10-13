@@ -7,7 +7,7 @@
         <Input
           type="text"
           v-model="searchTerm"
-          placeholder="Search by email"
+          placeholder="Search by name or email"
           @input="fetchContactsDebounced"
         />
 
@@ -212,13 +212,13 @@ const fetchContactsDebounced = useDebounceFn(() => {
 const fetchContacts = async () => {
   loading.value = true
   let filterJSON = ''
-  if (searchTerm.value && searchTerm.value.length > 3) {
+  if (searchTerm.value && searchTerm.value.trim().length >= 3) {
     filterJSON = JSON.stringify([
       {
         model: 'users',
-        field: 'email',
+        field: 'search',
         operator: 'ilike',
-        value: searchTerm.value
+        value: searchTerm.value.trim()
       }
     ])
   }

@@ -446,7 +446,7 @@ func (u *Manager) makeUserListQuery(page, pageSize int, typ, order, orderBy, fil
 		Page:     page,
 		PageSize: pageSize,
 	}, filtersJSON, dbutil.AllowedFields{
-		"users": {"email", "created_at", "updated_at"},
+		"users": {"email", "created_at", "updated_at", dbutil.UserSearchField},
 	})
 }
 
