@@ -15,7 +15,7 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Personal follow-up reminders on individual tickets, agent-typed instructions in the reply box now also steer RAG search (not just response tone), shared views accept ad-hoc filters on top of their saved filter, bidirectional merge banner with reference numbers across the sidebar, per-type drafts (reply vs private note now persist independently), and notification emails finally render inline images correctly.
+**Latest** — Merge dialog now suggests the same customer's other tickets and lets you find unrelated ones by number, subject or email; contacts can be searched by name as well as email; a note or reply is no longer lost if the tab is closed inside the 5-second undo window; previous/next ticket navigation; "Filter emails like this" automation shortcut; plus the items below. Earlier: Personal follow-up reminders on individual tickets, agent-typed instructions in the reply box now also steer RAG search (not just response tone), shared views accept ad-hoc filters on top of their saved filter, bidirectional merge banner with reference numbers across the sidebar, per-type drafts (reply vs private note now persist independently), and notification emails finally render inline images correctly.
 
 ### Personal Reminders
 
@@ -168,7 +168,51 @@ Merge duplicate or related conversations into a single ticket, consolidating all
 - Secondary tickets are marked as merged and closed with an activity note
 - **Bidirectional merge banner**: merged tickets link back to the primary, and the primary now also banners every secondary it absorbed — no more copying a reference number from one and searching for it on the other
 - **Reference numbers in sidebar previous conversations**: the Previous Conversations panel on every ticket now prefixes each row with `#<ref>` so a merged secondary is recognisable at a glance
+- **Same-customer suggestions**: opening Merge on a ticket automatically lists that customer's other open tickets (matched by contact, i.e. email), one click to add. Tickets already merged away are left out
+- **Find unrelated tickets**: type a ticket number for an exact lookup, or any text (3+ characters) to search by subject or contact email and pick from the results
+- **Sensible default primary**: the lowest-numbered (earliest) ticket is pre-selected as primary, since that is where a split-off reply gets put back. You can still change it
 - Cannot be undone — confirmation dialog warns before merging
+
+### Contact Search by Name
+
+The Contacts page search box and the contact picker (sidebar, recipient fields) match on **name or email**, not just email.
+
+- Matches email, first name, last name, or the full name — `john smith` finds John Smith
+- Case-insensitive partial matching; searches start at 3 characters
+- Backed by a `search` field in the generic filter builder (`ilike` only), so other list views can reuse it
+
+### Reliability & Editor Fixes
+
+- **Held sends survive closing the tab**: replies and notes are held for 5 seconds so they can be undone, and the editor clears immediately. Closing or reloading the page inside that window used to drop the message (and any "send and close" status change) with no draft left behind. The held message is now handed to a `keepalive` request on `pagehide`. Switching browser tabs does not flush, so undo still works. Payloads over the browser's 64KB keepalive limit fall back to the old behaviour
+- **Websocket resync**: after a reconnect or tab refocus the open conversation is re-fetched and missing messages appended, so messages sent while the socket was down no longer stay invisible until a reload
+- **Reply recipients persist**: reassigning a ticket's contact is stored (`conversations.contact_updated_at`), so reply recipients are right after a reload and for other agents. Existing installs need `ALTER TABLE conversations ADD COLUMN contact_updated_at TIMESTAMPTZ NULL`
+- **Draft fixes**: a discarded draft no longer reappears after switching tabs, an empty private note/forward always has a visible way out, "Forward" back to "Reply" restores the thread and recipients, and TO defaults to the contact on conversations with no messages yet
+- **Fixed formatting toolbar**: the macro, contact-note and automation editors use a fixed toolbar instead of the floating bubble menu that covered the text
+
+### Navigation & Automation
+
+- **Previous / next ticket**: header arrows step through the list you opened the ticket from (inbox, team or view) in its current sort order, loading the next page at the end of the loaded list
+- **Filter emails like this…**: new conversation-menu action that opens the new-rule form pre-filled to match the sender with a spam action. Nothing is saved until you review and submit
+- **Clearer automation validation**: Save now explains what is wrong in a toast and scrolls to the first invalid field instead of silently doing nothing
+
+### Notifications & Mentions
+
+- **@mention chips** are highlighted with inline styles so they survive HTML sanitising
+- Participants who were already @mentioned no longer get a second email for the same message
+- Added the `new_reply` and `send_failure` notification types (migration v1.0.9); transient SMTP failures are retried once, and failures log recipients and subject
+- Go template delimiters inside quoted thread content are escaped so they can't break rendering
+
+### Ecommerce & AI Context
+
+- Full order detail is fetched for orders mentioned in the conversation
+- Order history timestamps are converted to local (Australian) time
+- The `magento1` provider package was renamed `maho` to match the platform
+
+### Security & Maintenance
+
+- **Mobile Google sign-in**: the ID token's audience and issuer are now validated against configured `client_ids` (and optionally Workspace domains); the endpoint is disabled when none are configured. See `config.sample.toml`
+- Base image bumped to alpine 3.22 (libheif 1.19) so iPhone HDR gain-map HEIC attachments convert
+- Go modules/toolchain and frontend production dependencies updated to clear `govulncheck` and `pnpm audit` findings; CI is green on those jobs
 
 ### Contact Email Filter
 
