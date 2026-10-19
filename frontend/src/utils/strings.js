@@ -47,6 +47,12 @@ export const isGoHourMinuteDuration = (value) => {
   return regex.test(value)
 }
 
+// True when the HTML embeds an image. An image-only message has no text, so
+// text-based emptiness checks must also look for this.
+export function hasInlineImage (htmlString) {
+  return /<img\b/i.test(htmlString || '')
+}
+
 const template = document.createElement('template')
 export function getTextFromHTML (htmlString) {
   try {

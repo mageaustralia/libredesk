@@ -198,6 +198,7 @@ import { EMITTER_EVENTS } from '@/constants/emitterEvents.js'
 import { MACRO_CONTEXT } from '@/constants/conversation'
 import { useUserStore } from '@/stores/user'
 import { useDraftManager } from '@/composables/useDraftManager'
+import { hasInlineImage } from '@/utils/strings'
 import api from '@/api'
 import { useI18n } from 'vue-i18n'
 import { useConversationStore } from '@/stores/conversation'
@@ -945,8 +946,10 @@ const updateProvider = async (values) => {
   }
 }
 
+// "Has content" for send/discard purposes: text, or an image pasted/inserted
+// into the editor (which contributes no text).
 const hasTextContent = computed(() => {
-  return textContent.value.trim().length > 0
+  return textContent.value.trim().length > 0 || hasInlineImage(htmlContent.value)
 })
 
 // Track when agent starts composing

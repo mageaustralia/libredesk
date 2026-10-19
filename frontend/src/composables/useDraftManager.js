@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 import { watchDebounced, useStorage, useEventListener } from '@vueuse/core'
 import { useConversationStore } from '@/stores/conversation'
 import { MACRO_CONTEXT } from '@/constants/conversation'
-import { getTextFromHTML } from '@/utils/strings'
+import { getTextFromHTML, hasInlineImage } from '@/utils/strings'
 import api from '@/api'
 
 /**
@@ -43,7 +43,7 @@ const isDraftEmpty = (draft) => {
   const textContent = getTextFromHTML(draft.content || '')
   const hasAttachments = draft.meta?.attachments?.length > 0
   const hasMacroActions = draft.meta?.macro_actions?.length > 0
-  return textContent.length === 0 && !hasAttachments && !hasMacroActions
+  return textContent.length === 0 && !hasInlineImage(draft.content) && !hasAttachments && !hasMacroActions
 }
 
 /**

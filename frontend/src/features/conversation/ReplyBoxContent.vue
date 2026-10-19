@@ -219,7 +219,7 @@ import AttachmentsPreview from '@/features/conversation/message/attachment/Attac
 import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue'
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { useI18n } from 'vue-i18n'
-import { validateEmail } from '@/utils/strings'
+import { validateEmail, hasInlineImage } from '@/utils/strings'
 import { useMacroStore } from '@/stores/macro'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
@@ -382,6 +382,7 @@ const toggleFullscreen = () => {
 const enableSend = computed(() => {
   return (
     (textContent.value.trim().length > 0 ||
+      hasInlineImage(htmlContent.value) ||
       conversationStore.getMacro('reply')?.actions?.length > 0 ||
       props.uploadedFiles.length > 0) &&
     emailErrors.value.length === 0 &&
