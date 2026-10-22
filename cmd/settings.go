@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"net/smtp"
+	"regexp"
 	"strings"
 	"time"
 
@@ -491,4 +492,56 @@ func handleUpdatePCISettings(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 	return r.SendEnvelope(true)
+}
+
+// handleGetSpamRescueSettings fetches spam-rescue settings, with defaults applied.
+func handleGetSpamRescueSettings(r *fastglue.Request) error {
+	app := r.Context.(*App)
+	out, err := app.setting.GetSpamRescueSettings()
+	if err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(out)
+}
+
+// handleUpdateSpamRescueSettings updates spam-rescue settings.
+func handleUpdateSpamRescueSettings(r *fastglue.Request) error {
+	app := r.Context.(*App)
+	var req models.SpamRescueSettings
+	if err := r.Decode(&req, "json"); err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.badRequest"), nil, envelope.InputError)
+	}
+	if req.Mode != "shadow" && req.Mode != "live" {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Invalid mode. Use: shadow or live", nil, envelope.InputError)
+	}
+	if req.AIMinConfidence < 0 || req.AIMinConfidence > 1 {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Minimum confidence must be between 0 and 1", nil, envelope.InputError)
+	}
+	if req.OrderNumberPattern != "" {
+		if _, err := regexp.Compile(req.OrderNumberPattern); err != nil {
+			return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Order number pattern is not a valid regular expression", nil, envelope.InputError)
+		}
+	}
+	// Normalise list inputs so a cleared list is stored as [] rather than null.
+	req.TrustedEmails = cleanList(req.TrustedEmails)
+	req.TrustedDomains = cleanList(req.TrustedDomains)
+	if err := app.setting.Update(req); err != nil {
+		return sendErrorEnvelope(r, err)
+	}
+	return r.SendEnvelope(true)
+}
+
+// cleanList trims, lowercases and de-duplicates a list of addresses or domains.
+func cleanList(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, v := range in {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }

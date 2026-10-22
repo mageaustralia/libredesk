@@ -219,6 +219,12 @@ const routes = [
             meta: { title: 'Trash & Cleanup' }
           },
           {
+            path: 'spam-rescue',
+            name: 'spam-rescue-settings',
+            component: () => import('@/views/admin/spam-rescue/SpamRescueSettings.vue'),
+            meta: { title: 'Spam Rescue' }
+          },
+          {
             path: 'pci',
             name: 'pci-settings',
             component: () => import('@/views/admin/pci/PCISettings.vue'),

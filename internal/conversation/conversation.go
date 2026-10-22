@@ -82,6 +82,10 @@ type Manager struct {
 	outgoingMessageQueue       chan models.Message
 	TranscribeFunc             func(audioData []byte, filename string) (string, error)
 	IMAPUnspamFunc             func(inboxID int, messageID string) error
+	// Optional lookups for spam-rescue rules; a nil func disables that rule.
+	SpamRescueCustomerFunc func(ctx context.Context, email string) (bool, error)
+	SpamRescueOrderFunc    func(ctx context.Context, orderNumber, email string) (bool, error)
+	SpamRescueClassifyFunc func(systemPrompt, userPrompt string) (string, error)
 	outgoingProcessingMessages sync.Map
 	closed                     bool
 	closedMu                   sync.RWMutex
@@ -136,6 +140,7 @@ type settingsStore interface {
 	GetAppRootURL() (string, error)
 	GetAISettings() (settingmodels.AISettings, error)
 	GetPCISettings() (settingmodels.PCISettings, error)
+	GetSpamRescueSettings() (settingmodels.SpamRescueSettings, error)
 }
 
 type csatStore interface {
@@ -275,6 +280,7 @@ type queries struct {
 	MarkAsSpam                *sqlx.Stmt `query:"mark-as-spam"`
 	MarkAsNotSpam             *sqlx.Stmt `query:"mark-as-not-spam"`
 	ContactHasPriorAgentReply *sqlx.Stmt `query:"contact-has-prior-agent-reply"`
+	ReferencesOurMessage      *sqlx.Stmt `query:"references-our-message"`
 	GetLatestIncomingSourceID *sqlx.Stmt `query:"get-latest-incoming-source-id"`
 	AutoTrashResolved  *sqlx.Stmt `query:"auto-trash-old-resolved"`
 	AutoTrashSpam      *sqlx.Stmt `query:"auto-trash-old-spam"`

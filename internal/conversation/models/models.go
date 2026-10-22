@@ -57,6 +57,7 @@ var (
 	ActivityTagAdded           = "tag_added"
 	ActivityTagRemoved         = "tag_removed"
 	ActivitySLASet             = "sla_set"
+	ActivitySpamRescue         = "spam_rescue"
 
 	ContentTypeText = "text"
 	ContentTypeHTML = "html"

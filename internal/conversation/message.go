@@ -931,6 +931,8 @@ func (m *Manager) getMessageActivityContent(activityType, newValue, actorName st
 		content = fmt.Sprintf("%s removed tag %s", actorName, newValue)
 	case models.ActivitySLASet:
 		content = fmt.Sprintf("%s set %s SLA policy", actorName, newValue)
+	case models.ActivitySpamRescue:
+		content = newValue
 	default:
 		return "", fmt.Errorf("invalid activity type %s", activityType)
 	}
@@ -1081,6 +1083,9 @@ func (m *Manager) processIncomingMessage(in models.IncomingMessage) error {
 		knownSender, checkErr := m.ContactHasPriorAgentReply(in.Contact.ID)
 		if checkErr != nil {
 			m.lo.Error("error checking prior agent reply, defaulting to spam classification", "error", checkErr, "contact_id", in.Contact.ID)
+		}
+		if !knownSender {
+			knownSender = m.spamRescue(in)
 		}
 		if !knownSender {
 			// System-driven spam classification — pass zero-value actor; the manager

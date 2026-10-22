@@ -48,6 +48,11 @@ export const adminNavItems = [
         permission: 'general_settings:manage'
       },
       {
+        titleKey: 'Spam Rescue',
+        href: '/admin/spam-rescue',
+        permission: 'general_settings:manage'
+      },
+      {
         titleKey: 'PCI Redaction',
         href: '/admin/pci',
         permission: 'general_settings:manage'

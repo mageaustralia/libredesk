@@ -41,6 +41,8 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.POST("/api/v1/settings/notifications/email/test", perm(handleTestEmailNotificationSettings, "notification_settings:manage"))
 	g.GET("/api/v1/settings/trash", perm(handleGetTrashSettings, "general_settings:manage"))
 	g.PUT("/api/v1/settings/trash", perm(handleUpdateTrashSettings, "general_settings:manage"))
+	g.GET("/api/v1/settings/spam-rescue", perm(handleGetSpamRescueSettings, "general_settings:manage"))
+	g.PUT("/api/v1/settings/spam-rescue", perm(handleUpdateSpamRescueSettings, "general_settings:manage"))
 	g.GET("/api/v1/settings/pci", perm(handleGetPCISettings, "general_settings:manage"))
 	g.PUT("/api/v1/settings/pci", perm(handleUpdatePCISettings, "general_settings:manage"))
 	g.GET("/api/v1/settings/ai", perm(handleGetAISettings, "ai:manage"))

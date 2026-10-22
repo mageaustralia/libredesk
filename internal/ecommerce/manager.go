@@ -350,3 +350,33 @@ func (m *Manager) GetOrderByNumber(ctx context.Context, orderNumber string) (*Or
 	}
 	return m.provider.GetOrderByNumber(ctx, orderNumber)
 }
+
+// CustomerExists reports whether the provider knows a customer with this email.
+// Returns false (no error) when no provider is configured or the customer is not found.
+func (m *Manager) CustomerExists(ctx context.Context, email string) (bool, error) {
+	if m.provider == nil {
+		return false, nil
+	}
+	c, err := m.provider.GetCustomerByEmail(ctx, email)
+	if err == ErrNotFound {
+		return false, nil
+	}
+	return c != nil, err
+}
+
+// OrderBelongsToEmail reports whether an order with this display number exists and
+// was placed by the given email. Returns false (no error) when no provider is
+// configured or the order is not found.
+func (m *Manager) OrderBelongsToEmail(ctx context.Context, orderNumber, email string) (bool, error) {
+	if m.provider == nil {
+		return false, nil
+	}
+	o, err := m.provider.GetOrderByNumber(ctx, orderNumber)
+	if err == ErrNotFound {
+		return false, nil
+	}
+	if err != nil || o == nil {
+		return false, err
+	}
+	return strings.EqualFold(o.CustomerEmail, email), nil
+}
