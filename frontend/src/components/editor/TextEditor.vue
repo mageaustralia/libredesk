@@ -714,12 +714,28 @@ const CustomTableHeader = TableHeader.extend({
 
 // Extend Mention to include 'type' attribute for agent/team distinction
 const CustomMention = Mention.extend({
+  // The `type` attribute below renders as data-type="agent"|"team", which replaces
+  // the default data-type="mention" that Mention's own parse rule matches. Without
+  // these rules the editor cannot re-read its own output, and mentions silently
+  // turn into plain "@Name" text whenever saved HTML is loaded back (restored
+  // drafts, editing a note, pasting a copied mention).
+  parseHTML() {
+    return [
+      { tag: 'span[data-type="agent"]' },
+      { tag: 'span[data-type="team"]' },
+      { tag: 'span[data-type="mention"]' }
+    ]
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
       type: {
         default: null,
-        parseHTML: (element) => element.getAttribute('data-type'),
+        // Legacy markup used data-type="mention"; treat it as an agent mention.
+        parseHTML: (element) => {
+          const t = element.getAttribute('data-type')
+          return t === 'agent' || t === 'team' ? t : 'agent'
+        },
         renderHTML: (attributes) => {
           if (!attributes.type) return {}
           return { 'data-type': attributes.type }
