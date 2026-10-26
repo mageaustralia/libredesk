@@ -59,6 +59,7 @@ var (
 	ActivitySLASet             = "sla_set"
 	ActivityParticipantAdded   = "participant_added"
 	ActivityMessageForwarded   = "message_forwarded"
+	ActivitySpamRescue         = "spam_rescue"
 
 	ContentTypeText = "text"
 	ContentTypeHTML = "html"

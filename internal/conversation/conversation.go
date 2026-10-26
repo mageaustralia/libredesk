@@ -97,6 +97,13 @@ type Manager struct {
 	// without depending on the inbox package directly. nil-safe.
 	IMAPUnspamFunc func(inboxID int, messageID string) error
 
+	// Optional lookups for spam-rescue rules; a nil func disables that rule.
+	// The ecommerce lookups are inbox-scoped because each inbox can point at
+	// its own store.
+	SpamRescueCustomerFunc func(ctx context.Context, inboxID int, email string) (bool, error)
+	SpamRescueOrderFunc    func(ctx context.Context, inboxID int, orderNumber, email string) (bool, error)
+	SpamRescueClassifyFunc func(systemPrompt, userPrompt string) (string, error)
+
 	// IMAPDeleteFunc, when set, removes the original email from the IMAP
 	// source mailbox after PCI redaction has scrubbed the DB-stored copy.
 	// Wired in cmd/main.go to the inbox manager's DeleteIMAPMessage. T3y
@@ -188,6 +195,7 @@ type settingsStore interface {
 	GetByPrefix(prefix string) (types.JSONText, error)
 	Get(key string) (types.JSONText, error)
 	GetPCISettings() (settingmodels.PCISettings, error)
+	GetSpamRescueSettings() (settingmodels.SpamRescueSettings, error)
 	GetAISettings() (settingmodels.AISettings, error)
 }
 
@@ -370,6 +378,7 @@ type queries struct {
 
 	// Spam and trash queries.
 	ContactHasPriorAgentReply *sqlx.Stmt `query:"contact-has-prior-agent-reply"`
+	ReferencesOurMessage      *sqlx.Stmt `query:"references-our-message"`
 	GetLatestIncomingSourceID *sqlx.Stmt `query:"get-latest-incoming-source-id"`
 	AutoTrashResolved         *sqlx.Stmt `query:"auto-trash-old-resolved"`
 	AutoTrashSpam             *sqlx.Stmt `query:"auto-trash-old-spam"`

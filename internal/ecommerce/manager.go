@@ -520,3 +520,36 @@ func (m *Manager) GetOrderByNumberForInbox(ctx context.Context, inboxID int, inb
 	}
 	return provider.GetOrderByNumber(ctx, orderNumber)
 }
+
+// CustomerExistsForInbox reports whether the inbox's store (or the global one when
+// the inbox has no config of its own) knows a customer with this email. Returns
+// false without error when no provider is configured or the customer is not found.
+func (m *Manager) CustomerExistsForInbox(ctx context.Context, inboxID int, inboxConfig *ProviderConfig, email string) (bool, error) {
+	provider, err := m.ProviderForInbox(inboxID, inboxConfig)
+	if err != nil || provider == nil {
+		return false, err
+	}
+	c, err := provider.GetCustomerByEmail(ctx, email)
+	if err == ErrNotFound {
+		return false, nil
+	}
+	return c != nil, err
+}
+
+// OrderBelongsToEmailForInbox reports whether an order with this display number
+// exists in the inbox's store and was placed by the given email. Returns false
+// without error when no provider is configured or the order is not found.
+func (m *Manager) OrderBelongsToEmailForInbox(ctx context.Context, inboxID int, inboxConfig *ProviderConfig, orderNumber, email string) (bool, error) {
+	provider, err := m.ProviderForInbox(inboxID, inboxConfig)
+	if err != nil || provider == nil {
+		return false, err
+	}
+	o, err := provider.GetOrderByNumber(ctx, orderNumber)
+	if err == ErrNotFound {
+		return false, nil
+	}
+	if err != nil || o == nil {
+		return false, err
+	}
+	return strings.EqualFold(o.CustomerEmail, email), nil
+}

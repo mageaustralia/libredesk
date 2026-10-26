@@ -176,3 +176,20 @@ type InboxAISettings struct {
 	ExternalSearchTimeoutMs int             `db:"external_search_timeout_ms" json:"external_search_timeout_ms"`
 	KnowledgeSourceIDs       json.RawMessage `db:"knowledge_source_ids" json:"knowledge_source_ids"`
 }
+
+// SpamRescueSettings configures the "not spam" rescue for messages that a mail
+// provider filed in its spam folder. Everything business-specific is data here.
+type SpamRescueSettings struct {
+	Enabled bool `json:"spam_rescue.enabled" db:"spam_rescue.enabled"`
+	// Mode is "shadow" (record what would be rescued, change nothing) or "live".
+	Mode                  string   `json:"spam_rescue.mode" db:"spam_rescue.mode"`
+	RuleReplyToThread     bool     `json:"spam_rescue.rule_reply_to_thread" db:"spam_rescue.rule_reply_to_thread"`
+	RuleEcommerceCustomer bool     `json:"spam_rescue.rule_ecommerce_customer" db:"spam_rescue.rule_ecommerce_customer"`
+	RuleOrderNumber       bool     `json:"spam_rescue.rule_order_number" db:"spam_rescue.rule_order_number"`
+	OrderNumberPattern    string   `json:"spam_rescue.order_number_pattern" db:"spam_rescue.order_number_pattern"`
+	TrustedEmails         []string `json:"spam_rescue.trusted_emails" db:"spam_rescue.trusted_emails"`
+	TrustedDomains        []string `json:"spam_rescue.trusted_domains" db:"spam_rescue.trusted_domains"`
+	AIEnabled             bool     `json:"spam_rescue.ai_enabled" db:"spam_rescue.ai_enabled"`
+	AIContext             string   `json:"spam_rescue.ai_context" db:"spam_rescue.ai_context"`
+	AIMinConfidence       float64  `json:"spam_rescue.ai_min_confidence" db:"spam_rescue.ai_min_confidence"`
+}

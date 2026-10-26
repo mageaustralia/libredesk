@@ -381,6 +381,22 @@ func main() {
 		lo.Warn("failed to initialize ecommerce manager", "error", err)
 	}
 
+	// Spam-rescue lookups. app.ecommerce is read at call time because the
+	// settings page can replace it while the app is running.
+	conversation.SpamRescueCustomerFunc = func(ctx context.Context, inboxID int, email string) (bool, error) {
+		if em := app.ecommerce; em != nil {
+			return em.CustomerExistsForInbox(ctx, inboxID, app.resolveInboxEcommerceConfig(inboxID), email)
+		}
+		return false, nil
+	}
+	conversation.SpamRescueOrderFunc = func(ctx context.Context, inboxID int, orderNumber, email string) (bool, error) {
+		if em := app.ecommerce; em != nil {
+			return em.OrderBelongsToEmailForInbox(ctx, inboxID, app.resolveInboxEcommerceConfig(inboxID), orderNumber, email)
+		}
+		return false, nil
+	}
+	conversation.SpamRescueClassifyFunc = aiMgr.CompletionWithSystemPrompt
+
 	g := fastglue.NewGlue()
 	g.SetContext(app)
 	initHandlers(g, wsHub)

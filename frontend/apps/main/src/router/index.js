@@ -209,6 +209,12 @@ const routes = [
             meta: { titleKey: 'admin.trash.title' }
           },
           {
+            path: 'spam-rescue',
+            name: 'spam-rescue-settings',
+            component: () => import('@main/views/admin/spam-rescue/SpamRescueSettings.vue'),
+            meta: { titleKey: 'admin.spamRescue.title' }
+          },
+          {
             path: 'pci',
             name: 'pci-settings',
             component: () => import('@main/views/admin/pci/PCISettings.vue'),

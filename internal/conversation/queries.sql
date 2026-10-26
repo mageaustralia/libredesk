@@ -1065,6 +1065,15 @@ SELECT EXISTS (
       AND m.type = 'outgoing'
 );
 
+-- name: references-our-message
+-- True if any of the given In-Reply-To / References values is the source ID of a
+-- message an agent sent, i.e. the incoming email is a reply to us.
+SELECT EXISTS (
+    SELECT 1 FROM conversation_messages
+    WHERE source_id = ANY($1::text[])
+      AND type = 'outgoing'
+);
+
 -- name: get-latest-incoming-source-id
 -- Returns the IMAP Message-ID (source_id) and inbox id of the most recent
 -- incoming message for a conversation. Used by the manual "not spam" handler

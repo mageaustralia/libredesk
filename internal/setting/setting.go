@@ -448,3 +448,23 @@ func (m *Manager) decryptIfNeeded(key, value string) (string, error) {
 
 	return decrypted, nil
 }
+
+// GetSpamRescueSettings returns the spam-rescue settings, applying defaults for
+// anything not yet saved. The feature is off until an admin enables it.
+func (m *Manager) GetSpamRescueSettings() (models.SpamRescueSettings, error) {
+	out := models.SpamRescueSettings{
+		Mode:                  "shadow",
+		RuleReplyToThread:     true,
+		RuleEcommerceCustomer: true,
+		AIMinConfidence:       0.9,
+	}
+	b, err := m.GetByPrefix("spam_rescue.")
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal([]byte(b), &out); err != nil {
+		m.lo.Error("error unmarshalling spam rescue settings", "error", err)
+		return out, envelope.NewError(envelope.GeneralError, "Error parsing spam rescue settings", nil)
+	}
+	return out, nil
+}

@@ -58,7 +58,8 @@ import {
   CircleUser,
   Contact,
   Activity,
-  ShoppingCart
+  ShoppingCart,
+  MailCheck
 } from 'lucide-vue-next'
 
 const navIconMap = {
@@ -89,7 +90,8 @@ const navIconMap = {
   Database,
   Mic,
   Activity,
-  ShoppingCart
+  ShoppingCart,
+  MailCheck
 }
 import {
   DropdownMenu,

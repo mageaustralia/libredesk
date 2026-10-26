@@ -1100,6 +1100,8 @@ func (m *Manager) getMessageActivityContent(activityType, newValue, actorName st
 		content = fmt.Sprintf("%s joined the conversation", newValue)
 	case models.ActivityMessageForwarded:
 		content = fmt.Sprintf("%s forwarded the conversation to %s", actorName, newValue)
+	case models.ActivitySpamRescue:
+		content = newValue
 	default:
 		return "", fmt.Errorf("invalid activity type %s", activityType)
 	}
@@ -1251,6 +1253,9 @@ func (m *Manager) ProcessIncomingMessage(in models.IncomingMessage) (models.Mess
 		knownSender, checkErr := m.ContactHasPriorAgentReply(in.Contact.ID)
 		if checkErr != nil {
 			m.lo.Error("error checking prior agent reply, defaulting to spam classification", "error", checkErr, "contact_id", in.Contact.ID, "uuid", msg.ConversationUUID)
+		}
+		if !knownSender {
+			knownSender = m.spamRescue(in, msg.ConversationUUID)
 		}
 		if !knownSender {
 			systemUser, err := m.userStore.GetSystemUser()

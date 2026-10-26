@@ -44,6 +44,12 @@ export const adminNavItems = [
         icon: 'Trash2'
       },
       {
+        titleKey: 'admin.spamRescue.title',
+        href: '/admin/spam-rescue',
+        permission: 'general_settings:manage',
+        icon: 'MailCheck'
+      },
+      {
         titleKey: 'admin.pci.title',
         href: '/admin/pci',
         permission: 'general_settings:manage',
