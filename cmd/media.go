@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -230,11 +232,41 @@ func serveMediaFile(r *fastglue.Request, app *App, uuid string, media *mmodels.M
 		r.RequestCtx.Response.Header.Set("Content-Type", media.ContentType)
 		r.RequestCtx.Response.Header.Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, media.Filename))
 
-		fasthttp.ServeFile(r.RequestCtx, filepath.Join(ko.String("upload.fs.upload_path"), uuid))
+		uploadPath := ko.String("upload.fs.upload_path")
+		fileName := uuid
+		if strings.HasPrefix(uuid, image.ThumbPrefix) {
+			fileName = ensureThumb(app, uploadPath, uuid, media)
+		}
+		fasthttp.ServeFile(r.RequestCtx, filepath.Join(uploadPath, fileName))
 	case "s3":
 		r.RequestCtx.Redirect(app.media.GetURL(uuid, media.ContentType, media.Filename), http.StatusFound)
 	}
 	return nil
+}
+
+// ensureThumb returns the stored file name to serve for a thumbnail request. Thumbnails are
+// created at upload time, but a few attachments end up without one, which shows as a broken
+// image in the UI. If the thumbnail is missing it is generated from the original and stored.
+// If that is not possible the original is served instead, so the <img> still renders.
+func ensureThumb(app *App, uploadPath, thumbName string, media *mmodels.Media) string {
+	if _, err := os.Stat(filepath.Join(uploadPath, thumbName)); err == nil {
+		return thumbName
+	}
+	blob, err := app.media.GetBlob(media.UUID)
+	if err != nil {
+		app.lo.Error("error reading original for missing thumbnail", "media_uuid", media.UUID, "error", err)
+		return media.UUID
+	}
+	thumb, err := image.CreateThumb(image.DefThumbSize, bytes.NewReader(blob))
+	if err != nil {
+		app.lo.Warn("error generating missing thumbnail, serving original", "media_uuid", media.UUID, "error", err)
+		return media.UUID
+	}
+	if _, _, err := app.media.Upload(thumbName, media.ContentType, thumb); err != nil {
+		app.lo.Error("error storing generated thumbnail", "media_uuid", media.UUID, "error", err)
+		return media.UUID
+	}
+	return thumbName
 }
 
 // bytesToMegabytes converts bytes to megabytes.
