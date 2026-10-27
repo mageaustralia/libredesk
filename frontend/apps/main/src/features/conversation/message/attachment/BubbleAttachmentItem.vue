@@ -13,8 +13,9 @@
         >
           <template v-if="isImage">
             <img
-              :src="getThumbFilepath(attachment.url)"
+              :src="thumbSrc"
               :alt="attachment.name"
+              @error="onThumbError"
               class="w-full h-full object-cover"
             />
             <div
@@ -81,6 +82,14 @@ const props = defineProps({
 const emit = defineEmits(['preview'])
 
 const showAudio = ref(false)
+
+// Fall back to the full-size image if the thumbnail can't be loaded.
+const thumbSrc = ref(getThumbFilepath(props.attachment.url))
+const onThumbError = () => {
+  if (thumbSrc.value !== props.attachment.url) {
+    thumbSrc.value = props.attachment.url
+  }
+}
 
 const shortName = (name) => (name || '').substring(0, 40)
 
