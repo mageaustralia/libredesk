@@ -42,6 +42,19 @@ type PCIRedactMessage struct {
 	InboxID          int         `db:"inbox_id"`
 }
 
+// containsCardholderData reports whether the scrub result includes a card number or CVV.
+// An expiry date on its own is not cardholder data. The scrubber reports one whenever
+// the text has a payment keyword and a "valid until <date>" style phrase, which is how
+// PayPal authorisation notices ended up flagged and auto-redacted.
+func containsCardholderData(spans []pciscrub.ScrubSpan) bool {
+	for _, sp := range spans {
+		if sp.Type == "card" || sp.Type == "cvv" {
+			return true
+		}
+	}
+	return false
+}
+
 // RedactMessagePCI scrubs PCI data from a message's content and text_content
 // in the DB. Returns the pre-redaction message metadata so the caller can
 // drive IMAP cleanup + activity note insertion. The caller enforces

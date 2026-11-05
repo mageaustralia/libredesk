@@ -907,7 +907,7 @@ func (m *Manager) InsertMessage(message *models.Message) error {
 		}
 		if !skipPCI {
 			result := pciscrub.ScrubWithSpans(message.TextContent)
-			if len(result.Spans) > 0 {
+			if containsCardholderData(result.Spans) {
 				if _, err := m.q.FlagMessagePCI.Exec(message.ID); err != nil {
 					m.lo.Error("error flagging message with PCI data", "error", err, "message_id", message.ID)
 				} else {
