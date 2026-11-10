@@ -17,6 +17,10 @@ const (
 	PermMessagesRead                    = "messages:read"
 	PermMessagesWrite                   = "messages:write"
 	PermMessagesWriteAsContact          = "messages:write_as_contact"
+	// PermMessagesWritePrivate allows private notes only, never customer-facing replies.
+	PermMessagesWritePrivate = "messages:write_private"
+	// PermConversationsDelete allows permanent deletion of trashed conversations.
+	PermConversationsDelete = "conversations:delete"
 
 	// View
 	PermViewManage        = "view:manage"
@@ -108,6 +112,8 @@ var validPermissions = map[string]struct{}{
 	PermMessagesRead:                    {},
 	PermMessagesWrite:                   {},
 	PermMessagesWriteAsContact:          {},
+	PermMessagesWritePrivate:            {},
+	PermConversationsDelete:             {},
 	PermViewManage:                      {},
 	PermSharedViewsManage:               {},
 	PermStatusManage:                    {},

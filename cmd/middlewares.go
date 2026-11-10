@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	realip "github.com/ferluci/fast-realip"
+
 	amodels "github.com/abhinavxd/libredesk/internal/auth/models"
 	"github.com/abhinavxd/libredesk/internal/envelope"
 	"github.com/abhinavxd/libredesk/internal/user/models"
@@ -144,7 +146,7 @@ func auth(handler fastglue.FastRequestHandler) fastglue.FastRequestHandler {
 			LastName:  user.LastName,
 		})
 
-		return handler(r)
+		return auditAPIKey(r, app, user, func() error { return handler(r) })
 	}
 }
 
@@ -177,7 +179,9 @@ func perm(handler fastglue.FastRequestHandler, perm string) fastglue.FastRequest
 			return r.SendErrorEnvelope(http.StatusInternalServerError, app.i18n.Ts("globals.messages.errorChecking", "name", "{globals.terms.permission}"), nil, envelope.GeneralError)
 		}
 		if !ok {
-			return r.SendErrorEnvelope(http.StatusForbidden, app.i18n.Ts("globals.messages.denied", "name", "{globals.terms.permission}"), nil, envelope.PermissionError)
+			return auditAPIKey(r, app, user, func() error {
+				return r.SendErrorEnvelope(http.StatusForbidden, app.i18n.Ts("globals.messages.denied", "name", "{globals.terms.permission}"), nil, envelope.PermissionError)
+			})
 		}
 
 		// Set user in the request context.
@@ -188,7 +192,7 @@ func perm(handler fastglue.FastRequestHandler, perm string) fastglue.FastRequest
 			LastName:  user.LastName,
 		})
 
-		return handler(r)
+		return auditAPIKey(r, app, user, func() error { return handler(r) })
 	}
 }
 
@@ -304,4 +308,31 @@ func authOrSignedURL(handler fastglue.FastRequestHandler) fastglue.FastRequestHa
 		r.RequestCtx.SetUserValue("auth_method", "signed_url")
 		return handler(r)
 	}
+}
+
+// usedAPIKey reports whether the request authenticated with an API key.
+func usedAPIKey(r *fastglue.Request) bool {
+	k, sec, err := r.ParseAuthHeader(fastglue.AuthBasic | fastglue.AuthToken)
+	return err == nil && len(k) > 0 && len(sec) > 0
+}
+
+// auditAPIKey runs fn and, for API-key requests that change state or were
+// refused, records the method, path and resulting status in the activity log.
+// Plain successful reads are not logged (too noisy for a polling client).
+func auditAPIKey(r *fastglue.Request, app *App, user models.User, fn func() error) error {
+	err := fn()
+	if !usedAPIKey(r) {
+		return err
+	}
+	method := string(r.RequestCtx.Method())
+	status := r.RequestCtx.Response.StatusCode()
+	if method == "GET" && status < 400 {
+		return err
+	}
+	ip := realip.FromRequest(r.RequestCtx)
+	country := string(r.RequestCtx.Request.Header.Peek("CF-IPCountry"))
+	if aerr := app.activityLog.APIRequest(user.ID, user.Email.String, ip, country, method, string(r.RequestCtx.Path()), status); aerr != nil {
+		app.lo.Error("error writing API audit log", "error", aerr)
+	}
+	return err
 }

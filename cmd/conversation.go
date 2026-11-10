@@ -440,7 +440,7 @@ func handleUpdateUserAssignee(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
-	conversation, err := enforceConversationAccess(app, uuid, user)
+	conversation, err := enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -483,7 +483,7 @@ func handleUpdateTeamAssignee(r *fastglue.Request) error {
 		return sendErrorEnvelope(r, err)
 	}
 
-	conversation, err := enforceConversationAccess(app, uuid, user)
+	conversation, err := enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -522,7 +522,7 @@ func handleUpdateConversationPriority(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	_, err = enforceConversationAccess(app, uuid, user)
+	_, err = enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -569,7 +569,7 @@ func handleUpdateConversationStatus(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	conversation, err := enforceConversationAccess(app, uuid, user)
+	conversation, err := enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -718,7 +718,7 @@ func handleRemoveUserAssignee(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	_, err = enforceConversationAccess(app, uuid, user)
+	_, err = enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -739,7 +739,7 @@ func handleRemoveTeamAssignee(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	_, err = enforceConversationAccess(app, uuid, user)
+	_, err = enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
@@ -942,7 +942,7 @@ func handleMoveToTrash(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+	if _, err := enforceConversationWrite(app, r, uuid, user); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	if err := app.conversation.MoveToTrash(uuid, user); err != nil {
@@ -962,7 +962,7 @@ func handleRestoreFromTrash(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+	if _, err := enforceConversationWrite(app, r, uuid, user); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	if err := app.conversation.RestoreFromTrash(uuid, user); err != nil {
@@ -1001,6 +1001,30 @@ func handlePermanentDeleteConversation(r *fastglue.Request) error {
 	}
 	return r.SendEnvelope(true)
 }
+// enforceConversationWrite is enforceConversationAccess for state-changing
+// handlers. If the caller sends an X-Expected-Updated-At header (the
+// conversation's updated_at as last read), the change is refused with 409 when
+// the conversation has changed since, so automated clients never overwrite a
+// staff edit made in between. Without the header behaviour is unchanged.
+func enforceConversationWrite(app *App, r *fastglue.Request, uuid string, user umodels.User) (*cmodels.Conversation, error) {
+	conv, err := enforceConversationAccess(app, uuid, user)
+	if err != nil {
+		return nil, err
+	}
+	expected := string(r.RequestCtx.Request.Header.Peek("X-Expected-Updated-At"))
+	if expected == "" {
+		return conv, nil
+	}
+	t, perr := time.Parse(time.RFC3339Nano, expected)
+	if perr != nil {
+		return nil, envelope.NewError(envelope.InputError, "Invalid X-Expected-Updated-At header", nil)
+	}
+	if !t.Equal(conv.UpdatedAt) {
+		return nil, envelope.NewError(envelope.ConflictError, "Conversation changed since it was read; re-read it and retry", nil)
+	}
+	return conv, nil
+}
+
 // handleMarkAsSpam marks a conversation as spam.
 func handleMarkAsSpam(r *fastglue.Request) error {
 	var (
@@ -1012,7 +1036,7 @@ func handleMarkAsSpam(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+	if _, err := enforceConversationWrite(app, r, uuid, user); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	if err := app.conversation.MarkAsSpam(uuid, user); err != nil {
@@ -1032,7 +1056,7 @@ func handleMarkAsNotSpam(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	if _, err := enforceConversationAccess(app, uuid, user); err != nil {
+	if _, err := enforceConversationWrite(app, r, uuid, user); err != nil {
 		return sendErrorEnvelope(r, err)
 	}
 	if err := app.conversation.MarkAsNotSpam(uuid, user); err != nil {

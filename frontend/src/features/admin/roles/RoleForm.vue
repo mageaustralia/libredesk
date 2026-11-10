@@ -142,9 +142,14 @@ const permissions = ref([
         name: perms.CONVERSATIONS_UPDATE_STATUS,
         label: t('admin.role.conversations.updateStatus')
       },
+      {
+        name: perms.CONVERSATIONS_DELETE,
+        label: t('admin.role.conversations.delete')
+      },
       { name: perms.CONVERSATIONS_UPDATE_TAGS, label: t('admin.role.conversations.updateTags') },
       { name: perms.MESSAGES_READ, label: t('admin.role.messages.read') },
       { name: perms.MESSAGES_WRITE, label: t('admin.role.messages.write') },
+      { name: perms.MESSAGES_WRITE_PRIVATE, label: t('admin.role.messages.writePrivate') },
       { name: perms.MESSAGES_WRITE_AS_CONTACT, label: t('admin.role.messages.writeAsContact') },
       { name: perms.VIEW_MANAGE, label: t('admin.role.view.manage') }
     ]

@@ -12,6 +12,7 @@ const (
 	AgentOnline                 = "agent_online"
 	AgentPasswordSet            = "agent_password_set"
 	AgentRolePermissionsChanged = "agent_role_permissions_changed"
+	APIRequest                  = "api_request"
 )
 
 type ActivityLog struct {

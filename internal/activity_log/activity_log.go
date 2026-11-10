@@ -227,6 +227,20 @@ func (al *Manager) RolePermissionsChanged(actorID int, actorEmail, ip, country s
 	)
 }
 
+// APIRequest records a state-changing request made with an API key, including
+// the HTTP status it was answered with (so refused attempts are visible).
+func (al *Manager) APIRequest(userID int, email, ip, country, method, path string, status int) error {
+	return al.create(
+		models.APIRequest,
+		fmt.Sprintf("%s (#%d) API %s %s -> %d", email, userID, method, path, status),
+		userID,
+		umodels.UserModel,
+		userID,
+		ip,
+		country,
+	)
+}
+
 // create creates a new activity log in DB.
 func (m *Manager) create(activityType, activityDescription string, actorID int, targetModelType string, targetModelID int, ip, country string) error {
 	if _, err := m.q.InsertActivity.Exec(activityType, activityDescription, actorID, targetModelType, targetModelID, ip, country); err != nil {
