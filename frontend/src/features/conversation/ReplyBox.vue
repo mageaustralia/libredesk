@@ -497,9 +497,17 @@ onBeforeUnmount(() => {
   emitter.off('restore-send', handleRestoreSend)
 })
 
-function handleForwardMessage(messageData) {
+async function handleForwardMessage(messageData) {
   // Switch to forward mode
   messageType.value = 'forward'
+  // The draft key includes the message type, so switching tabs makes
+  // useDraftManager load the (usually empty) Forward draft into htmlContent.
+  // Wait for that to settle BEFORE writing the forwarded content, otherwise it
+  // overwrites it and the forward goes out with only a signature.
+  await nextTick()
+  for (let i = 0; i < 30 && isDraftLoading.value; i++) {
+    await nextTick()
+  }
   // Clear TO field — agent enters the forward recipient
   to.value = ''
   cc.value = ''
