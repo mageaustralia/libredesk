@@ -158,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
@@ -227,7 +227,12 @@ watch(
 )
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', refreshFollowersOnFocus)
   await fetchTags()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', refreshFollowersOnFocus)
 })
 
 const onTagsChange = (newTags) => {
@@ -240,20 +245,33 @@ const onTagsChange = (newTags) => {
 
 const priorityOptions = computed(() => conversationStore.priorityOptions)
 
-const fetchFollowers = async () => {
+// Declared as a function (hoisted) because the immediate watcher above calls it
+// during setup. Drops stale responses, forgets the "already fetched" marker on
+// failure so it can be retried, retries once, and is re-run when the tab
+// becomes visible again.
+let followerFetchSeq = 0
+async function fetchFollowers(retry = true, force = false) {
   const uuid = conversationStore.current?.uuid
   if (!uuid) return
-  if (uuid === lastFetchedFollowersUuid) return
+  if (!force && uuid === lastFetchedFollowersUuid) return
   lastFetchedFollowersUuid = uuid
+  const seq = ++followerFetchSeq
   try {
     const res = await api.getConversationParticipants(uuid)
+    if (seq !== followerFetchSeq || conversationStore.current?.uuid !== uuid) return
     followers.value = (res.data?.data || []).filter((f) => {
       const name = ((f.first_name || '') + ' ' + (f.last_name || '')).toLowerCase().trim()
       return name !== 'system' && name !== 'system user'
     })
   } catch {
-    // Non-fatal — empty followers picker.
+    if (seq !== followerFetchSeq) return
+    lastFetchedFollowersUuid = null
+    if (retry) setTimeout(() => fetchFollowers(false), 1500)
   }
+}
+
+function refreshFollowersOnFocus() {
+  if (document.visibilityState === 'visible') fetchFollowers(true, true)
 }
 
 // UX5: agent options for the followers picker. Filters out the System user
