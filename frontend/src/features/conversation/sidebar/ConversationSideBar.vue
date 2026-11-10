@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useConversationStore } from '@/stores/conversation'
 import { useUsersStore } from '@/stores/users'
 import { useTeamStore } from '@/stores/team'
@@ -157,6 +157,7 @@ const tagStore = useTagStore()
 const tags = ref([])
 const followers = ref([])
 const followerSyncInProgress = ref(false)
+let followerFetchSeq = 0
 // Save the accordion state in local storage
 const accordionState = useStorage('conversation-sidebar-accordion', ['reminders', 'previous_conversations'])
 // Ref to the reminders panel so the accordion trigger can read its `count`
@@ -180,7 +181,12 @@ watch(
 )
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', refreshFollowersOnFocus)
   await fetchTags()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', refreshFollowersOnFocus)
 })
 
 // Watch for changes in the tags and upsert the tags
@@ -231,16 +237,30 @@ const followerAgentOptions = computed(() => {
   }).map(o => ({ label: o.label, value: o.value }))
 })
 
-const fetchFollowers = async () => {
+// Load the watcher list. Guards against out-of-order responses (a slow reply for
+// a previously viewed ticket must not overwrite the current one), retries once
+// on failure instead of silently leaving the list empty, and is re-run when the
+// tab regains focus so a long-open ticket doesn't show a stale list.
+async function fetchFollowers(retry = true) {
   const uuid = conversationStore.current?.uuid
   if (!uuid) return
+  const seq = ++followerFetchSeq
   try {
     const res = await api.getConversationParticipants(uuid)
+    if (seq !== followerFetchSeq || conversationStore.current?.uuid !== uuid) return
     followers.value = (res.data?.data || []).filter(f => {
       const name = (f.first_name || '').toLowerCase()
       return name !== 'system'
     })
-  } catch { /* ignore */ }
+  } catch {
+    if (retry && seq === followerFetchSeq) {
+      setTimeout(() => fetchFollowers(false), 1500)
+    }
+  }
+}
+
+function refreshFollowersOnFocus() {
+  if (document.visibilityState === 'visible') fetchFollowers()
 }
 
 const addFollower = async (userId) => {
