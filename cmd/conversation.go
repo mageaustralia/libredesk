@@ -718,12 +718,21 @@ func handleRemoveUserAssignee(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	_, err = enforceConversationWrite(app, r, uuid, user)
+	conv, err := enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+	prevName := ""
+	if conv.AssignedUserID.Valid && conv.AssignedUserID.Int > 0 {
+		if prev, perr := app.user.GetAgent(conv.AssignedUserID.Int, ""); perr == nil {
+			prevName = prev.FullName()
+		}
+	}
 	if err = app.conversation.RemoveConversationAssignee(uuid, "user", user); err != nil {
 		return sendErrorEnvelope(r, err)
+	}
+	if conv.AssignedUserID.Valid {
+		app.conversation.RecordUnassign(uuid, "user", prevName, user)
 	}
 	return r.SendEnvelope(true)
 }
@@ -739,12 +748,21 @@ func handleRemoveTeamAssignee(r *fastglue.Request) error {
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
-	_, err = enforceConversationWrite(app, r, uuid, user)
+	conv, err := enforceConversationWrite(app, r, uuid, user)
 	if err != nil {
 		return sendErrorEnvelope(r, err)
 	}
+	prevName := ""
+	if conv.AssignedTeamID.Valid && conv.AssignedTeamID.Int > 0 {
+		if prev, perr := app.team.Get(conv.AssignedTeamID.Int); perr == nil {
+			prevName = prev.Name
+		}
+	}
 	if err = app.conversation.RemoveConversationAssignee(uuid, "team", user); err != nil {
 		return sendErrorEnvelope(r, err)
+	}
+	if conv.AssignedTeamID.Valid {
+		app.conversation.RecordUnassign(uuid, "team", prevName, user)
 	}
 	return r.SendEnvelope(true)
 }

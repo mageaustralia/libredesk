@@ -54,6 +54,8 @@ var (
 	ActivityAssignedUserChange = "assigned_user_change"
 	ActivityAssignedTeamChange = "assigned_team_change"
 	ActivitySelfAssign         = "self_assign"
+	ActivityUnassignedUser     = "unassigned_user"
+	ActivityUnassignedTeam     = "unassigned_team"
 	ActivityTagAdded           = "tag_added"
 	ActivityTagRemoved         = "tag_removed"
 	ActivitySLASet             = "sla_set"
