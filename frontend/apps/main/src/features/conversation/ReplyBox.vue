@@ -1178,8 +1178,16 @@ watch(messageType, async (newType, oldType) => {
 // Switches the reply box into forward mode, clears the recipient fields so
 // the agent enters the external recipient, and pre-populates the editor with
 // a quoted copy of the original message.
-function handleForwardMessage (message) {
+async function handleForwardMessage (message) {
   messageType.value = 'forward'
+  // The draft key includes the message type, so switching tabs makes
+  // useDraftManager load the (usually empty) Forward draft into htmlContent.
+  // Wait for it to settle BEFORE writing the forwarded content, otherwise it
+  // overwrites it and the forward goes out empty.
+  await nextTick()
+  for (let i = 0; i < 30 && isDraftLoading.value; i++) {
+    await nextTick()
+  }
   to.value = ''
   cc.value = ''
   bcc.value = ''
