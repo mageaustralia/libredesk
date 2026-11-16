@@ -61,6 +61,35 @@ func checkMessageDedup(userID int, convUUID, content, setStatus, from string) bo
 	return false
 }
 
+// idempotencyKeys remembers Idempotency-Key values for 24h so an automated
+// client retrying (or re-running a scheduled job) cannot post a note twice.
+var idempotencyKeys sync.Map
+
+const idempotencyTTL = 24 * time.Hour
+
+// checkIdempotencyKey returns true if the key was already used within the TTL.
+func checkIdempotencyKey(userID int, convUUID, key string) bool {
+	k := fmt.Sprintf("%d:%s:%s", userID, convUUID, key)
+	now := time.Now()
+	if v, loaded := idempotencyKeys.LoadOrStore(k, now); loaded {
+		if now.Sub(v.(time.Time)) < idempotencyTTL {
+			return true
+		}
+		idempotencyKeys.Store(k, now)
+	}
+	return false
+}
+
+// userHasPerm reports whether the user holds the given "object:action" permission.
+func userHasPerm(app *App, user umodels.User, perm string) bool {
+	parts := strings.Split(perm, ":")
+	if len(parts) != 2 {
+		return false
+	}
+	ok, err := app.authz.Enforce(user, parts[0], parts[1])
+	return err == nil && ok
+}
+
 type messageReq struct {
 	Attachments []int                  `json:"attachments"`
 	Message     string                 `json:"message"`
@@ -362,6 +391,19 @@ func handleSendMessage(r *fastglue.Request) error {
 
 	if req.SenderType != umodels.UserTypeAgent && req.SenderType != umodels.UserTypeContact {
 		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, app.i18n.T("globals.messages.somethingWentWrong"), nil, envelope.InputError)
+	}
+
+	// Permission: private notes need messages:write or messages:write_private;
+	// anything customer-facing (replies, forwards, contact messages) needs messages:write.
+	canWrite := userHasPerm(app, user, authzModels.PermMessagesWrite)
+	canWritePrivate := canWrite || userHasPerm(app, user, authzModels.PermMessagesWritePrivate)
+	if (req.Private && req.SenderType == umodels.UserTypeAgent && !canWritePrivate) || ((!req.Private || req.SenderType != umodels.UserTypeAgent) && !canWrite) {
+		return r.SendErrorEnvelope(fasthttp.StatusForbidden, app.i18n.T("status.deniedPermission"), nil, envelope.PermissionError)
+	}
+
+	// Optional caller-supplied idempotency key: a retried request with the same key is refused.
+	if key := string(r.RequestCtx.Request.Header.Peek("Idempotency-Key")); key != "" && checkIdempotencyKey(user.ID, cuuid, key) {
+		return r.SendErrorEnvelope(fasthttp.StatusConflict, "Duplicate request (Idempotency-Key already used)", nil, envelope.ConflictError)
 	}
 
 	// Reject duplicate submissions early. Only guard agent sends — contact

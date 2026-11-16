@@ -142,7 +142,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.PUT("/api/v1/conversations/{uuid}/contact", perm(handleUpdateConversationContact, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/trash", perm(handleMoveToTrash, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/restore", perm(handleRestoreFromTrash, "conversations:update_status"))
-	g.DELETE("/api/v1/conversations/{uuid}", perm(handlePermanentDeleteConversation, "conversations:update_status"))
+	g.DELETE("/api/v1/conversations/{uuid}", perm(handlePermanentDeleteConversation, "conversations:delete"))
 	g.PUT("/api/v1/conversations/{uuid}/spam", perm(handleMarkAsSpam, "conversations:update_status"))
 	g.PUT("/api/v1/conversations/{uuid}/not-spam", perm(handleMarkAsNotSpam, "conversations:update_status"))
 	g.POST("/api/v1/conversations/merge", perm(handleMergeConversations, "conversations:update_status"))
@@ -159,7 +159,7 @@ func initHandlers(g *fastglue.Fastglue, hub *ws.Hub) {
 	g.GET("/api/v1/conversations/{uuid}/page-visits", perm(handleGetContactPageVisits, "conversations:read"))
 	g.GET("/api/v1/conversations/{cuuid}/messages/{uuid}", perm(handleGetMessage, "messages:read"))
 	g.GET("/api/v1/conversations/{uuid}/messages", perm(handleGetMessages, "messages:read"))
-	g.POST("/api/v1/conversations/{cuuid}/messages", perm(handleSendMessage, "messages:write"))
+	g.POST("/api/v1/conversations/{cuuid}/messages", auth(handleSendMessage))
 	g.PUT("/api/v1/conversations/{cuuid}/messages/{uuid}/retry", perm(handleRetryMessage, "messages:write"))
 	// T3y manual "Redact Now" — scrub PCI from a flagged message immediately
 	// rather than waiting on the 7-day auto-redact safety net.
