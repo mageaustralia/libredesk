@@ -28,6 +28,37 @@
             </Button>
           </div>
           <p v-if="lookupError" class="text-xs text-destructive">{{ lookupError }}</p>
+          <div v-if="searchResults.length > 0" class="space-y-1 max-h-40 overflow-y-auto">
+            <button
+              v-for="r in searchResults"
+              :key="r.uuid"
+              type="button"
+              class="flex items-center gap-2 w-full p-2 rounded-md border border-muted text-left hover:bg-muted/30"
+              @click="addByUUID(r.uuid, r.reference_number)"
+            >
+              <Plus class="w-3 h-3 shrink-0 text-muted-foreground" />
+              <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ r.reference_number }}</span>
+              <span class="text-sm truncate">{{ r.subject || t('conversation.list.noSubject') }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Other conversations from the same contact -->
+        <div v-if="suggestions.length > 0" class="space-y-1.5">
+          <p class="text-sm font-medium">{{ t('conversation.merge.contactTickets') }}</p>
+          <div class="space-y-1 max-h-40 overflow-y-auto">
+            <button
+              v-for="conv in suggestions"
+              :key="conv.uuid"
+              type="button"
+              class="flex items-center gap-2 w-full p-2 rounded-md border border-muted text-left hover:bg-muted/30"
+              @click="addTicket(conv)"
+            >
+              <Plus class="w-3 h-3 shrink-0 text-muted-foreground" />
+              <span class="text-xs font-medium text-muted-foreground shrink-0">#{{ conv.reference_number }}</span>
+              <span class="text-sm truncate">{{ conv.subject || t('conversation.list.noSubject') }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Selected tickets -->
@@ -110,6 +141,7 @@ import { Input } from '@shared-ui/components/ui/input'
 import { AlertTriangle, Loader2, Plus, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@main/composables/useToast'
+import { handleHTTPError } from '@shared-ui/utils/http.js'
 import api from '@/api'
 
 const props = defineProps({
@@ -132,6 +164,8 @@ const lookupError = ref('')
 const ticketNumber = ref('')
 const mergeTickets = ref([])
 const primaryUUID = ref('')
+const suggestions = ref([])
+const searchResults = ref([])
 
 // Reset + seed when opened.
 watch(() => props.open, (val) => {
@@ -141,45 +175,116 @@ watch(() => props.open, (val) => {
   primaryUUID.value = ''
   ticketNumber.value = ''
   lookupError.value = ''
+  suggestions.value = []
+  searchResults.value = []
 
   if (props.initialConversation && props.initialConversation.uuid) {
     mergeTickets.value.push({ ...props.initialConversation })
     primaryUUID.value = props.initialConversation.uuid
   }
+  loadSuggestions()
 })
 
-async function lookupTicket() {
-  const num = ticketNumber.value.trim().replace(/^#/, '')
-  if (!num) return
+// Other conversations from the same contact, excluding ones already merged away.
+async function loadSuggestions() {
+  const contactID = props.initialConversation?.contact_id
+  if (!contactID) return
+  try {
+    const res = await api.getContactConversations(contactID)
+    suggestions.value = (res.data?.data || []).filter(
+      c => !mergeTickets.value.some(tk => tk.uuid === c.uuid) && !c.merged_into_id
+    )
+  } catch {
+    // Suggestions are a convenience; the number/search lookup still works.
+  }
+}
 
-  if (mergeTickets.value.some(tk => String(tk.reference_number) === num)) {
+// The earlier (lower-numbered) ticket is the one a split-off reply gets put
+// back onto, so it is the default primary. The agent can still change it.
+function pickDefaultPrimary() {
+  const sorted = [...mergeTickets.value].sort(
+    (a, b) => Number(a.reference_number) - Number(b.reference_number)
+  )
+  primaryUUID.value = sorted[0]?.uuid || ''
+}
+
+function addTicket(conv) {
+  if (mergeTickets.value.some(tk => tk.uuid === conv.uuid)) return
+  mergeTickets.value.push(conv)
+  suggestions.value = suggestions.value.filter(c => c.uuid !== conv.uuid)
+  pickDefaultPrimary()
+}
+
+// Fetch full details (search results don't include contact info), then add.
+async function addByUUID(uuid, num) {
+  if (mergeTickets.value.some(tk => tk.uuid === uuid)) {
     lookupError.value = t('conversation.merge.alreadyAdded', { num })
+    return false
+  }
+  lookupError.value = ''
+  try {
+    const res = await api.getConversation(uuid)
+    const conv = res.data?.data
+    if (!conv) {
+      lookupError.value = t('conversation.merge.notFound', { num })
+      return false
+    }
+    if (conv.merged_into_id) {
+      lookupError.value = t('conversation.merge.alreadyMerged', { num })
+      return false
+    }
+    addTicket(conv)
+    ticketNumber.value = ''
+    searchResults.value = []
+    return true
+  } catch {
+    lookupError.value = t('conversation.merge.lookupFailed')
+    return false
+  }
+}
+
+async function lookupTicket() {
+  const input = ticketNumber.value.trim().replace(/^#/, '')
+  if (!input) return
+  lookupError.value = ''
+  searchResults.value = []
+
+  const isNumber = /^\d+$/.test(input)
+  if (isNumber && mergeTickets.value.some(tk => String(tk.reference_number) === input)) {
+    lookupError.value = t('conversation.merge.alreadyAdded', { num: input })
     return
   }
 
   lookingUp.value = true
-  lookupError.value = ''
-
   try {
-    // Use the dedicated by-ref endpoint — avoids the 3-char minimum on the
-    // search endpoint, so tickets #1-#99 can be looked up correctly.
-    const res = await api.getConversationByRef(num)
-    const conv = res.data?.data
-    if (!conv) {
-      lookupError.value = t('conversation.merge.notFound', { num })
+    if (isNumber) {
+      // Dedicated by-ref endpoint — avoids the 3-char minimum on the search
+      // endpoint, so tickets #1-#99 can be looked up correctly.
+      const res = await api.getConversationByRef(input)
+      const conv = res.data?.data
+      if (!conv) {
+        lookupError.value = t('conversation.merge.notFound', { num: input })
+        return
+      }
+      if (conv.merged_into_id) {
+        lookupError.value = t('conversation.merge.alreadyMerged', { num: input })
+        return
+      }
+      addTicket(conv)
+      ticketNumber.value = ''
       return
     }
 
-    if (conv.merged_into_id) {
-      lookupError.value = t('conversation.merge.alreadyMerged', { num })
+    // Free text (subject / contact email): let the agent pick from the hits.
+    if (input.length < 3) {
+      lookupError.value = t('conversation.merge.minChars')
       return
     }
-
-    mergeTickets.value.push(conv)
-    ticketNumber.value = ''
-
-    if (!primaryUUID.value) {
-      primaryUUID.value = conv.uuid
+    const res = await api.searchConversations({ query: input })
+    const results = res.data?.data || []
+    searchResults.value = results.filter(r => !mergeTickets.value.some(tk => tk.uuid === r.uuid))
+    if (searchResults.value.length === 0) {
+      lookupError.value = t('conversation.merge.noMatches')
     }
   } catch (err) {
     lookupError.value = handleHTTPError(err).message
@@ -190,9 +295,7 @@ async function lookupTicket() {
 
 function removeTicket(uuid) {
   mergeTickets.value = mergeTickets.value.filter(tk => tk.uuid !== uuid)
-  if (primaryUUID.value === uuid) {
-    primaryUUID.value = mergeTickets.value.length > 0 ? mergeTickets.value[0].uuid : ''
-  }
+  if (primaryUUID.value === uuid) pickDefaultPrimary()
 }
 
 async function handleMerge() {
