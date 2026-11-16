@@ -206,6 +206,7 @@ The Contacts page search box and the contact picker (sidebar, recipient fields) 
 - **Watcher list loads reliably**: the sidebar's watcher list no longer comes up empty until a refresh when a ticket was already open, retries once on failure and reloads when the tab regains focus
 - **Missing thumbnails**: an attachment thumbnail that was never generated is built on demand, falling back to the full-size image
 - **Unassign is recorded**: removing a user or team assignee adds a thread line ("Unassigned from X by Y") like other assignment changes
+- **Activity Log writes again**: the insert statement was missing the `country` column, so every entry (logins, role changes) failed silently. Fixed; entries are recorded again, with the country flag from the `CF-IPCountry` header
 - **Fixed formatting toolbar**: the macro, contact-note and automation editors use a fixed toolbar instead of the floating bubble menu that covered the text
 
 ### Navigation & Automation
