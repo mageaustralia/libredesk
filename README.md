@@ -7,7 +7,7 @@ We run Libredesk in production and love the project. This fork exists because we
 We're not trying to replace or compete with upstream Libredesk — we actively track releases and rebase our changes onto new versions as they come out. If any of our additions are useful to the broader project, we're happy to contribute them back.
 
 **Upstream**: [abhinavxd/libredesk](https://github.com/abhinavxd/libredesk) | [libredesk.io](https://libredesk.io) | [Live demo](https://demo.libredesk.io/)  
-**Base version**: v1.0.1
+**Base version**: v1.0.3
 
 ---
 
