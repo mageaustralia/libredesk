@@ -15,7 +15,19 @@ We're not trying to replace or compete with upstream Libredesk — we actively t
 
 Everything from upstream Libredesk is included. The following are additions in this fork.
 
-**Latest** — Merge dialog now suggests the same customer's other tickets and lets you find unrelated ones by number, subject or email; contacts can be searched by name as well as email; a note or reply is no longer lost if the tab is closed inside the 5-second undo window; previous/next ticket navigation; "Filter emails like this" automation shortcut; plus the items below. Earlier: Personal follow-up reminders on individual tickets, agent-typed instructions in the reply box now also steer RAG search (not just response tone), shared views accept ad-hoc filters on top of their saved filter, bidirectional merge banner with reference numbers across the sidebar, per-type drafts (reply vs private note now persist independently), and notification emails finally render inline images correctly.
+**Latest** — Automation-safe API access for scripted/AI triage clients (API-key audit log, note-only and delete permissions, stale-write and duplicate-note protection); configurable "not spam" rescue for spam-folder mail; an activity line when a ticket is unassigned; the admin Activity Log writes again; fixes for forwarded content, the watcher list, @mentions after reload, image-only notes and missing thumbnails. Earlier: Merge dialog suggests the same customer's other tickets, contacts can be searched by name, notes/replies survive closing the tab inside the undo window, previous/next ticket navigation, "Filter emails like this" automation shortcut, personal follow-up reminders, per-type drafts, shared views with ad-hoc filters, and bidirectional merge banners.
+
+### API Access for Automation & AI Triage Clients
+
+Libredesk's existing API-key authentication (`Authorization: token <key>:<secret>`) is hardened so a scripted or AI triage client can be given tightly limited access to a ticket queue.
+
+- **Note-only role**: new `messages:write_private` permission lets a client add private notes (including `@mentions`) without being able to send anything to a customer. Customer-facing replies, forwards and contact messages still require `messages:write`
+- **Delete is separate**: new `conversations:delete` permission for permanent deletion, split out of `conversations:update_status`, so a role can mark spam, trash and restore without being able to destroy tickets. A migration grants it to roles that already had update-status
+- **API audit log**: every API-key request that changes state or is refused is recorded in the Activity Log (user, method, path, HTTP status, IP, country). Plain successful reads are not logged
+- **Stale-write protection**: send the conversation's `updated_at` as an `X-Expected-Updated-At` header on assign, unassign, status, priority, spam, not-spam, trash and restore calls; the server answers `409` if a person changed the ticket in the meantime
+- **Duplicate-note protection**: an optional `Idempotency-Key` header on message send returns `409` if the same key is reused within 24 hours
+- **Visible in the ticket**: assignment, unassignment, status and priority changes made through the API appear in the ticket thread exactly like staff actions, attributed to the API user
+- **Suggested role**: read all conversations, read messages, update assignee/status, write private notes. Nothing else
 
 ### Personal Reminders
 
@@ -59,6 +71,7 @@ Full spam and trash lifecycle for conversations — manual actions, automatic cl
 - **Multi-folder IMAP polling**: Enter comma-separated mailbox names (e.g. `INBOX, [Gmail]/Spam`) to poll multiple folders — messages from spam/junk folders automatically get Spam status
 - **Auto-rescue for known senders**: Incoming messages that land in a polled spam folder are checked against the contacts database — if the sender has any prior outgoing agent reply, the conversation stays Open instead of being auto-spammed
 - **IMAP MOVE-back on un-spam**: When a message is auto-rescued, or when an agent manually clicks "Mark as not spam", the original message is MOVEd back to INBOX in IMAP. Gmail interprets this as a "not spam" signal and improves filtering for that sender on future deliveries. Falls back to COPY+STORE+EXPUNGE on servers without RFC 6851 support
+- **Configurable "not spam" rescue** (Admin > Spam Rescue, off by default): keeps legitimate mail from the spam folder in the inbox using trusted senders/domains, replies to mail we sent, senders who are known shop customers, order numbers owned by the sender (admin-supplied regex) and an optional AI check. Deterministic rules run first; the AI can only keep mail, never hide it, and any error leaves the message as spam. A shadow mode records what would have been rescued in a private note without changing anything
 - New incoming messages on Spam or Trashed conversations do not reopen them
 
 ### Submit & Set Status on New Conversations
@@ -187,6 +200,12 @@ The Contacts page search box and the contact picker (sidebar, recipient fields) 
 - **Websocket resync**: after a reconnect or tab refocus the open conversation is re-fetched and missing messages appended, so messages sent while the socket was down no longer stay invisible until a reload
 - **Reply recipients persist**: reassigning a ticket's contact is stored (`conversations.contact_updated_at`), so reply recipients are right after a reload and for other agents. Existing installs need `ALTER TABLE conversations ADD COLUMN contact_updated_at TIMESTAMPTZ NULL`
 - **Draft fixes**: a discarded draft no longer reappears after switching tabs, an empty private note/forward always has a visible way out, "Forward" back to "Reply" restores the thread and recipients, and TO defaults to the contact on conversations with no messages yet
+- **Forward keeps its content**: forwarding a message could produce an almost empty body when the draft loader finished after the forward content was written; the content is now written after the draft load completes
+- **@mentions survive a reload**: saved HTML with mentions is parsed back into mention nodes (restoring a draft, editing a note), so they keep their link and notification
+- **Image-only notes and replies**: a pasted image with no text can be sent and is no longer treated as an empty draft
+- **Watcher list loads reliably**: the sidebar's watcher list no longer comes up empty until a refresh when a ticket was already open, retries once on failure and reloads when the tab regains focus
+- **Missing thumbnails**: an attachment thumbnail that was never generated is built on demand, falling back to the full-size image
+- **Unassign is recorded**: removing a user or team assignee adds a thread line ("Unassigned from X by Y") like other assignment changes
 - **Fixed formatting toolbar**: the macro, contact-note and automation editors use a fixed toolbar instead of the floating bubble menu that covered the text
 
 ### Navigation & Automation
@@ -358,7 +377,7 @@ Conversation attachments (images) are extracted, resized to 500x500, and include
 
 Automatic detection and redaction of credit card numbers in incoming messages.
 
-- **Auto-detect on ingest**: Scans incoming messages for card numbers (Luhn-validated with network prefix matching)
+- **Auto-detect on ingest**: Scans incoming messages for card numbers (Luhn-validated with network prefix matching); an expiry date alone, with no card number or CVV, is not flagged
 - **Warning banner**: Red banner with "Redact Now" button on messages containing card data
 - **Manual redact**: Agents can immediately scrub card numbers, expiry, and CVV
 - **7-day auto-redact**: Safety net — unreacted messages are automatically scrubbed after 7 days
