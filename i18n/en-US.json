@@ -763,6 +763,7 @@
   "contact.notes.help": "Add note for this contact to keep track of important information and conversations.",
   "contact.saveNote": "Save note",
   "contact.searchByEmail": "Search by email",
+  "contact.searchByNameOrEmail": "Search by name or email",
   "contact.searchByNameOrEmail": "Search by name or email...",
   "contact.type.contact": "Contact",
   "contact.type.visitor": "Visitor",
