@@ -691,7 +691,12 @@ const hasTextContent = computed(() => {
  * attachments doesn't surface the button.
  */
 const hasDraftContent = computed(() => {
-  return hasTextContent.value || mediaFiles.value.length > 0 || mentions.value.length > 0
+  return (
+    hasTextContent.value ||
+    hasInlineImage(htmlContent.value) ||
+    mediaFiles.value.length > 0 ||
+    mentions.value.length > 0
+  )
 })
 
 /**

@@ -219,6 +219,7 @@ import MacroActionsPreview from '@/features/conversation/MacroActionsPreview.vue
 import ReplyBoxMenuBar from '@/features/conversation/ReplyBoxMenuBar.vue'
 import { useI18n } from 'vue-i18n'
 import { validateEmail, parseEmailList } from '@shared-ui/utils/string'
+import { hasInlineImage, hasPendingInlineUpload } from '@main/composables/useInlineImageUpload'
 import { useMacroStore } from '@main/stores/macro'
 import { useUsersStore } from '@main/stores/users'
 import { useTeamStore } from '@main/stores/team'
@@ -362,8 +363,11 @@ const toggleFullscreen = () => {
 }
 
 const enableSend = computed(() => {
+  const html = htmlContent.value
   return (
+    !hasPendingInlineUpload(html) &&
     (textContent.value.trim().length > 0 ||
+      hasInlineImage(html) ||
       conversationStore.getMacro('reply')?.actions?.length > 0 ||
       props.uploadedFiles.length > 0) &&
     emailErrors.value.length === 0 &&
