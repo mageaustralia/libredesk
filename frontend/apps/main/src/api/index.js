@@ -373,6 +373,24 @@ const sendMessage = (uuid, data) =>
       'Content-Type': 'application/json'
     }
   })
+// Fire-and-forget POST that survives the page being closed or reloaded.
+// axios (XHR) requests are cancelled on unload; fetch with keepalive is not.
+// Browsers cap keepalive bodies at 64KB, so returns false when the payload is
+// too large and the caller should fall back to a normal request.
+const sendKeepalive = (method, url, data) => {
+  const body = JSON.stringify(data)
+  if (body.length > 60000) return false
+  fetch(url, {
+    method,
+    body,
+    keepalive: true,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFTOKEN': getCSRFToken() }
+  }).catch(() => {})
+  return true
+}
+const sendMessageKeepalive = (uuid, data) =>
+  sendKeepalive('POST', `/api/v1/conversations/${uuid}/messages`, data)
 const getConversation = (uuid) => http.get(`/api/v1/conversations/${uuid}`, { abortOnRoute: true })
 const getConversationParticipants = (uuid) => http.get(`/api/v1/conversations/${uuid}/participants`)
 // UX5: followers system. follow/unfollow are self-only; addConversationFollower/
@@ -832,6 +850,7 @@ export default {
   deleteAutomationRule,
   createConversation,
   sendMessage,
+  sendMessageKeepalive,
   retryMessage,
   redactMessagePCI,
   updatePrivateNote,

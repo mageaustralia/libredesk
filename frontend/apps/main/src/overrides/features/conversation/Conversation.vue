@@ -601,6 +601,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', flushPendingSendOnUnload)
   sendViewConversation('')
   // EC18 (sibling case): if the user closes the tab / navigates away while a
   // send is queued, flush it to the server. Otherwise the optimistic message
@@ -654,7 +655,24 @@ function handleSendQueued (data) {
   }, UNDO_DELAY_MS)
 }
 
+// Sends are held for UNDO_DELAY_MS so they can be undone, and the editor and
+// draft are cleared immediately. If the tab is closed or reloaded inside that
+// window nothing would ever send it, so the note/reply is silently lost.
+// pagehide is the last chance to hand it to the browser; keepalive lets the
+// request outlive the page. A "send and set status" travels in the same POST
+// (set_status). Hiding the tab (visibilitychange) must NOT flush, or switching
+// tabs would defeat undo.
+function flushPendingSendOnUnload () {
+  const send = pendingSend.value
+  if (!send) return
+  clearTimeout(undoTimer)
+  clearInterval(undoProgressInterval)
+  if (!api.sendMessageKeepalive(send.uuid, send.payload)) return
+  pendingSend.value = null
+}
+
 onMounted(() => {
+  window.addEventListener('pagehide', flushPendingSendOnUnload)
   emitter.on(EMITTER_EVENTS.SEND_QUEUED, handleSendQueued)
 })
 
