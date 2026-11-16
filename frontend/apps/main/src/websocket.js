@@ -63,6 +63,9 @@ export class WebSocketClient {
       const openUUID = this.convStore.conversation.data?.uuid
       if (openUUID) this.subscribeToConversation(openUUID)
       this.convStore.refreshConversationList()
+      // new_message events broadcast while disconnected are never replayed, so
+      // reconcile the open conversation's messages as well.
+      this.convStore.syncOpenConversationMessages()
     }
   }
 
@@ -189,7 +192,12 @@ export class WebSocketClient {
     window.addEventListener('focus', () => {
       if (this.socket?.readyState !== WebSocket.OPEN) {
         this.reconnect()
+        return
       }
+      // The socket may report OPEN but be a zombie after a laptop sleep, with
+      // new_message events silently dropped. Reconcile the open conversation on
+      // refocus so nothing stays invisible until a reload.
+      this.convStore.syncOpenConversationMessages()
     })
   }
 
