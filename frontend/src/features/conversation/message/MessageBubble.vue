@@ -88,7 +88,7 @@
             ref="contentEl"
             @click="handleContentClick"
             class="mb-1 native-html break-words"
-            :class="{ 'mb-3': message.attachments.length > 0 }"
+            :class="{ 'mb-3': message.attachments.length > 0, 'sent-html': isOutgoing }"
           >
             <Letter
               :html="sanitizedContent"

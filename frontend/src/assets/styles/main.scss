@@ -329,3 +329,20 @@
 
 // Theme overrides
 @import './themes/fresh.scss';
+
+// Sent (outgoing) HTML replies: render paragraphs the way the recipient's
+// mail client does (default <p> spacing, empty <p> collapsing into the gap)
+// so the thread matches what was actually sent. Display only; the stored and
+// emailed HTML is untouched.
+.message-bubble .native-html.sent-html {
+  p {
+    margin: 0 0 1em !important;
+    min-height: 0 !important;
+  }
+  p:last-child {
+    margin-bottom: 0 !important;
+  }
+  p:empty {
+    margin: 0 !important;
+  }
+}
