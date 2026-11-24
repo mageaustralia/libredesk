@@ -121,7 +121,7 @@
                 :allowedSchemas="['cid', 'https', 'http', 'mailto']"
                 :allowed-css-properties="extendedCssProperties"
                 class="mb-1 native-html break-words"
-                :class="{ 'mb-3': message.attachments.length > 0 }"
+                :class="{ 'mb-3': message.attachments.length > 0, 'sent-html': isOutgoing }"
               />
             </div>
 
@@ -449,7 +449,9 @@ const sanitizedContent = computed(() => {
   // stripping, the conversation thread shows tall vertical gaps that make
   // long messages hard to read.
   if (props.message.content_type !== 'text') {
-    content = content.replace(/<p[^>]*>\s*(&nbsp;| |\s|<br\s*\/?>)*\s*<\/p>/gi, '')
+    // Sent replies keep their blank paragraphs; .sent-html spacing collapses them
+    // the way the recipient's mail client does.
+    if (!isOutgoing.value) content = content.replace(/<p[^>]*>\s*(&nbsp;| |\s|<br\s*\/?>)*\s*<\/p>/gi, '')
     if (!isOutgoing.value) {
       content = unwrapWrappingBlockquote(content)
     }
